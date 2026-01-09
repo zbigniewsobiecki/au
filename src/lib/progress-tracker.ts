@@ -1,5 +1,5 @@
 import fg from "fast-glob";
-import { getSourceFromAuPath } from "./au-paths.js";
+import { getSourceFromAuPath, findAuFiles } from "./au-paths.js";
 
 export interface ProgressCounts {
   total: number;
@@ -42,12 +42,7 @@ export class ProgressTracker {
    * Scan for existing .au files to determine what's already documented.
    */
   async scanExistingAuFiles(basePath: string = "."): Promise<void> {
-    const auFiles = await fg(["**/.au", "**/*.au"], {
-      cwd: basePath,
-      ignore: ["node_modules/**"],
-      absolute: false,
-      dot: true,
-    });
+    const auFiles = await findAuFiles(basePath, false);
 
     for (const auFile of auFiles) {
       const sourcePath = getSourceFromAuPath(auFile);

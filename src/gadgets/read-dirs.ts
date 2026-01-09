@@ -3,6 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createFileFilter } from "../lib/file-filter.js";
 import { isAuFile } from "../lib/au-paths.js";
+import { parsePathList } from "../lib/command-utils.js";
 
 export const readDirs = createGadget({
   name: "ReadDirs",
@@ -26,12 +27,7 @@ apps/backend"
   execute: async ({ paths, depth }) => {
     const filter = await createFileFilter();
     const results: string[] = [];
-
-    // Split by newlines and filter empty lines
-    const pathList = paths
-      .split("\n")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
+    const pathList = parsePathList(paths);
 
     const listDir = async (
       dirPath: string,

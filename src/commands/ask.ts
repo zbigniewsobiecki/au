@@ -1,6 +1,5 @@
 import { Command, Flags, Args } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import type { ExecutionEvent } from "llmist";
 import {
   auRead,
   auList,
@@ -10,6 +9,16 @@ import {
 } from "../gadgets/index.js";
 import { ASK_SYSTEM_PROMPT, ASK_INITIAL_PROMPT } from "../lib/ask-system-prompt.js";
 import { Output } from "../lib/output.js";
+import {
+  commonFlags,
+  configureBuilder,
+  createTextBlockState,
+  endTextBlock,
+  formatResultSize,
+  setupIterationTracking,
+  countAuEntries,
+} from "../lib/command-utils.js";
+import { isFileReadingGadget } from "../lib/constants.js";
 
 export default class Ask extends Command {
   static description = "Ask questions about the codebase using AU understanding";
@@ -28,33 +37,11 @@ export default class Ask extends Command {
   };
 
   static flags = {
-    model: Flags.string({
-      char: "m",
-      description: "LLM model to use",
-      default: "sonnet",
-    }),
+    ...commonFlags,
     "max-iterations": Flags.integer({
       char: "i",
       description: "Maximum agent iterations",
       default: 10,
-    }),
-    path: Flags.string({
-      char: "p",
-      description: "Root path of the codebase",
-      default: ".",
-    }),
-    verbose: Flags.boolean({
-      char: "v",
-      description: "Show detailed output with gadget calls",
-      default: false,
-    }),
-    rpm: Flags.integer({
-      description: "Rate limit: requests per minute",
-      default: 50,
-    }),
-    tpm: Flags.integer({
-      description: "Rate limit: tokens per minute (in thousands)",
-      default: 100,
     }),
   };
 
@@ -69,35 +56,21 @@ export default class Ask extends Command {
     const existingAu = await auList.execute({ path: flags.path });
 
     const existingContent = existingAu as string;
-    if (existingContent.includes("No existing")) {
+    const existingCount = countAuEntries(existingContent);
+    if (existingCount === 0) {
       out.warn("No existing understanding found. Run 'au ingest' first for best results.");
     } else {
-      const existingCount = existingContent.split("===").length - 1;
       out.success(`Loaded ${existingCount} understanding entries`);
     }
 
     // Build the agent with read-only gadgets (no auUpdate)
-    const builder = new AgentBuilder(client)
+    let builder = new AgentBuilder(client)
       .withModel(flags.model)
       .withSystem(ASK_SYSTEM_PROMPT)
       .withMaxIterations(flags["max-iterations"])
-      .withGadgets(auRead, auList, readFiles, readDirs, ripGrep)
-      .withRetry({
-        retries: 5,
-        minTimeout: 2000,
-        maxTimeout: 60000,
-        onRetry: (error, attempt) => {
-          out.warn(`Retry ${attempt}/5: ${error.message}`);
-        },
-        onRetriesExhausted: (error, attempts) => {
-          out.error(`Failed after ${attempts} attempts: ${error.message}`);
-        },
-      })
-      .withRateLimits({
-        requestsPerMinute: flags.rpm,
-        tokensPerMinute: flags.tpm * 1000,
-        safetyMargin: 0.8,
-      });
+      .withGadgets(auRead, auList, readFiles, readDirs, ripGrep);
+
+    builder = configureBuilder(builder, out, flags.rpm, flags.tpm);
 
     // Inject existing understanding as context
     builder.withSyntheticGadgetCall(
@@ -112,31 +85,16 @@ export default class Ask extends Command {
 
     out.info("Thinking...");
 
-    // Track current iteration
-    let currentIteration = 0;
-
-    // Subscribe to ExecutionTree for iteration tracking
+    // Track text block state and iteration (only show in verbose mode)
+    const textState = createTextBlockState();
     const tree = agent.getTree();
-    tree.onAll((event: ExecutionEvent) => {
-      if (event.type === "llm_call_start") {
-        currentIteration = event.iteration + 1;
-        if (flags.verbose) {
-          out.iteration(currentIteration);
-        }
-      } else if (event.type === "llm_call_complete") {
-        if (flags.verbose && (event.usage || event.cost)) {
-          out.iterationStats(
-            event.usage?.inputTokens || 0,
-            event.usage?.outputTokens || 0,
-            event.cost || 0
-          );
-        }
-      }
-    });
+
+    if (flags.verbose) {
+      setupIterationTracking(tree, { out });
+    }
 
     // Collect the answer text
     let answer = "";
-    let inTextBlock = false;
 
     // Run and stream events from the agent
     try {
@@ -144,18 +102,12 @@ export default class Ask extends Command {
         if (event.type === "text") {
           answer += event.content;
           if (flags.verbose) {
-            // In verbose mode, show thinking as it happens
-            if (!inTextBlock) {
-              inTextBlock = true;
-            }
+            textState.inTextBlock = true;
             out.thinkingChunk(event.content);
           }
         } else if (event.type === "gadget_call") {
           if (flags.verbose) {
-            if (inTextBlock) {
-              out.thinkingEnd();
-              inTextBlock = false;
-            }
+            endTextBlock(textState, out);
             const params = event.call.parameters as Record<string, unknown>;
             out.gadgetCall(event.call.gadgetName, params);
           }
@@ -166,9 +118,8 @@ export default class Ask extends Command {
               out.gadgetError(result.gadgetName, result.error);
             } else {
               let summary: string | undefined;
-              if (result.gadgetName === "ReadFiles" || result.gadgetName === "ReadDirs") {
-                const resultLength = result.result?.length || 0;
-                summary = `${(resultLength / 1024).toFixed(1)}kb`;
+              if (isFileReadingGadget(result.gadgetName)) {
+                summary = formatResultSize(result.result);
               }
               out.gadgetResult(result.gadgetName, summary);
             }
@@ -176,9 +127,8 @@ export default class Ask extends Command {
         }
       }
 
-      // End any remaining text block in verbose mode
-      if (flags.verbose && inTextBlock) {
-        out.thinkingEnd();
+      if (flags.verbose) {
+        endTextBlock(textState, out);
       }
 
       // In non-verbose mode, print the final answer
@@ -187,8 +137,8 @@ export default class Ask extends Command {
         console.log(answer.trim());
       }
     } catch (error) {
-      if (flags.verbose && inTextBlock) {
-        out.thinkingEnd();
+      if (flags.verbose) {
+        endTextBlock(textState, out);
       }
       out.error(`Agent error: ${error instanceof Error ? error.message : error}`);
       process.exit(1);

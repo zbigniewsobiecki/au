@@ -1,4 +1,5 @@
 import { join, extname } from "node:path";
+import fg from "fast-glob";
 
 /**
  * Resolves the .au file path for a given source path.
@@ -58,28 +59,23 @@ export function isAuFile(path: string): boolean {
 }
 
 /**
- * Determines if a source path is likely a file or directory.
- * Uses extension heuristic - paths with common code extensions are files.
+ * Find all .au files in a directory.
+ * @param basePath The directory to search from
+ * @param includeRoot Whether to include root .au file in the pattern
  */
-export function isLikelyFile(sourcePath: string): boolean {
-  const ext = extname(sourcePath).toLowerCase();
-  const fileExtensions = new Set([
-    ".ts",
-    ".tsx",
-    ".js",
-    ".jsx",
-    ".mjs",
-    ".cjs",
-    ".json",
-    ".md",
-    ".yaml",
-    ".yml",
-    ".toml",
-    ".css",
-    ".scss",
-    ".html",
-    ".vue",
-    ".svelte",
-  ]);
-  return fileExtensions.has(ext);
+export async function findAuFiles(
+  basePath: string = ".",
+  includeRoot: boolean = true
+): Promise<string[]> {
+  const patterns = includeRoot
+    ? ["**/.au", "**/*.au", ".au"]
+    : ["**/.au", "**/*.au"];
+
+  return fg(patterns, {
+    cwd: basePath,
+    ignore: ["node_modules/**"],
+    absolute: false,
+    dot: true,
+  });
 }
+

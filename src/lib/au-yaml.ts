@@ -28,26 +28,6 @@ export function parsePath(path: string): string[] {
 }
 
 /**
- * Get value at path.
- */
-export function getByPath(obj: unknown, path: string): unknown {
-  const segments = parsePath(path);
-  let current: unknown = obj;
-
-  for (const segment of segments) {
-    if (current === null || current === undefined) {
-      return undefined;
-    }
-    if (typeof current !== "object") {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[segment];
-  }
-
-  return current;
-}
-
-/**
  * Check if a segment looks like an array index (non-negative integer).
  */
 function isArrayIndex(segment: string): boolean {

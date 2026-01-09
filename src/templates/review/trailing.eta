@@ -1,0 +1,24 @@
+
+---
+## Review Progress (Iteration <%= it.iteration %>/<%= it.maxIterations %>)
+
+**Files reviewed:** <%= it.totalAuFiles %> total
+<% if (it.issueCount > 0) { %>
+**Files with issues:** <%= it.issueCount %>
+
+**Issues by type:**
+<% for (const issue of it.issueBreakdown) { %>
+- <%= issue %>
+<% } %>
+
+**Next files to fix:**
+<% for (const file of it.nextFiles) { %>
+- `<%= file.path %>`: <%= file.issues.join(", ") %>
+<% } %>
+<% } else { %>
+**All files pass field presence checks!**
+
+Now verify accuracy by reading source files and comparing exports/imports.
+<% } %>
+
+When all files are validated and fixed, call Finish with a summary.

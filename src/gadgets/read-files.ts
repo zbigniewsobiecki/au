@@ -2,6 +2,7 @@ import { createGadget, z } from "llmist";
 import { readFile } from "node:fs/promises";
 import { createFileFilter } from "../lib/file-filter.js";
 import { isAuFile } from "../lib/au-paths.js";
+import { parsePathList } from "../lib/command-utils.js";
 
 export const readFiles = createGadget({
   name: "ReadFiles",
@@ -18,12 +19,7 @@ src/config.ts"`,
   execute: async ({ paths }) => {
     const filter = await createFileFilter();
     const results: string[] = [];
-
-    // Split by newlines and filter empty lines
-    const pathList = paths
-      .split("\n")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
+    const pathList = parsePathList(paths);
 
     for (const filePath of pathList) {
       // Filter out .au files

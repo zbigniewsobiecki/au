@@ -51,36 +51,3 @@ export async function createFileFilter(rootPath = "."): Promise<FileFilter> {
   };
 }
 
-/**
- * Creates a synchronous filter with pre-loaded gitignore.
- * Use createFileFilter() for async initialization.
- */
-export function createSyncFileFilter(gitignoreContent?: string): FileFilter {
-  const ig = ignore();
-
-  // Always ignore .au files
-  ig.add(["*.au", ".au", "**/*.au", "**/.au"]);
-
-  // Always ignore common non-source directories
-  ig.add(["node_modules", ".git", "dist", "build", ".next", ".cache"]);
-
-  if (gitignoreContent) {
-    ig.add(gitignoreContent);
-  }
-
-  return {
-    accepts(path: string): boolean {
-      let relativePath = path;
-      if (relativePath.startsWith("./")) {
-        relativePath = relativePath.slice(2);
-      }
-      if (relativePath.startsWith("/")) {
-        relativePath = relativePath.slice(1);
-      }
-      if (!relativePath || relativePath === ".") {
-        return true;
-      }
-      return !ig.ignores(relativePath);
-    },
-  };
-}

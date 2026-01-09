@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import type { ProgressTracker } from "./progress-tracker.js";
+import { GadgetName } from "./constants.js";
 
 export interface OutputOptions {
   verbose: boolean;
@@ -75,16 +76,16 @@ export class Output {
 
       // Show detailed params for file/dir operations
       if (params) {
-        if (name === "ReadFiles" && typeof params.paths === "string") {
+        if (name === GadgetName.ReadFiles && typeof params.paths === "string") {
           const paths = (params.paths as string).split("\n").filter(p => p.trim());
           const preview = paths.slice(0, 3).join(", ");
           const more = paths.length > 3 ? ` +${paths.length - 3} more` : "";
           console.log(chalk.dim(`   ${preview}${more}`));
-        } else if (name === "ReadDirs" && typeof params.paths === "string") {
+        } else if (name === GadgetName.ReadDirs && typeof params.paths === "string") {
           const depth = params.depth || 2;
           const paths = (params.paths as string).split("\n").filter(p => p.trim());
           console.log(chalk.dim(`   ${paths.join(", ")} (depth: ${depth})`));
-        } else if (name === "AUUpdate" && params.filePath) {
+        } else if (name === GadgetName.AUUpdate && params.filePath) {
           const path = params.path as string || "";
           const value = params.value;
           let valuePreview = "";
@@ -97,12 +98,12 @@ export class Output {
           }
           console.log(chalk.dim(`   ${params.filePath}`));
           console.log(chalk.dim(`   ${chalk.cyan(path)} = ${valuePreview}`));
-        } else if (name === "RipGrep" && params.pattern) {
+        } else if (name === GadgetName.RipGrep && params.pattern) {
           console.log(chalk.dim(`   pattern: ${params.pattern}`));
           if (params.glob) {
             console.log(chalk.dim(`   glob: ${params.glob}`));
           }
-        } else if (name === "Finish" && params.summary) {
+        } else if (name === GadgetName.Finish && params.summary) {
           console.log(chalk.dim(`   ${params.summary}`));
         } else {
           // Generic param display for other gadgets

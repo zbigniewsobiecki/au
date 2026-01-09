@@ -21,7 +21,10 @@
     "build": "tsc && cp -r src/templates dist/",
     "dev": "./bin/dev.js",
     "lint": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@oclif/core": "^4.2.10",
@@ -34,7 +37,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.16"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -1,7 +1,6 @@
 import { createGadget, z } from "llmist";
 import { readFile } from "node:fs/promises";
-import fg from "fast-glob";
-import { getSourceFromAuPath } from "../lib/au-paths.js";
+import { getSourceFromAuPath, findAuFiles } from "../lib/au-paths.js";
 
 export const auList = createGadget({
   name: "AUList",
@@ -12,12 +11,7 @@ This shows what understandings already exist so you can refine them.`,
   }),
   execute: async ({ path }) => {
     // Find all .au files
-    const auFiles = await fg(["**/.au", "**/*.au", ".au"], {
-      cwd: path,
-      ignore: ["node_modules/**"],
-      absolute: false,
-      dot: true,
-    });
+    const auFiles = await findAuFiles(path, true);
 
     if (auFiles.length === 0) {
       return "No existing understanding entries found.";
