@@ -1,0 +1,27 @@
+
+---
+## Progress (Iteration <%= it.iteration %>/<%= it.maxIterations %>)
+<%= it.progress %>% coverage (<%= it.documented %>/<%= it.total %> items touched)
+<% if (it.pendingItems.length > 0) { %>
+
+**Files still needing documentation:**
+<% for (const item of it.pendingItems) { %>
+- <%= item %>
+<% } %>
+<% if (it.pendingCount > it.pendingItems.length) { %>
+... and <%= it.pendingCount - it.pendingItems.length %> more
+<% } %>
+<% } %>
+
+**Completeness Checklist** - For each file, ensure you have set:
+- [ ] `layer` - architecture layer
+- [ ] `understanding.summary` - what it does
+- [ ] `understanding.purpose` - why it exists
+- [ ] `understanding.exports` - all exported items (if any)
+- [ ] `relationships.depends_on` - all imports (if any)
+
+For directories:
+- [ ] `layer`, `understanding.summary`, `understanding.responsibility`
+- [ ] `contents` - list of children with summaries
+
+**A file with only a summary is INCOMPLETE.** Read the source and document ALL required fields before moving on.

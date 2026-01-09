@@ -7,9 +7,14 @@ import { isAuFile } from "../lib/au-paths.js";
 export const readDirs = createGadget({
   name: "ReadDirs",
   description: `List directories recursively with file types and sizes.
-Respects gitignore. Returns a compact listing with D=directory, F=file indicators.`,
+Respects gitignore. Returns a compact listing with D=directory, F=file indicators.
+
+Example:
+  paths="src
+apps/backend"
+  depth=3`,
   schema: z.object({
-    paths: z.array(z.string()).describe("Array of directory paths to list"),
+    paths: z.string().describe("Directory paths to list, one per line"),
     depth: z
       .number()
       .int()
@@ -21,6 +26,12 @@ Respects gitignore. Returns a compact listing with D=directory, F=file indicator
   execute: async ({ paths, depth }) => {
     const filter = await createFileFilter();
     const results: string[] = [];
+
+    // Split by newlines and filter empty lines
+    const pathList = paths
+      .split("\n")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
 
     const listDir = async (
       dirPath: string,
@@ -68,7 +79,7 @@ Respects gitignore. Returns a compact listing with D=directory, F=file indicator
       return entries;
     };
 
-    for (const dirPath of paths) {
+    for (const dirPath of pathList) {
       const normalizedPath = dirPath === "." ? "" : dirPath;
       results.push(`# Listing: ${dirPath}`);
       results.push("#T|Path|Size");

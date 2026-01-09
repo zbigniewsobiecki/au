@@ -48,6 +48,14 @@ export default class Ask extends Command {
       description: "Show detailed output with gadget calls",
       default: false,
     }),
+    rpm: Flags.integer({
+      description: "Rate limit: requests per minute",
+      default: 50,
+    }),
+    tpm: Flags.integer({
+      description: "Rate limit: tokens per minute (in thousands)",
+      default: 100,
+    }),
   };
 
   async run(): Promise<void> {
@@ -73,7 +81,23 @@ export default class Ask extends Command {
       .withModel(flags.model)
       .withSystem(ASK_SYSTEM_PROMPT)
       .withMaxIterations(flags["max-iterations"])
-      .withGadgets(auRead, auList, readFiles, readDirs, ripGrep);
+      .withGadgets(auRead, auList, readFiles, readDirs, ripGrep)
+      .withRetry({
+        retries: 5,
+        minTimeout: 2000,
+        maxTimeout: 60000,
+        onRetry: (error, attempt) => {
+          out.warn(`Retry ${attempt}/5: ${error.message}`);
+        },
+        onRetriesExhausted: (error, attempts) => {
+          out.error(`Failed after ${attempts} attempts: ${error.message}`);
+        },
+      })
+      .withRateLimits({
+        requestsPerMinute: flags.rpm,
+        tokensPerMinute: flags.tpm * 1000,
+        safetyMargin: 0.8,
+      });
 
     // Inject existing understanding as context
     builder.withSyntheticGadgetCall(
@@ -115,51 +139,59 @@ export default class Ask extends Command {
     let inTextBlock = false;
 
     // Run and stream events from the agent
-    for await (const event of agent.run()) {
-      if (event.type === "text") {
-        answer += event.content;
-        if (flags.verbose) {
-          // In verbose mode, show thinking as it happens
-          if (!inTextBlock) {
-            inTextBlock = true;
-          }
-          out.thinkingChunk(event.content);
-        }
-      } else if (event.type === "gadget_call") {
-        if (flags.verbose) {
-          if (inTextBlock) {
-            out.thinkingEnd();
-            inTextBlock = false;
-          }
-          const params = event.call.parameters as Record<string, unknown>;
-          out.gadgetCall(event.call.gadgetName, params);
-        }
-      } else if (event.type === "gadget_result") {
-        if (flags.verbose) {
-          const result = event.result;
-          if (result.error) {
-            out.gadgetError(result.gadgetName, result.error);
-          } else {
-            let summary: string | undefined;
-            if (result.gadgetName === "ReadFiles" || result.gadgetName === "ReadDirs") {
-              const resultLength = result.result?.length || 0;
-              summary = `${(resultLength / 1024).toFixed(1)}kb`;
+    try {
+      for await (const event of agent.run()) {
+        if (event.type === "text") {
+          answer += event.content;
+          if (flags.verbose) {
+            // In verbose mode, show thinking as it happens
+            if (!inTextBlock) {
+              inTextBlock = true;
             }
-            out.gadgetResult(result.gadgetName, summary);
+            out.thinkingChunk(event.content);
+          }
+        } else if (event.type === "gadget_call") {
+          if (flags.verbose) {
+            if (inTextBlock) {
+              out.thinkingEnd();
+              inTextBlock = false;
+            }
+            const params = event.call.parameters as Record<string, unknown>;
+            out.gadgetCall(event.call.gadgetName, params);
+          }
+        } else if (event.type === "gadget_result") {
+          if (flags.verbose) {
+            const result = event.result;
+            if (result.error) {
+              out.gadgetError(result.gadgetName, result.error);
+            } else {
+              let summary: string | undefined;
+              if (result.gadgetName === "ReadFiles" || result.gadgetName === "ReadDirs") {
+                const resultLength = result.result?.length || 0;
+                summary = `${(resultLength / 1024).toFixed(1)}kb`;
+              }
+              out.gadgetResult(result.gadgetName, summary);
+            }
           }
         }
       }
-    }
 
-    // End any remaining text block in verbose mode
-    if (flags.verbose && inTextBlock) {
-      out.thinkingEnd();
-    }
+      // End any remaining text block in verbose mode
+      if (flags.verbose && inTextBlock) {
+        out.thinkingEnd();
+      }
 
-    // In non-verbose mode, print the final answer
-    if (!flags.verbose) {
-      console.log();
-      console.log(answer.trim());
+      // In non-verbose mode, print the final answer
+      if (!flags.verbose) {
+        console.log();
+        console.log(answer.trim());
+      }
+    } catch (error) {
+      if (flags.verbose && inTextBlock) {
+        out.thinkingEnd();
+      }
+      out.error(`Agent error: ${error instanceof Error ? error.message : error}`);
+      process.exit(1);
     }
   }
 }

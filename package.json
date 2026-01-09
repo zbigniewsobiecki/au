@@ -18,7 +18,7 @@
     "topicSeparator": " "
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/templates dist/",
     "dev": "./bin/dev.js",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -26,9 +26,11 @@
   "dependencies": {
     "@oclif/core": "^4.2.10",
     "chalk": "^5.6.2",
+    "eta": "^4.5.0",
     "fast-glob": "^3.3.3",
     "ignore": "^6.0.2",
-    "llmist": "^15.1.1"
+    "llmist": "^15.1.1",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

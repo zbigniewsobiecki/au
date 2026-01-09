@@ -75,22 +75,35 @@ export class Output {
 
       // Show detailed params for file/dir operations
       if (params) {
-        if (name === "ReadFiles" && Array.isArray(params.paths)) {
-          for (const path of params.paths as string[]) {
-            console.log(chalk.dim("   " + path));
-          }
-        } else if (name === "ReadDirs" && Array.isArray(params.paths)) {
+        if (name === "ReadFiles" && typeof params.paths === "string") {
+          const paths = (params.paths as string).split("\n").filter(p => p.trim());
+          const preview = paths.slice(0, 3).join(", ");
+          const more = paths.length > 3 ? ` +${paths.length - 3} more` : "";
+          console.log(chalk.dim(`   ${preview}${more}`));
+        } else if (name === "ReadDirs" && typeof params.paths === "string") {
           const depth = params.depth || 2;
-          for (const path of params.paths as string[]) {
-            console.log(chalk.dim(`   ${path} (depth: ${depth})`));
-          }
+          const paths = (params.paths as string).split("\n").filter(p => p.trim());
+          console.log(chalk.dim(`   ${paths.join(", ")} (depth: ${depth})`));
         } else if (name === "AUUpdate" && params.filePath) {
-          console.log(chalk.dim("   " + params.filePath));
+          const path = params.path as string || "";
+          const value = params.value;
+          let valuePreview = "";
+          if (value === null) {
+            valuePreview = chalk.red("(delete)");
+          } else if (typeof value === "string") {
+            valuePreview = this.truncate(value, 50);
+          } else if (typeof value === "object") {
+            valuePreview = this.truncate(JSON.stringify(value), 50);
+          }
+          console.log(chalk.dim(`   ${params.filePath}`));
+          console.log(chalk.dim(`   ${chalk.cyan(path)} = ${valuePreview}`));
         } else if (name === "RipGrep" && params.pattern) {
           console.log(chalk.dim(`   pattern: ${params.pattern}`));
           if (params.glob) {
             console.log(chalk.dim(`   glob: ${params.glob}`));
           }
+        } else if (name === "Finish" && params.summary) {
+          console.log(chalk.dim(`   ${params.summary}`));
         } else {
           // Generic param display for other gadgets
           const paramStr = this.truncateParams(params);
@@ -252,6 +265,16 @@ export class Output {
       }
       console.log(summary);
     }
+  }
+
+  // Helper to truncate a string for display
+  private truncate(str: string, maxLen: number): string {
+    // Replace newlines with spaces for display
+    const clean = str.replace(/\n/g, " ").trim();
+    if (clean.length > maxLen) {
+      return clean.slice(0, maxLen) + "...";
+    }
+    return clean;
   }
 
   // Helper to truncate params for display

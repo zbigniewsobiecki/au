@@ -2,56 +2,100 @@ import { createGadget, z } from "llmist";
 import { writeFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { resolveAuPath } from "../lib/au-paths.js";
+import {
+  parseAuFile,
+  stringifyAuFile,
+  setByPath,
+  deleteByPath,
+  generateMeta,
+  detectType,
+  type AuDocument,
+} from "../lib/au-yaml.js";
+
+const valueSchema = z.union([
+  z.string(),
+  z.object({}).passthrough(),
+  z.array(z.union([z.string(), z.object({}).passthrough()])),
+  z.literal(null),
+]);
 
 export const auUpdate = createGadget({
   name: "AUUpdate",
-  description: `Create or update the agent understanding for a file or directory.
-The content should be a plain-text summary of what the code does, its purpose, key exports, and relationships.
-You can store understanding for individual files, directories, or the repository root.
-Note: The source file or directory must exist.`,
+  description: `Update agent understanding for a file or directory.
+
+Examples:
+- path="understanding.summary", value="Handles user authentication..."
+- path="layer", value="service"
+- path="understanding.exports.0", value={name: "login", kind: "function"}
+- path="uncertainty", value=null (to delete)
+
+Meta fields are auto-managed.`,
   schema: z.object({
     filePath: z
       .string()
-      .describe(
-        "Path to the file or directory to document (relative to repo root)"
-      ),
-    content: z
+      .describe("Path to file/directory (relative to repo root)"),
+    path: z
       .string()
-      .describe("Plain-text understanding/documentation to store"),
+      .describe("Dot-notation path (e.g., understanding.summary)"),
+    value: valueSchema.describe("Value to set, or null to delete"),
   }),
-  execute: async ({ filePath, content }) => {
-    // Validate that source file/directory exists (skip for root)
+  execute: async ({ filePath, path, value }) => {
+    // Validate source exists (except for root)
     if (filePath !== "." && filePath !== "") {
       try {
         await stat(filePath);
       } catch {
-        return `Error: Source path "${filePath}" does not exist. Cannot create understanding for non-existent files.`;
+        return `Error: Source "${filePath}" does not exist. Cannot create understanding for non-existent paths.`;
       }
     }
 
     const auPath = resolveAuPath(filePath);
 
-    // Get old line count if file exists
+    // Read existing or start fresh
+    let doc: AuDocument = {};
     let oldLines = 0;
     try {
-      const oldContent = await readFile(auPath, "utf-8");
-      oldLines = oldContent.split("\n").length;
+      const content = await readFile(auPath, "utf-8");
+      oldLines = content.split("\n").length;
+      doc = parseAuFile(content);
     } catch {
-      // File doesn't exist yet
+      // New file - start with empty doc
     }
 
-    // Ensure parent directory exists
+    // Apply update
+    try {
+      if (value === null || value === undefined) {
+        doc = deleteByPath(doc, path);
+      } else {
+        doc = setByPath(doc, path, value);
+      }
+    } catch (err) {
+      return `Error: ${err instanceof Error ? err.message : String(err)}`;
+    }
+
+    // Generate/update meta
+    const type = detectType(filePath);
+    let sourceContent = "";
+    if (type === "file") {
+      try {
+        sourceContent = await readFile(filePath, "utf-8");
+      } catch {
+        // Can't read source, use empty string for hash
+      }
+    }
+    doc.meta = generateMeta(filePath, type, sourceContent);
+
+    // Write YAML
+    const yamlContent = stringifyAuFile(doc);
     const parentDir = dirname(auPath);
     if (parentDir && parentDir !== ".") {
       await mkdir(parentDir, { recursive: true });
     }
+    await writeFile(auPath, yamlContent, "utf-8");
 
-    // Write the understanding
-    await writeFile(auPath, content, "utf-8");
-
-    const newLines = content.split("\n").length;
+    const newLines = yamlContent.split("\n").length;
     const diff = newLines - oldLines;
 
-    return `Updated understanding at ${auPath} [${oldLines}→${newLines}:${diff >= 0 ? "+" : ""}${diff}]`;
+    return `Updated ${auPath} [${path}] [${oldLines}→${newLines}:${diff >= 0 ? "+" : ""}${diff}]`;
   },
 });

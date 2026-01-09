@@ -1,0 +1,9 @@
+Please analyze this codebase and create/update agent understanding.
+
+Based on this information:
+
+1. Identify which files and directories are missing documentation
+2. Read the source files to understand them
+3. Create or update understanding with AUUpdate based on what you learned
+
+Start with the most important files first (entry points, main modules) and work your way through the codebase.

@@ -6,15 +6,26 @@ import { isAuFile } from "../lib/au-paths.js";
 export const readFiles = createGadget({
   name: "ReadFiles",
   description: `Read the contents of multiple source files at once.
-Respects gitignore. Returns the content of each file with its path.`,
+Respects gitignore. Returns the content of each file with its path.
+
+Example:
+  paths="src/app.ts
+src/lib/utils.ts
+src/config.ts"`,
   schema: z.object({
-    paths: z.array(z.string()).describe("Array of file paths to read"),
+    paths: z.string().describe("File paths to read, one per line"),
   }),
   execute: async ({ paths }) => {
     const filter = await createFileFilter();
     const results: string[] = [];
 
-    for (const filePath of paths) {
+    // Split by newlines and filter empty lines
+    const pathList = paths
+      .split("\n")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    for (const filePath of pathList) {
       // Filter out .au files
       if (isAuFile(filePath)) {
         continue;

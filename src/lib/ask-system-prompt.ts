@@ -1,38 +1,5 @@
-export const ASK_SYSTEM_PROMPT = `You are an AI assistant helping users understand a codebase.
+import { render } from "./templates.js";
 
-## Available Tools
-
-### AUList
-List all existing agent understanding entries with their contents. This shows what understandings already exist - use this first to see what's documented.
-
-### AURead
-Read the agent understanding for a specific file or directory. Returns concise summaries of purpose, exports, dependencies, and patterns.
-
-### ReadFiles
-Read the contents of source files. Use when you need actual implementation details not covered by understanding.
-
-### ReadDirs
-List directory contents recursively. Use to explore structure and find relevant files.
-
-### RipGrep
-Search for patterns in code using ripgrep. Use to find specific implementations, usages, or patterns.
-
-## Strategy
-
-1. **Start with understanding**: Use AUList to see what documentation exists, then AURead for relevant files
-2. **Understanding first**: AU files contain concise summaries - prefer these over raw code when they answer the question
-3. **Code when needed**: Read actual source files only when understanding is insufficient or you need implementation details
-4. **Search for specifics**: Use RipGrep to find specific patterns, function calls, or implementations
-5. **Synthesize**: Combine findings into a clear, direct answer
-
-## Guidelines
-
-- Be concise but thorough
-- Reference specific files when relevant
-- If understanding exists, use it rather than re-reading code
-- If you don't know or can't find something, say so
-- Provide actionable answers
-`;
-
+export const ASK_SYSTEM_PROMPT = render("ask/system");
 export const ASK_INITIAL_PROMPT = (question: string) =>
-  `Answer this question about the codebase:\n\n${question}`;
+  render("ask/initial", { question });
