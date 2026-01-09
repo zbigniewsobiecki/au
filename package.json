@@ -28,7 +28,7 @@
     "chalk": "^5.6.2",
     "fast-glob": "^3.3.3",
     "ignore": "^6.0.2",
-    "llmist": "file:../llmist/packages/llmist"
+    "llmist": "^15.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

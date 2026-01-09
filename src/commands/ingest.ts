@@ -11,6 +11,7 @@ import {
 } from "../gadgets/index.js";
 import { SYSTEM_PROMPT, INITIAL_PROMPT } from "../lib/system-prompt.js";
 import { Output } from "../lib/output.js";
+import { ProgressTracker } from "../lib/progress-tracker.js";
 
 export default class Ingest extends Command {
   static description = "Create agent understanding files for TypeScript code";
@@ -58,19 +59,30 @@ export default class Ingest extends Command {
     }
     const dirStructure = await readDirs.execute({
       paths: [flags.path],
-      depth: 2,
+      depth: 10,
     });
 
     out.info("Checking existing understanding...");
     const existingAu = await auList.execute({ path: flags.path });
 
-    // Count existing .au files
-    const existingCount = (existingAu as string).includes("No existing")
-      ? 0
-      : (existingAu as string).split("===").length - 1;
-    if (existingCount > 0) {
-      out.success(`Found ${existingCount} existing understanding entries`);
+    // Count existing .au files and lines
+    const existingContent = existingAu as string;
+    if (!existingContent.includes("No existing")) {
+      const existingCount = existingContent.split("===").length - 1;
+      // Count lines (excluding === header lines)
+      const lines = existingContent.split("\n").filter(line => !line.startsWith("===")).length;
+      out.setInitialLines(lines);
+      out.success(`Found ${existingCount} existing understanding entries (${lines} lines)`);
     }
+
+    // Initialize progress tracker by scanning all source files
+    const progressTracker = new ProgressTracker();
+    await progressTracker.scanSourceFiles(flags.path);
+    await progressTracker.scanExistingAuFiles(flags.path);
+    out.setProgressTracker(progressTracker);
+
+    const initialCounts = progressTracker.getCounts();
+    out.info(`Progress: ${progressTracker.getProgressPercent()}% (${initialCounts.documented}/${initialCounts.total} files)`);
 
     // Build the agent
     const builder = new AgentBuilder(client)
@@ -78,12 +90,32 @@ export default class Ingest extends Command {
       .withSystem(SYSTEM_PROMPT)
       .withMaxIterations(flags["max-iterations"])
       .withGadgets(auUpdate, auRead, auList, readFiles, readDirs, ripGrep)
-      .withTextOnlyHandler("acknowledge");
+      .withTextOnlyHandler("acknowledge")
+      .withTrailingMessage((ctx) => {
+        const progress = progressTracker.getProgressPercent();
+        const counts = progressTracker.getCounts();
+        const pending = progressTracker.getPendingItems(10);
+
+        let message = `\n---\n## Progress (Iteration ${ctx.iteration + 1}/${ctx.maxIterations})\n`;
+        message += `${progress}% complete (${counts.documented}/${counts.total} items)\n`;
+
+        if (pending.length > 0) {
+          message += `\nStill need documentation:\n`;
+          for (const item of pending) {
+            message += `- ${item}\n`;
+          }
+          if (counts.pending > pending.length) {
+            message += `... and ${counts.pending - pending.length} more\n`;
+          }
+        }
+
+        return message;
+      });
 
     // Inject initial context as synthetic gadget calls
     builder.withSyntheticGadgetCall(
       "ReadDirs",
-      { paths: [flags.path], depth: 2 },
+      { paths: [flags.path], depth: 10 },
       dirStructure as string,
       "gc_init_1"
     );
@@ -165,13 +197,24 @@ export default class Ingest extends Command {
 
           // Special handling for AUUpdate
           if (result.gadgetName === "AUUpdate") {
-            // Extract filePath from the result message
-            const match = result.result?.match(/Updated understanding at (.+)/);
-            if (match) {
-              const auPath = match[1];
-              // Convert .au path back to source path for display
-              const sourcePath = auPath.replace(/\.au$/, "").replace(/\/\.au$/, "");
-              out.documenting(sourcePath);
+            // Check if this is an error response (e.g., non-existent source file)
+            if (result.result?.startsWith("Error:")) {
+              out.warn(result.result);
+            } else {
+              // Extract filePath and line diff from the result message
+              // Format: "Updated understanding at path.au [old→new:diff]"
+              const match = result.result?.match(/Updated understanding at (.+?) \[\d+→\d+:([+-]?\d+)\]/);
+              if (match) {
+                const auPath = match[1];
+                const lineDiff = parseInt(match[2], 10);
+                // Convert .au path back to source path for display
+                const sourcePath = auPath.replace(/\.au$/, "").replace(/\/\.au$/, "");
+
+                // Update progress tracker
+                progressTracker.markDocumented(sourcePath);
+
+                out.documenting(sourcePath, lineDiff);
+              }
             }
           }
         }

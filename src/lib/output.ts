@@ -1,4 +1,5 @@
 import chalk from "chalk";
+import type { ProgressTracker } from "./progress-tracker.js";
 
 export interface OutputOptions {
   verbose: boolean;
@@ -18,9 +19,20 @@ export class Output {
   private iterationOutputTokens: number = 0;
   private iterationCost: number = 0;
 
+  // Line tracking for understanding
+  private totalLines: number = 0;
+  private linesSinceCheckpoint: number = 0;
+
+  // Progress tracker reference
+  private progressTracker?: ProgressTracker;
+
   constructor(options: OutputOptions) {
     this.verbose = options.verbose;
     this.startTime = Date.now();
+  }
+
+  setProgressTracker(tracker: ProgressTracker): void {
+    this.progressTracker = tracker;
   }
 
   // Startup messages
@@ -118,13 +130,44 @@ export class Output {
   }
 
   // Documenting a file (shown in both modes)
-  documenting(filePath: string): void {
+  documenting(filePath: string, lineDiff?: number): void {
     this.filesDocumented++;
-    if (this.verbose) {
-      console.log(chalk.green("✓") + " " + chalk.white("Documented") + " " + chalk.cyan(filePath));
-    } else {
-      console.log("Documenting " + filePath);
+    if (lineDiff !== undefined) {
+      this.linesSinceCheckpoint += lineDiff;
+      this.totalLines += lineDiff;
     }
+
+    // Get progress if tracker is available
+    const progressStr = this.progressTracker
+      ? ` [${this.progressTracker.getProgressPercent()}%]`
+      : "";
+
+    if (this.verbose) {
+      let diffStr = "";
+      if (lineDiff !== undefined) {
+        if (lineDiff > 0) {
+          diffStr = " " + chalk.green(`+${lineDiff}`);
+        } else if (lineDiff < 0) {
+          diffStr = " " + chalk.red(`${lineDiff}`);
+        } else {
+          diffStr = " " + chalk.dim("±0");
+        }
+      }
+      console.log(
+        chalk.green("✓") + " " +
+        chalk.white("Documented") + " " +
+        chalk.cyan(filePath) +
+        diffStr +
+        chalk.magenta(progressStr)
+      );
+    } else {
+      console.log("Documenting " + filePath + progressStr);
+    }
+  }
+
+  // Set initial total lines (from existing .au files)
+  setInitialLines(lines: number): void {
+    this.totalLines = lines;
   }
 
   // Iteration stats (tokens and cost)
@@ -147,15 +190,27 @@ export class Output {
     }
   }
 
-  // Show cumulative cost (every 10 iterations)
+  // Show cumulative stats (every 10 iterations)
   cumulativeCost(): void {
     if (this.verbose) {
       console.log();
+      // Cost line
       console.log(
         chalk.magenta("💰 Cumulative cost: ") +
           chalk.white(this.formatCost(this.totalCost)) +
           chalk.dim(` (${this.formatTokens(this.totalInputTokens, this.totalOutputTokens)})`)
       );
+      // Lines line
+      const diffStr = this.linesSinceCheckpoint >= 0
+        ? chalk.green(`+${this.linesSinceCheckpoint}`)
+        : chalk.red(`${this.linesSinceCheckpoint}`);
+      console.log(
+        chalk.magenta("📝 Understanding: ") +
+          chalk.white(`${this.totalLines} lines`) +
+          chalk.dim(" (") + diffStr + chalk.dim(" since last checkpoint)")
+      );
+      // Reset checkpoint counter
+      this.linesSinceCheckpoint = 0;
     }
   }
 
@@ -167,6 +222,15 @@ export class Output {
     if (this.verbose) {
       console.log(chalk.blue("━━━ Summary ━━━"));
       console.log(chalk.white(`Files documented: ${this.filesDocumented}`));
+
+      // Add progress/coverage display
+      if (this.progressTracker) {
+        const counts = this.progressTracker.getCounts();
+        const percent = this.progressTracker.getProgressPercent();
+        console.log(chalk.white(`Coverage: ${percent}% (${counts.documented}/${counts.total} items)`));
+      }
+
+      console.log(chalk.white(`Understanding: ${this.totalLines} lines`));
       console.log(chalk.white(`Iterations: ${this.currentIteration}`));
       console.log(chalk.white(`Time: ${elapsed}s`));
       console.log(
@@ -177,6 +241,12 @@ export class Output {
       }
     } else {
       let summary = `Done. Created understanding for ${this.filesDocumented} files in ${elapsed}s.`;
+
+      // Add coverage to non-verbose summary
+      if (this.progressTracker) {
+        summary += ` Coverage: ${this.progressTracker.getProgressPercent()}%`;
+      }
+
       if (this.totalCost > 0) {
         summary += ` Cost: ${this.formatCost(this.totalCost)}`;
       }
