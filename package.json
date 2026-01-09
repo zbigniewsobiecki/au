@@ -1,0 +1,40 @@
+{
+  "name": "au",
+  "version": "0.1.0",
+  "description": "Agent Understanding - AI-powered codebase documentation",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "au": "./bin/run.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "oclif": {
+    "bin": "au",
+    "dirname": "au",
+    "commands": "./dist/commands",
+    "topicSeparator": " "
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "./bin/dev.js",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@oclif/core": "^4.2.10",
+    "chalk": "^5.6.2",
+    "fast-glob": "^3.3.3",
+    "ignore": "^6.0.2",
+    "llmist": "file:../llmist/packages/llmist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
