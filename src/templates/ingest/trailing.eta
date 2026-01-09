@@ -13,15 +13,7 @@
 <% } %>
 <% } %>
 
-**Completeness Checklist** - For each file, ensure you have set:
-- [ ] `layer` - architecture layer
-- [ ] `understanding.summary` - what it does
-- [ ] `understanding.purpose` - why it exists
-- [ ] `understanding.exports` - all exported items (if any)
-- [ ] `relationships.depends_on` - all imports (if any)
+**Checklist** - Each file needs: `layer`, `summary`, `purpose`, `exports` (if any), `depends_on` (if any).
+Services/utils also need `key_logic`. Directories need `responsibility` and `contents`. Root needs `architecture`.
 
-For directories:
-- [ ] `layer`, `understanding.summary`, `understanding.responsibility`
-- [ ] `contents` - list of children with summaries
-
-**A file with only a summary is INCOMPLETE.** Read the source and document ALL required fields before moving on.
+**A file with only a summary is INCOMPLETE.** Document ALL required fields before moving on.
