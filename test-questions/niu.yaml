@@ -1,0 +1,22 @@
+# Cross-cutting questions for the Niu codebase (Event Sourcing + CQRS architecture)
+
+- question: "When a user sends a message in a thread, trace the complete flow from tRPC mutation through event sourcing to the read model update. What happens if the event store write succeeds but the projection fails? How is eventual consistency handled?"
+  category: event-sourcing
+
+- question: "Two users simultaneously try to create threads with the same agent. Walk through the race condition handling from concurrent CreateThread commands through event persistence. What prevents duplicate thread creation and how does optimistic locking work?"
+  category: concurrency
+
+- question: "Trace how authentication flows from the Next.js frontend through tRPC context to the CQRS command handlers. What validates the JWT, where is the user ID extracted, and how does authorization differ between thread owners and shared thread participants?"
+  category: auth
+
+- question: "When an agent session starts processing a user message, what state transitions occur? Trace from the initial 'processing' state through potential tool calls to the final 'completed' state. What happens if the LLM provider times out mid-response?"
+  category: agent-lifecycle
+
+- question: "How does the dependency injection container wire up the event store, projections, and command handlers? Trace a CreateThread command from tRPC router through DI resolution to event persistence. What's the lifecycle of these dependencies?"
+  category: di-architecture
+
+- question: "When a new message event is persisted, how does it flow to update the thread's lastMessageAt in the read model? Trace the projection subscription, the SQL update, and how the tRPC subscription notifies connected clients of the change."
+  category: projections
+
+- question: "A user has two browser tabs open on the same thread. They send a message from tab A. Trace how tab B receives the real-time update through tRPC subscriptions, including how the subscription is established, what events trigger updates, and how React Query cache is invalidated."
+  category: realtime-sync
