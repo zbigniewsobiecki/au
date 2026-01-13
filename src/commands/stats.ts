@@ -1,8 +1,9 @@
 import { Command, Flags } from "@oclif/core";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { findAuFiles, getSourceFromAuPath } from "../lib/au-paths.js";
+import { getSourceFromAuPath } from "../lib/au-paths.js";
 import { ProgressTracker } from "../lib/progress-tracker.js";
+import { Validator } from "../lib/validator.js";
 
 export default class Stats extends Command {
   static description =
@@ -24,13 +25,17 @@ export default class Stats extends Command {
   async run(): Promise<void> {
     const { flags } = await this.parse(Stats);
 
-    // Get coverage stats
+    // Get coverage stats via Validator (single source of truth for scanning)
+    const validator = new Validator();
+    await validator.validate(flags.path);
+    const scanData = validator.getScanData();
+
     const progressTracker = new ProgressTracker();
-    await progressTracker.scanSourceFiles(flags.path);
-    await progressTracker.scanExistingAuFiles(flags.path);
+    progressTracker.initFromScanData(scanData);
     const counts = progressTracker.getCounts();
 
-    const auFiles = await findAuFiles(flags.path, true);
+    // Use auFiles from scanData (already scanned by validator)
+    const auFiles = scanData.auFiles;
 
     if (auFiles.length === 0) {
       console.log("No .au files found.");

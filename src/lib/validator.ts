@@ -8,6 +8,7 @@ import {
   getSourceFromAuPath,
   isDirectoryAuFile,
   isSourceFileAuFile,
+  isRootAuFile,
 } from "./au-paths.js";
 import { createFileFilter, FileFilter } from "./file-filter.js";
 import { GlobPatterns } from "./constants.js";
@@ -24,36 +25,103 @@ export interface StaleReference {
   ref: string;
 }
 
+export interface FileIssue {
+  path: string;
+  issues: string[];
+}
+
 export interface ValidationResult {
   uncovered: string[];
   contentsIssues: ContentsIssue[];
   orphans: string[];
   stale: string[];
   staleReferences: StaleReference[];
+  incompleteFiles: FileIssue[];
+}
+
+export interface ScanData {
+  sourceFiles: string[];
+  directories: Set<string>;
+  auFiles: string[];
+  documented: Set<string>;
 }
 
 export class Validator {
   private filter: FileFilter | null = null;
   private basePath: string = ".";
   private auFiles: string[] = [];
+  private sourceFiles: string[] = [];
+  private directories: Set<string> = new Set();
 
   /**
    * Run all validations and return consolidated results.
+   * Also caches scan data for reuse by other components.
    */
   async validate(basePath: string = "."): Promise<ValidationResult> {
     this.basePath = basePath;
     this.filter = await createFileFilter(basePath);
     this.auFiles = await findAuFiles(basePath, true);
 
-    const [uncovered, contentsIssues, orphans, stale, staleReferences] = await Promise.all([
+    // Scan source files once and cache
+    await this.scanSourceFiles();
+
+    const [uncovered, contentsIssues, orphans, stale, staleReferences, incompleteFiles] = await Promise.all([
       this.findUncovered(),
       this.validateContents(),
       this.findOrphans(),
       this.findStale(),
       this.findStaleReferences(),
+      this.findIncomplete(),
     ]);
 
-    return { uncovered, contentsIssues, orphans, stale, staleReferences };
+    return { uncovered, contentsIssues, orphans, stale, staleReferences, incompleteFiles };
+  }
+
+  /**
+   * Get scan data for reuse by ProgressTracker.
+   * Must call validate() first.
+   */
+  getScanData(): ScanData {
+    const documented = new Set(this.auFiles.map(getSourceFromAuPath));
+    return {
+      sourceFiles: this.sourceFiles,
+      directories: this.directories,
+      auFiles: this.auFiles,
+      documented,
+    };
+  }
+
+  /**
+   * Scan source files and directories once, caching results.
+   */
+  private async scanSourceFiles(): Promise<void> {
+    const files = await fg([...GlobPatterns.sourceFiles], {
+      cwd: this.basePath,
+      ignore: [...GlobPatterns.sourceIgnore],
+      absolute: false,
+      dot: false,
+    });
+
+    this.sourceFiles = [];
+    this.directories = new Set();
+
+    for (const file of files) {
+      // Skip empty files
+      try {
+        const fileStat = await stat(join(this.basePath, file));
+        if (fileStat.size === 0) continue;
+      } catch {
+        continue;
+      }
+
+      this.sourceFiles.push(file);
+
+      // Extract directories
+      const parts = file.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        this.directories.add(parts.slice(0, i).join("/"));
+      }
+    }
   }
 
   /**
@@ -61,36 +129,17 @@ export class Validator {
    */
   private async findUncovered(): Promise<string[]> {
     const uncovered: string[] = [];
-
-    // Find all source files
-    const sourceFiles = await fg([...GlobPatterns.sourceFiles], {
-      cwd: this.basePath,
-      ignore: [...GlobPatterns.sourceIgnore],
-      absolute: false,
-      dot: false,
-    });
-
-    // Find all directories containing source files
-    const directories = new Set<string>();
-    for (const file of sourceFiles) {
-      const parts = file.split("/");
-      for (let i = 1; i < parts.length; i++) {
-        directories.add(parts.slice(0, i).join("/"));
-      }
-    }
-
-    // Use cached .au files
     const documented = new Set(this.auFiles.map(getSourceFromAuPath));
 
     // Check files
-    for (const file of sourceFiles) {
+    for (const file of this.sourceFiles) {
       if (!documented.has(file) && this.filter!.accepts(file)) {
         uncovered.push(file);
       }
     }
 
     // Check directories
-    for (const dir of directories) {
+    for (const dir of this.directories) {
       if (!documented.has(dir) && this.filter!.accepts(dir)) {
         uncovered.push(dir + "/");
       }
@@ -100,12 +149,109 @@ export class Validator {
   }
 
   /**
+   * Find .au files with missing required fields.
+   */
+  private async findIncomplete(): Promise<FileIssue[]> {
+    const incompleteFiles: FileIssue[] = [];
+
+    for (const auFile of this.auFiles) {
+      const issue = await this.checkFileCompleteness(auFile);
+      if (issue && issue.issues.length > 0) {
+        incompleteFiles.push(issue);
+      }
+    }
+
+    return incompleteFiles;
+  }
+
+  /**
+   * Check a single .au file for missing required fields.
+   */
+  private async checkFileCompleteness(auPath: string): Promise<FileIssue | null> {
+    const sourcePath = getSourceFromAuPath(auPath);
+    const issues: string[] = [];
+
+    try {
+      const content = await readFile(join(this.basePath, auPath), "utf-8");
+      const doc = parse(content);
+
+      if (!doc) {
+        return { path: sourcePath, issues: ["empty file"] };
+      }
+
+      // Determine file type
+      const isRoot = isRootAuFile(auPath);
+      const isDirectory = isDirectoryAuFile(auPath);
+      const isSourceFile = !isDirectory;
+      const isService = sourcePath.includes("/services/");
+      const isUtil = sourcePath.includes("/utils/");
+
+      // Check common required fields
+      if (!doc.layer) {
+        issues.push("missing layer");
+      }
+
+      // Check understanding fields
+      const understanding = doc.understanding || {};
+      const hasSummary = understanding.summary ||
+        Object.keys(doc).some(k => k.startsWith("understanding.summary") || k.startsWith("understanding/summary"));
+      const hasPurpose = understanding.purpose ||
+        Object.keys(doc).some(k => k.startsWith("understanding.purpose") || k.startsWith("understanding/purpose"));
+
+      if (!hasSummary) {
+        issues.push("missing summary");
+      }
+
+      if (isSourceFile && !hasPurpose) {
+        issues.push("missing purpose");
+      }
+
+      // Check source file specific fields
+      if (isSourceFile) {
+        if ((isService || isUtil) && !understanding.key_logic) {
+          issues.push("missing key_logic");
+        }
+      }
+
+      // Check directory specific fields
+      if (isDirectory) {
+        const hasResponsibility = understanding.responsibility ||
+          Object.keys(doc).some(k => k.startsWith("understanding.responsibility"));
+        const hasContents = doc.contents ||
+          Object.keys(doc).some(k => k.startsWith("contents"));
+
+        if (!hasResponsibility) {
+          issues.push("missing responsibility");
+        }
+        if (!hasContents) {
+          issues.push("missing contents");
+        }
+      }
+
+      // Check root specific fields
+      if (isRoot) {
+        const hasArchitecture = understanding.architecture ||
+          Object.keys(doc).some(k => k.startsWith("understanding.architecture"));
+        if (!hasArchitecture) {
+          issues.push("missing architecture");
+        }
+      }
+
+      if (issues.length > 0) {
+        return { path: sourcePath, issues };
+      }
+
+      return null;
+    } catch (error) {
+      return { path: sourcePath, issues: [`parse error: ${error instanceof Error ? error.message : "unknown"}`] };
+    }
+  }
+
+  /**
    * Validate that each directory .au file's contents field matches actual directory contents.
    */
   private async validateContents(): Promise<ContentsIssue[]> {
     const issues: ContentsIssue[] = [];
-
-    // Filter to directory .au files only
     const dirAuFiles = this.auFiles.filter(isDirectoryAuFile);
 
     for (const auFile of dirAuFiles) {
@@ -121,15 +267,12 @@ export class Validator {
   /**
    * Check a single directory .au file's contents against actual directory.
    */
-  private async checkDirectoryContents(
-    auPath: string
-  ): Promise<ContentsIssue | null> {
+  private async checkDirectoryContents(auPath: string): Promise<ContentsIssue | null> {
     const dirPath = getSourceFromAuPath(auPath);
     const fullAuPath = join(this.basePath, auPath);
     const fullDirPath = dirPath === "." ? this.basePath : join(this.basePath, dirPath);
 
     try {
-      // Read the .au file
       const content = await readFile(fullAuPath, "utf-8");
       const doc = parse(content);
 
@@ -137,7 +280,7 @@ export class Validator {
         return null;
       }
 
-      // Get declared contents - can be strings or objects with 'name' property
+      // Get declared contents
       const rawContents: unknown[] = doc.contents || [];
       const declaredContents: string[] = rawContents.map((item) => {
         if (typeof item === "string") return item;
@@ -154,34 +297,22 @@ export class Validator {
 
       for (const entry of entries) {
         const entryPath = dirPath === "." ? entry.name : `${dirPath}/${entry.name}`;
-
-        // Skip if filtered out (gitignored, .au files, etc.)
         if (!this.filter!.accepts(entryPath)) {
           continue;
         }
-
         actualContents.push(entry.name);
       }
 
       const actualSet = new Set(actualContents);
-
-      // Find missing (in actual but not declared)
       const missing = actualContents.filter((item) => !declaredSet.has(item));
-
-      // Find extra (in declared but not actual)
       const extra = declaredContents.filter((item) => !actualSet.has(item));
 
       if (missing.length > 0 || extra.length > 0) {
-        return {
-          path: auPath,
-          missing,
-          extra,
-        };
+        return { path: auPath, missing, extra };
       }
 
       return null;
     } catch {
-      // File doesn't exist or can't be read
       return null;
     }
   }
@@ -194,15 +325,11 @@ export class Validator {
 
     for (const auFile of this.auFiles) {
       const sourcePath = getSourceFromAuPath(auFile);
-      const fullPath =
-        sourcePath === "."
-          ? this.basePath
-          : join(this.basePath, sourcePath);
+      const fullPath = sourcePath === "." ? this.basePath : join(this.basePath, sourcePath);
 
       try {
         await stat(fullPath);
       } catch {
-        // Source doesn't exist
         orphans.push(auFile);
       }
     }
@@ -215,8 +342,6 @@ export class Validator {
    */
   private async findStale(): Promise<string[]> {
     const stale: string[] = [];
-
-    // Only check source file .au files (not directory .au or root .au)
     const fileAuFiles = this.auFiles.filter(isSourceFileAuFile);
 
     for (const auFile of fileAuFiles) {
@@ -225,24 +350,20 @@ export class Validator {
       const fullSourcePath = join(this.basePath, sourcePath);
 
       try {
-        // Read .au file and get stored hash
         const auContent = await readFile(fullAuPath, "utf-8");
         const doc = parse(auContent);
         const storedHash = doc?.meta?.analyzed_hash;
 
-        if (!storedHash) continue; // No hash to compare
+        if (!storedHash) continue;
 
-        // Compute current source hash
         const sourceContent = await readFile(fullSourcePath, "utf-8");
-        const currentHash = createHash("md5")
-          .update(sourceContent)
-          .digest("hex");
+        const currentHash = createHash("md5").update(sourceContent).digest("hex");
 
         if (storedHash !== currentHash) {
           stale.push(auFile);
         }
       } catch {
-        // Can't read one of the files, skip
+        // Can't read file, skip
       }
     }
 
@@ -250,7 +371,7 @@ export class Validator {
   }
 
   /**
-   * Find stale references in .au files (depends_on.ref and collaborates_with.path).
+   * Find stale references in .au files.
    */
   private async findStaleReferences(): Promise<StaleReference[]> {
     const staleRefs: StaleReference[] = [];
@@ -264,7 +385,7 @@ export class Validator {
 
         if (!doc) continue;
 
-        // Check depends_on references (source file .au)
+        // Check depends_on references
         const dependsOn = doc?.relationships?.depends_on || [];
         for (const dep of dependsOn) {
           if (dep.ref) {
@@ -275,7 +396,7 @@ export class Validator {
           }
         }
 
-        // Check collaborates_with references (directory .au)
+        // Check collaborates_with references
         const collaborates = doc?.understanding?.collaborates_with || [];
         for (const collab of collaborates) {
           if (collab.path) {
@@ -311,13 +432,11 @@ export class Validator {
   static getIssueCount(result: ValidationResult): number {
     return (
       result.uncovered.length +
-      result.contentsIssues.reduce(
-        (sum, issue) => sum + issue.missing.length + issue.extra.length,
-        0
-      ) +
+      result.contentsIssues.reduce((sum, issue) => sum + issue.missing.length + issue.extra.length, 0) +
       result.orphans.length +
       result.stale.length +
-      result.staleReferences.length
+      result.staleReferences.length +
+      result.incompleteFiles.length
     );
   }
 }

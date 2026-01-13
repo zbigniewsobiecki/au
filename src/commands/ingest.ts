@@ -13,7 +13,7 @@ import {
 } from "../gadgets/index.js";
 import { SYSTEM_PROMPT, INITIAL_PROMPT } from "../lib/system-prompt.js";
 import { Output } from "../lib/output.js";
-import { ProgressTracker } from "../lib/progress-tracker.js";
+import { IngestStateCollector, IngestState } from "../lib/ingest-state.js";
 import { render } from "../lib/templates.js";
 import {
   agentFlags,
@@ -28,7 +28,7 @@ import {
 import { GadgetName, isFileReadingGadget } from "../lib/constants.js";
 
 export default class Ingest extends Command {
-  static description = "Create agent understanding files for TypeScript code";
+  static description = "Create and update agent understanding files for TypeScript code";
 
   static examples = [
     "<%= config.bin %> ingest",
@@ -99,14 +99,53 @@ export default class Ingest extends Command {
       out.success(`Found ${existingCount} existing understanding entries (${lines} lines)`);
     }
 
-    // Initialize progress tracker by scanning all source files
-    const progressTracker = new ProgressTracker();
-    await progressTracker.scanSourceFiles(".");
-    await progressTracker.scanExistingAuFiles(".");
+    // Collect unified state (coverage + validation)
+    out.info("Running validation checks...");
+    const stateCollector = new IngestStateCollector();
+    let state = await stateCollector.collect(".");
+
+    const progressTracker = stateCollector.getProgressTracker();
     out.setProgressTracker(progressTracker);
 
-    const initialCounts = progressTracker.getCounts();
-    out.info(`Progress: ${progressTracker.getProgressPercent()}% (${initialCounts.documented}/${initialCounts.total} files)`);
+    // Check if there's anything to do
+    if (state.totalItems === 0) {
+      out.warn("No source files found to document.");
+      process.chdir(originalCwd);
+      return;
+    }
+
+    if (!state.hasWork) {
+      out.success(`All documentation complete and valid. (${state.coveragePercent}% coverage)`);
+      process.chdir(originalCwd);
+      return;
+    }
+
+    // Report initial status
+    out.info(`Coverage: ${state.coveragePercent}% (${state.documentedItems}/${state.totalItems} items)`);
+
+    if (state.issueCount > 0) {
+      out.warn(`Found ${state.issueCount} validation issues:`);
+      if (state.staleFiles.length > 0) {
+        out.info(`  - ${state.staleFiles.length} stale (source changed)`);
+      }
+      if (state.incompleteFiles.length > 0) {
+        out.info(`  - ${state.incompleteFiles.length} incomplete (missing fields)`);
+      }
+      if (state.staleReferences.length > 0) {
+        out.info(`  - ${state.staleReferences.length} broken references`);
+      }
+      if (state.contentsIssues.length > 0) {
+        out.info(`  - ${state.contentsIssues.length} contents mismatches`);
+      }
+      if (state.orphanedAuFiles.length > 0) {
+        out.info(`  - ${state.orphanedAuFiles.length} orphaned .au files`);
+      }
+    }
+
+    const pendingCount = state.pendingItems.length;
+    if (pendingCount > 0) {
+      out.info(`${pendingCount} items pending documentation`);
+    }
 
     // Build the agent
     let builder = new AgentBuilder(client)
@@ -125,8 +164,14 @@ export default class Ingest extends Command {
           progress: progressTracker.getProgressPercent(),
           documented: counts.documented,
           total: counts.total,
+          // Issues
+          staleFiles: state.staleFiles,
+          incompleteFiles: state.incompleteFiles,
+          staleReferences: state.staleReferences,
+          contentsIssues: state.contentsIssues,
+          orphanedAuFiles: state.orphanedAuFiles,
+          // Pending
           pendingItems: progressTracker.getPendingItems(10),
-          pendingCount: counts.pending,
         });
       });
 
@@ -198,6 +243,11 @@ export default class Ingest extends Command {
                   const lineDiff = parseInt(match[2], 10);
                   const sourcePath = auPath.replace(/\.au$/, "").replace(/\/\.au$/, "");
                   progressTracker.markDocumented(sourcePath);
+
+                  // Also remove from stale/incomplete lists if present
+                  state.staleFiles = state.staleFiles.filter(f => !f.includes(sourcePath));
+                  state.incompleteFiles = state.incompleteFiles.filter(f => f.path !== sourcePath);
+
                   out.documenting(sourcePath, lineDiff);
                 }
               }

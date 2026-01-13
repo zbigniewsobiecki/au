@@ -1,7 +1,4 @@
-import fg from "fast-glob";
-import { dirname } from "node:path";
-import { getSourceFromAuPath, findAuFiles } from "./au-paths.js";
-import { GlobPatterns } from "./constants.js";
+import { ScanData } from "./validator.js";
 
 export interface ProgressCounts {
   total: number;
@@ -14,47 +11,31 @@ export class ProgressTracker {
   private documentedItems: Set<string> = new Set();
 
   /**
-   * Scan the filesystem for all source files and directories that should be documented.
-   * Uses fast-glob to find all .ts files (excluding node_modules, tests, etc.)
-   * Also extracts unique directory paths from the source files.
+   * Initialize from pre-scanned data (from Validator).
+   * This avoids duplicate filesystem scanning.
    */
-  async scanSourceFiles(basePath: string = "."): Promise<void> {
-    const sourceFiles = await fg([...GlobPatterns.sourceFiles], {
-      cwd: basePath,
-      ignore: [...GlobPatterns.sourceIgnore],
-      absolute: false,
-      dot: false,
-    });
+  initFromScanData(scanData: ScanData): void {
+    this.allItems.clear();
+    this.documentedItems.clear();
 
-    const directories = new Set<string>();
-
-    for (const file of sourceFiles) {
+    // Add source files
+    for (const file of scanData.sourceFiles) {
       this.allItems.add(file);
-
-      // Extract all parent directories
-      let dir = dirname(file);
-      while (dir && dir !== ".") {
-        directories.add(dir);
-        dir = dirname(dir);
-      }
     }
 
-    // Add directories and root to allItems
-    for (const dir of directories) {
+    // Add directories
+    for (const dir of scanData.directories) {
       this.allItems.add(dir);
     }
-    this.allItems.add("."); // root
-  }
 
-  /**
-   * Scan for existing .au files to determine what's already documented.
-   */
-  async scanExistingAuFiles(basePath: string = "."): Promise<void> {
-    const auFiles = await findAuFiles(basePath, false);
+    // Add root if there are any items
+    if (this.allItems.size > 0) {
+      this.allItems.add(".");
+    }
 
-    for (const auFile of auFiles) {
-      const sourcePath = getSourceFromAuPath(auFile);
-      this.documentedItems.add(sourcePath);
+    // Copy documented items
+    for (const doc of scanData.documented) {
+      this.documentedItems.add(doc);
     }
   }
 
@@ -70,7 +51,8 @@ export class ProgressTracker {
    */
   getProgressPercent(): number {
     if (this.allItems.size === 0) return 100;
-    return Math.round((this.documentedItems.size / this.allItems.size) * 100);
+    const documented = this.getDocumentedCount();
+    return Math.round((documented / this.allItems.size) * 100);
   }
 
   /**
@@ -90,19 +72,26 @@ export class ProgressTracker {
 
   /**
    * Get total counts for display.
-   * Counts documented items that are in allItems (source files + directories + root).
    */
   getCounts(): ProgressCounts {
-    let documented = 0;
-    for (const item of this.documentedItems) {
-      if (this.allItems.has(item)) {
-        documented++;
-      }
-    }
+    const documented = this.getDocumentedCount();
     return {
       total: this.allItems.size,
       documented,
       pending: this.allItems.size - documented,
     };
+  }
+
+  /**
+   * Count documented items that are in allItems.
+   */
+  private getDocumentedCount(): number {
+    let count = 0;
+    for (const item of this.documentedItems) {
+      if (this.allItems.has(item)) {
+        count++;
+      }
+    }
+    return count;
   }
 }

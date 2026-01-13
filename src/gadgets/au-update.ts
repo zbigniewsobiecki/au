@@ -24,11 +24,16 @@ export const auUpdate = createGadget({
   maxConcurrent: 1,
   description: `Update agent understanding for a file or directory.
 
-Examples:
-- path="understanding.summary", value="Handles user authentication..."
+**Preferred: Full document with path="."**
+AUUpdate(filePath="src/auth.ts", path=".", value={
+  layer: "service",
+  understanding: { summary: "...", purpose: "...", exports: [...] },
+  relationships: { depends_on: [...] }
+})
+
+Field-by-field also works:
 - path="layer", value="service"
-- path="understanding.exports.0", value={name: "login", kind: "function"}
-- path="uncertainty", value=null (to delete)
+- path="understanding.summary", value="..."
 
 Meta fields are auto-managed.`,
   schema: z.object({

@@ -1,24 +1,91 @@
 
 ---
-## Progress (Iteration <%= it.iteration %>/<%= it.maxIterations %>)
-<%= it.progress %>% coverage (<%= it.documented %>/<%= it.total %> items touched)
-<% if (it.pendingItems.length > 0) { %>
+## Status (Iteration <%= it.iteration %>/<%= it.maxIterations %>)
 
-**Files still needing documentation:**
-<% for (const item of it.pendingItems) { %>
+**Coverage**: <%= it.progress %>% (<%= it.documented %>/<%= it.total %> items)
+<%
+const hasStale = it.staleFiles && it.staleFiles.length > 0;
+const hasIncomplete = it.incompleteFiles && it.incompleteFiles.length > 0;
+const hasStaleRefs = it.staleReferences && it.staleReferences.length > 0;
+const hasContents = it.contentsIssues && it.contentsIssues.length > 0;
+const hasOrphans = it.orphanedAuFiles && it.orphanedAuFiles.length > 0;
+const hasPending = it.pendingItems && it.pendingItems.length > 0;
+const hasIssues = hasStale || hasIncomplete || hasStaleRefs || hasContents;
+const hasWork = hasIssues || hasPending;
+%>
+<% if (hasIssues) { %>
+
+### Issues to Fix (Priority)
+<% if (hasStale) { %>
+
+**Stale (source changed, need full re-documentation):**
+<% for (const file of it.staleFiles.slice(0, 10)) { %>
+- <%= file %>
+<% } %>
+<% if (it.staleFiles.length > 10) { %>
+... and <%= it.staleFiles.length - 10 %> more
+<% } %>
+<% } %>
+<% if (hasIncomplete) { %>
+
+**Incomplete (missing required fields):**
+<% for (const file of it.incompleteFiles.slice(0, 10)) { %>
+- <%= file.path %>: <%= file.issues.join(", ") %>
+<% } %>
+<% if (it.incompleteFiles.length > 10) { %>
+... and <%= it.incompleteFiles.length - 10 %> more
+<% } %>
+<% } %>
+<% if (hasStaleRefs) { %>
+
+**Broken references:**
+<% for (const ref of it.staleReferences.slice(0, 5)) { %>
+- <%= ref.auFile %>: <%= ref.field %> → <%= ref.ref %>
+<% } %>
+<% if (it.staleReferences.length > 5) { %>
+... and <%= it.staleReferences.length - 5 %> more
+<% } %>
+<% } %>
+<% if (hasContents) { %>
+
+**Directory contents mismatches:**
+<% for (const issue of it.contentsIssues.slice(0, 5)) { %>
+- <%= issue.path %>:<% if (issue.missing.length > 0) { %> missing: <%= issue.missing.slice(0, 3).join(", ") %><% if (issue.missing.length > 3) { %> +<%= issue.missing.length - 3 %><% } %><% } %><% if (issue.extra.length > 0) { %> extra: <%= issue.extra.slice(0, 3).join(", ") %><% } %>
+<% } %>
+<% } %>
+<% } %>
+<% if (hasPending) { %>
+
+### Pending Documentation
+<% for (const item of it.pendingItems.slice(0, 10)) { %>
 - <%= item %>
 <% } %>
-<% if (it.pendingCount > it.pendingItems.length) { %>
-... and <%= it.pendingCount - it.pendingItems.length %> more
+<% if (it.pendingItems.length > 10) { %>
+... and <%= it.pendingItems.length - 10 %> more
 <% } %>
 <% } %>
+<% if (hasOrphans) { %>
 
-**Checklist** - Each file needs: `layer`, `summary`, `purpose`, `exports` (if any), `depends_on` (if any).
-Services/utils also need `key_logic`. Directories need `responsibility` and `contents`. Root needs `architecture`.
+### Orphaned .au Files (manual cleanup needed)
+<% for (const orphan of it.orphanedAuFiles.slice(0, 3)) { %>
+- <%= orphan %>
+<% } %>
+<% if (it.orphanedAuFiles.length > 3) { %>
+... and <%= it.orphanedAuFiles.length - 3 %> more
+<% } %>
+<% } %>
+<% if (!hasWork) { %>
 
-**A file with only a summary is INCOMPLETE.** Document ALL required fields before moving on.
+**All documentation complete and valid.** Call Finish with a summary.
+<% } else { %>
 
-**Efficiency** - Batch your work:
-- Use ReadFiles with multiple paths (newline-separated) to read several files at once
-- Make multiple AUUpdate calls in a single response for different files
-- Don't wait for one file to be complete before starting the next
+**Priority**: Fix issues in existing docs first, then document pending files.
+<% } %>
+
+**IMPORTANT**: Use `path="."` to write complete documentation in ONE call per file:
+```
+AUUpdate(filePath="src/foo.ts", path=".", value={layer: "...", understanding: {...}, relationships: {...}})
+```
+- Read files → Document each with ONE AUUpdate(path=".", value={...full doc...})
+- Each file needs: layer, summary, purpose, exports, depends_on
+- Services/utils also need key_logic. Directories need responsibility + contents.

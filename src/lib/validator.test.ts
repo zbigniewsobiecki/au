@@ -46,6 +46,8 @@ describe("Validator", () => {
   beforeEach(() => {
     validator = new Validator();
     vi.clearAllMocks();
+    // Default: all files are non-empty
+    vi.mocked(stat).mockResolvedValue({ size: 100 } as any);
   });
 
   describe("findUncovered", () => {
@@ -100,6 +102,24 @@ describe("Validator", () => {
       const result = await validator.validate(".");
 
       expect(result.uncovered).toEqual([]);
+    });
+
+    it("skips empty files (0 bytes)", async () => {
+      vi.mocked(fg).mockResolvedValue([
+        "src/index.ts",
+        "src/empty.ts",
+      ]);
+      vi.mocked(findAuFiles).mockResolvedValue([]);
+      // First file non-empty, second file empty
+      vi.mocked(stat)
+        .mockResolvedValueOnce({ size: 100 } as any)
+        .mockResolvedValueOnce({ size: 0 } as any);
+
+      const result = await validator.validate(".");
+
+      // Only the non-empty file should be uncovered
+      expect(result.uncovered).toContain("src/index.ts");
+      expect(result.uncovered).not.toContain("src/empty.ts");
     });
   });
 
@@ -444,8 +464,188 @@ relationships:
     });
   });
 
+  describe("findIncomplete", () => {
+    it("detects missing layer", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+understanding:
+  summary: A test file
+  purpose: Does something
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("missing layer");
+    });
+
+    it("detects missing summary", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: core
+understanding:
+  purpose: Does something
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("missing summary");
+    });
+
+    it("detects missing purpose for source files", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: core
+understanding:
+  summary: A test file
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("missing purpose");
+    });
+
+    it("does not require purpose for directory .au files", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: core
+understanding:
+  summary: Source directory
+  responsibility: Contains source code
+contents:
+  - index.ts
+`);
+      vi.mocked(readdir).mockResolvedValue([
+        { name: "index.ts", isFile: () => true, isDirectory: () => false },
+      ] as any);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(0);
+    });
+
+    it("detects missing responsibility for directories", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: core
+understanding:
+  summary: Source directory
+contents:
+  - index.ts
+`);
+      vi.mocked(readdir).mockResolvedValue([
+        { name: "index.ts", isFile: () => true, isDirectory: () => false },
+      ] as any);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("missing responsibility");
+    });
+
+    it("detects missing contents for directories", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: core
+understanding:
+  summary: Source directory
+  responsibility: Contains code
+`);
+      vi.mocked(readdir).mockResolvedValue([]);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("missing contents");
+    });
+
+    it("detects missing architecture for root .au", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue([".au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: repository
+understanding:
+  summary: A project
+  responsibility: Contains all code
+contents: []
+`);
+      vi.mocked(readdir).mockResolvedValue([]);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("missing architecture");
+    });
+
+    it("detects missing key_logic for service files", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/services/auth.ts.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: service
+understanding:
+  summary: Auth service
+  purpose: Handles authentication
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("missing key_logic");
+    });
+
+    it("detects missing key_logic for util files", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/utils/format.ts.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: util
+understanding:
+  summary: Format utilities
+  purpose: Formatting helpers
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("missing key_logic");
+    });
+
+    it("handles empty YAML file", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(readFile).mockResolvedValue("");
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(1);
+      expect(result.incompleteFiles[0].issues).toContain("empty file");
+    });
+
+    it("returns no incomplete files when all have required fields", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(readFile).mockResolvedValue(`
+layer: core
+understanding:
+  summary: A test file
+  purpose: Does something
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.incompleteFiles).toHaveLength(0);
+    });
+  });
+
   describe("getIssueCount", () => {
-    it("counts all issue types including staleReferences", () => {
+    it("counts all issue types including incompleteFiles", () => {
       const result: ValidationResult = {
         uncovered: ["file1.ts", "file2.ts"],
         contentsIssues: [
@@ -456,10 +656,13 @@ relationships:
         staleReferences: [
           { auFile: "src/index.ts.au", field: "depends_on", ref: "au:deleted.ts" },
         ],
+        incompleteFiles: [
+          { path: "src/foo.ts", issues: ["missing layer"] },
+        ],
       };
 
-      expect(Validator.getIssueCount(result)).toBe(8);
-      // 2 uncovered + 2 missing + 1 extra + 1 orphan + 1 stale + 1 staleRef = 8
+      expect(Validator.getIssueCount(result)).toBe(9);
+      // 2 uncovered + 2 missing + 1 extra + 1 orphan + 1 stale + 1 staleRef + 1 incomplete = 9
     });
 
     it("returns 0 for clean result", () => {
@@ -469,6 +672,7 @@ relationships:
         orphans: [],
         stale: [],
         staleReferences: [],
+        incompleteFiles: [],
       };
 
       expect(Validator.getIssueCount(result)).toBe(0);
@@ -481,6 +685,7 @@ relationships:
         orphans: [],
         stale: [],
         staleReferences: [],
+        incompleteFiles: [],
       };
 
       expect(Validator.getIssueCount(result)).toBe(1);
