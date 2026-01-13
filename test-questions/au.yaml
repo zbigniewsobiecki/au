@@ -1,0 +1,22 @@
+# Cross-cutting questions for the AU (Agent Understanding) codebase
+
+- question: "Trace the complete data flow when running 'au ingest' on a codebase. What validation checks happen before the LLM starts, how is state maintained during agent execution, and how does ProgressTracker get initialized from Validator results?"
+  category: state-flow
+
+- question: "How does the AU file path system map source files to .au files and back? Show the mapping for a file like 'src/services/auth.ts', a directory like 'src/services/', and explain why the system needs both resolveAuPath and getSourceFromAuPath."
+  category: path-resolution
+
+- question: "Compare the schemas of AUUpdate, ReadFiles, and AUList gadgets. How does each schema guide the LLM's behavior? Why does AUUpdate serialize writes while others can run in parallel?"
+  category: gadgets
+
+- question: "Walk through how the ingest command's system prompt is generated using Eta templates. What context data goes into the trailing message template, and how does it guide the LLM to prioritize fixing stale files over documenting new ones?"
+  category: templates
+
+- question: "The Validator runs 6 different validation checks (uncovered, stale, incomplete, orphans, contents mismatches, stale references). Explain what each check does and how they're run in parallel. What would break if scanSourceFiles() wasn't cached?"
+  category: validation
+
+- question: "How does the FileFilter respect .gitignore and always ignore .au files? Trace how this filter is used across ReadFiles, ReadDirs, ProgressTracker, and Validator."
+  category: filtering
+
+- question: "The ask command has --au-only and --code-only modes. How do these affect which gadgets are available and how the system prompt is generated? What's the tradeoff between the modes?"
+  category: ask-modes
