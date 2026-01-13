@@ -32,7 +32,7 @@
     "eta": "^4.5.0",
     "fast-glob": "^3.3.3",
     "ignore": "^6.0.2",
-    "llmist": "^15.4.1",
+    "llmist": "^15.5.0",
     "yaml": "^2.8.2"
   },
   "devDependencies": {

@@ -21,6 +21,7 @@ const valueSchema = z.union([
 
 export const auUpdate = createGadget({
   name: "AUUpdate",
+  maxConcurrent: 1,
   description: `Update agent understanding for a file or directory.
 
 Examples:
