@@ -73,12 +73,19 @@ export class ProgressTracker {
 
   /**
    * Get total counts for display.
+   * Only counts documented items that are actual source files (ignores directory .au files).
    */
   getCounts(): ProgressCounts {
+    let documented = 0;
+    for (const item of this.documentedItems) {
+      if (this.allItems.has(item)) {
+        documented++;
+      }
+    }
     return {
       total: this.allItems.size,
-      documented: this.documentedItems.size,
-      pending: this.allItems.size - this.documentedItems.size,
+      documented,
+      pending: this.allItems.size - documented,
     };
   }
 }

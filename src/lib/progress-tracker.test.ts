@@ -85,11 +85,11 @@ describe("ProgressTracker", () => {
       expect(counts.documented).toBe(1);
     });
 
-    it("can mark files not in allItems (edge case)", () => {
-      tracker.markDocumented("some/new/file.ts");
+    it("ignores files not in allItems for coverage count (directories, root)", () => {
+      tracker.markDocumented("some/directory"); // not a source file
 
       const counts = tracker.getCounts();
-      expect(counts.documented).toBe(1);
+      expect(counts.documented).toBe(0); // doesn't count toward coverage
     });
   });
 
