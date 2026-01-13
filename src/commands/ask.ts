@@ -27,6 +27,8 @@ export default class Ask extends Command {
     '<%= config.bin %> ask "What does the ingest command do?"',
     '<%= config.bin %> ask "How are gadgets registered?" --model sonnet',
     '<%= config.bin %> ask -v "Explain the file filtering logic"',
+    '<%= config.bin %> ask "What is the architecture?" --au-only',
+    '<%= config.bin %> ask "Show me the main entry point" --code-only',
   ];
 
   static args = {
@@ -42,6 +44,16 @@ export default class Ask extends Command {
       char: "i",
       description: "Maximum agent iterations",
       default: 10,
+    }),
+    "au-only": Flags.boolean({
+      description: "Use only AU files, no source code reading",
+      default: false,
+      exclusive: ["code-only"],
+    }),
+    "code-only": Flags.boolean({
+      description: "Use only source code, no AU files",
+      default: false,
+      exclusive: ["au-only"],
     }),
   };
 
@@ -63,34 +75,50 @@ export default class Ask extends Command {
 
     const client = new LLMist();
 
-    // Load existing understanding (use "." since we already chdir'd)
-    out.info("Loading existing understanding...");
-    const existingAu = await auList.execute({ path: "." });
+    const auOnly = flags["au-only"];
+    const codeOnly = flags["code-only"];
 
-    const existingContent = existingAu as string;
-    const existingCount = countAuEntries(existingContent);
-    if (existingCount === 0) {
-      out.warn("No existing understanding found. Run 'au ingest' first for best results.");
-    } else {
-      out.success(`Loaded ${existingCount} understanding entries`);
+    // Load existing understanding (unless code-only mode)
+    let existingAu: string | null = null;
+    if (!codeOnly) {
+      out.info("Loading existing understanding...");
+      existingAu = await auList.execute({ path: "." }) as string;
+
+      const existingCount = countAuEntries(existingAu);
+      if (existingCount === 0) {
+        out.warn("No existing understanding found. Run 'au ingest' first for best results.");
+      } else {
+        out.success(`Loaded ${existingCount} understanding entries`);
+      }
     }
 
-    // Build the agent with read-only gadgets (no auUpdate)
+    // Build the agent with appropriate gadgets
+    let gadgets;
+    if (auOnly) {
+      gadgets = [auRead, auList];
+    } else if (codeOnly) {
+      gadgets = [readFiles, readDirs, ripGrep];
+    } else {
+      gadgets = [auRead, auList, readFiles, readDirs, ripGrep];
+    }
+
     let builder = new AgentBuilder(client)
       .withModel(flags.model)
-      .withSystem(ASK_SYSTEM_PROMPT)
+      .withSystem(ASK_SYSTEM_PROMPT({ auOnly, codeOnly }))
       .withMaxIterations(flags["max-iterations"])
-      .withGadgets(auRead, auList, readFiles, readDirs, ripGrep);
+      .withGadgets(...gadgets);
 
     builder = configureBuilder(builder, out, flags.rpm, flags.tpm);
 
-    // Inject existing understanding as context
-    builder.withSyntheticGadgetCall(
-      "AUList",
-      { path: "." },
-      existingAu as string,
-      "gc_init_1"
-    );
+    // Inject existing understanding as context (unless code-only mode)
+    if (existingAu) {
+      builder.withSyntheticGadgetCall(
+        "AUList",
+        { path: "." },
+        existingAu,
+        "gc_init_1"
+      );
+    }
 
     // Create and run the agent with the question
     const agent = builder.ask(ASK_INITIAL_PROMPT(args.question));

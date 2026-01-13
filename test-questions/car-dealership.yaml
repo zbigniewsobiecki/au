@@ -1,0 +1,16 @@
+# Cross-cutting questions that require deep knowledge of the car-dealership codebase
+
+- question: "What happens when a user's JWT expires while they have the app open? Trace the complete flow from token verification failure to user experience."
+  category: auth
+
+- question: "When a sale is created with status COMPLETED, what database updates occur and in what order? What happens if the vehicle status update fails after the sale is created?"
+  category: data-flow
+
+- question: "Trace how a 'Vehicle not found' error propagates from the backend service through to what the user sees in the SaleForm. What information is lost at each layer?"
+  category: error-handling
+
+- question: "How does the system handle camelCase DTOs (CreateSaleDto) mapping to snake_case database columns? Where does this transformation happen?"
+  category: type-system
+
+- question: "Can a salesperson create a sale with a different user's ID as salespersonId? What prevents this?"
+  category: security
