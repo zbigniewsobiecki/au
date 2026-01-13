@@ -128,6 +128,20 @@ describe("Output", () => {
       expect(calls).toContain("AUUpdate");
       expect(calls).toContain("File not found");
     });
+
+    it("header always logs", () => {
+      output.header("Section Title");
+      expect(consoleSpy).toHaveBeenCalled();
+      const calls = consoleSpy.mock.calls.flat().join(" ");
+      expect(calls).toContain("Section Title");
+    });
+
+    it("item always logs", () => {
+      output.item("Item description");
+      expect(consoleSpy).toHaveBeenCalled();
+      const calls = consoleSpy.mock.calls.flat().join(" ");
+      expect(calls).toContain("Item description");
+    });
   });
 
   describe("documenting", () => {

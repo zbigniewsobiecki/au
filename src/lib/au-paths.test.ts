@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { resolveAuPath, getSourceFromAuPath, isAuFile } from "./au-paths.js";
+import {
+  resolveAuPath,
+  getSourceFromAuPath,
+  isAuFile,
+  isRootAuFile,
+  isDirectoryAuFile,
+  isSourceFileAuFile,
+} from "./au-paths.js";
 
 describe("resolveAuPath", () => {
   describe("file paths", () => {
@@ -124,5 +131,49 @@ describe("isAuFile", () => {
   it("returns false for files containing .au in the middle", () => {
     expect(isAuFile("src/.auth/config.ts")).toBe(false);
     expect(isAuFile("my.audio.mp3")).toBe(false);
+  });
+});
+
+describe("isRootAuFile", () => {
+  it("returns true for root .au", () => {
+    expect(isRootAuFile(".au")).toBe(true);
+  });
+
+  it("returns false for other .au files", () => {
+    expect(isRootAuFile("src/.au")).toBe(false);
+    expect(isRootAuFile("src/index.ts.au")).toBe(false);
+  });
+});
+
+describe("isDirectoryAuFile", () => {
+  it("returns true for root .au", () => {
+    expect(isDirectoryAuFile(".au")).toBe(true);
+  });
+
+  it("returns true for directory .au files", () => {
+    expect(isDirectoryAuFile("src/.au")).toBe(true);
+    expect(isDirectoryAuFile("src/lib/.au")).toBe(true);
+  });
+
+  it("returns false for source file .au files", () => {
+    expect(isDirectoryAuFile("src/index.ts.au")).toBe(false);
+    expect(isDirectoryAuFile("README.md.au")).toBe(false);
+  });
+});
+
+describe("isSourceFileAuFile", () => {
+  it("returns true for source file .au files", () => {
+    expect(isSourceFileAuFile("src/index.ts.au")).toBe(true);
+    expect(isSourceFileAuFile("README.md.au")).toBe(true);
+    expect(isSourceFileAuFile("src/lib/utils.ts.au")).toBe(true);
+  });
+
+  it("returns false for directory .au files", () => {
+    expect(isSourceFileAuFile("src/.au")).toBe(false);
+    expect(isSourceFileAuFile(".au")).toBe(false);
+  });
+
+  it("returns false for non-.au files", () => {
+    expect(isSourceFileAuFile("src/index.ts")).toBe(false);
   });
 });

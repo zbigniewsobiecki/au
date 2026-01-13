@@ -55,6 +55,16 @@ export class Output {
     console.log(chalk.red("✗") + " " + chalk.red(msg));
   }
 
+  // Section header
+  header(title: string): void {
+    console.log(chalk.cyan(title));
+  }
+
+  // List item (with failure marker)
+  item(msg: string): void {
+    console.log(chalk.red("  ✗") + " " + msg);
+  }
+
   // Iteration header
   iteration(n: number): void {
     this.currentIteration = n;

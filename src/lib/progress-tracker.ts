@@ -1,5 +1,6 @@
 import fg from "fast-glob";
 import { getSourceFromAuPath, findAuFiles } from "./au-paths.js";
+import { GlobPatterns } from "./constants.js";
 
 export interface ProgressCounts {
   total: number;
@@ -16,22 +17,12 @@ export class ProgressTracker {
    * Uses fast-glob to find all .ts files (excluding node_modules, tests, etc.)
    */
   async scanSourceFiles(basePath: string = "."): Promise<void> {
-    const sourceFiles = await fg(
-      ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
-      {
-        cwd: basePath,
-        ignore: [
-          "node_modules/**",
-          "dist/**",
-          "build/**",
-          "**/*.test.ts",
-          "**/*.spec.ts",
-          "**/*.d.ts",
-        ],
-        absolute: false,
-        dot: false,
-      }
-    );
+    const sourceFiles = await fg([...GlobPatterns.sourceFiles], {
+      cwd: basePath,
+      ignore: [...GlobPatterns.sourceIgnore],
+      absolute: false,
+      dot: false,
+    });
 
     for (const file of sourceFiles) {
       this.allItems.add(file);

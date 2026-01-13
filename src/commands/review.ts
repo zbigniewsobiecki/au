@@ -5,11 +5,13 @@ import {
   auRead,
   auList,
   readFiles,
+  readDirs,
   finish,
 } from "../gadgets/index.js";
 import { REVIEW_SYSTEM_PROMPT, REVIEW_INITIAL_PROMPT } from "../lib/review-system-prompt.js";
 import { Output } from "../lib/output.js";
 import { ReviewTracker } from "../lib/review-tracker.js";
+import { Validator } from "../lib/validator.js";
 import { render } from "../lib/templates.js";
 import {
   agentFlags,
@@ -44,11 +46,23 @@ export default class Review extends Command {
     const { flags } = await this.parse(Review);
     const out = new Output({ verbose: flags.verbose });
 
+    // Change to target directory if --path specified
+    const originalCwd = process.cwd();
+    if (flags.path && flags.path !== ".") {
+      try {
+        process.chdir(flags.path);
+        out.info(`Working in: ${flags.path}`);
+      } catch {
+        out.error(`Cannot access directory: ${flags.path}`);
+        process.exit(1);
+      }
+    }
+
     const client = new LLMist();
 
-    // Get list of existing .au files
+    // Get list of existing .au files (use "." since we already chdir'd)
     out.info("Scanning existing understanding files...");
-    const existingAu = await auList.execute({ path: flags.path });
+    const existingAu = await auList.execute({ path: "." });
 
     const existingContent = existingAu as string;
     if (hasNoExisting(existingContent)) {
@@ -59,10 +73,15 @@ export default class Review extends Command {
     const auFileCount = existingContent.split(AU_SEPARATOR).length - 1;
     out.success(`Found ${auFileCount} understanding files`);
 
-    // Initialize review tracker
+    // Initialize review tracker (checks .au file completeness)
     out.info("Checking for issues...");
     const reviewTracker = new ReviewTracker();
-    await reviewTracker.scan(flags.path);
+    await reviewTracker.scan(".");
+
+    // Run validation (checks coverage, staleness, orphans, contents)
+    const validator = new Validator();
+    const validationResult = await validator.validate(".");
+    const validationIssueCount = Validator.getIssueCount(validationResult);
 
     const issueCount = reviewTracker.getIssueCount();
     if (issueCount > 0) {
@@ -75,12 +94,29 @@ export default class Review extends Command {
       out.success("All files have required fields. Will verify accuracy against source.");
     }
 
+    // Report validation issues
+    if (validationIssueCount > 0) {
+      out.warn(`Validation: ${validationIssueCount} structural issues`);
+      if (validationResult.stale.length > 0) {
+        out.info(`  - ${validationResult.stale.length} stale (source changed)`);
+      }
+      if (validationResult.uncovered.length > 0) {
+        out.info(`  - ${validationResult.uncovered.length} uncovered files/dirs`);
+      }
+      if (validationResult.contentsIssues.length > 0) {
+        out.info(`  - ${validationResult.contentsIssues.length} directory contents issues`);
+      }
+      if (validationResult.orphans.length > 0) {
+        out.info(`  - ${validationResult.orphans.length} orphaned .au files`);
+      }
+    }
+
     // Build the agent
     let builder = new AgentBuilder(client)
       .withModel(flags.model)
       .withSystem(REVIEW_SYSTEM_PROMPT)
       .withMaxIterations(flags["max-iterations"])
-      .withGadgets(auUpdate, auRead, auList, readFiles, finish)
+      .withGadgets(auUpdate, auRead, auList, readFiles, readDirs, finish)
       .withTextOnlyHandler("acknowledge");
 
     builder = configureBuilder(builder, out, flags.rpm, flags.tpm)
@@ -92,13 +128,19 @@ export default class Review extends Command {
           issueCount: reviewTracker.getIssueCount(),
           issueBreakdown: reviewTracker.getIssueBreakdownStrings(),
           nextFiles: reviewTracker.getNextFiles(5),
+          // Validation data
+          stale: validationResult.stale,
+          uncovered: validationResult.uncovered.slice(0, 10),
+          contentsIssues: validationResult.contentsIssues.slice(0, 5),
+          orphans: validationResult.orphans,
+          uncoveredTotal: validationResult.uncovered.length,
         });
       });
 
     // Inject the list of .au files as initial context
     builder.withSyntheticGadgetCall(
       "AUList",
-      { path: flags.path },
+      { path: "." },
       existingAu as string,
       "gc_init_1"
     );
@@ -164,7 +206,11 @@ export default class Review extends Command {
     } catch (error) {
       endTextBlock(textState, out);
       out.error(`Agent error: ${error instanceof Error ? error.message : error}`);
+      process.chdir(originalCwd);
       process.exit(1);
+    } finally {
+      // Restore original working directory
+      process.chdir(originalCwd);
     }
 
     // Summary

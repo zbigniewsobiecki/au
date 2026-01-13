@@ -59,6 +59,27 @@ export function isAuFile(path: string): boolean {
 }
 
 /**
+ * Checks if an .au path is the root .au file.
+ */
+export function isRootAuFile(path: string): boolean {
+  return path === ".au";
+}
+
+/**
+ * Checks if an .au path is a directory .au file (including root).
+ */
+export function isDirectoryAuFile(path: string): boolean {
+  return path.endsWith("/.au") || path === ".au";
+}
+
+/**
+ * Checks if an .au path is a source file .au (not directory or root).
+ */
+export function isSourceFileAuFile(path: string): boolean {
+  return isAuFile(path) && !isDirectoryAuFile(path);
+}
+
+/**
  * Find all .au files in a directory.
  * @param basePath The directory to search from
  * @param includeRoot Whether to include root .au file in the pattern

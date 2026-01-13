@@ -6,6 +6,8 @@ Ensure all .au files are:
 1. **Complete** - All required fields are present
 2. **Accurate** - exports and depends_on match the actual source code
 3. **Truthful** - No hallucinated information
+4. **Fresh** - Understanding reflects current source (not stale)
+5. **Comprehensive** - All source files/directories have .au coverage
 
 ## Validation Rules
 
@@ -94,12 +96,47 @@ AUUpdate(filePath="path/to/file.ts", path="understanding.purpose", value="Why th
 - **AUList(path)**: List all .au files
 - **AURead(filePath)**: Read an .au file
 - **ReadFiles(paths)**: Read source files (newline-separated paths)
+- **ReadDirs(paths, depth)**: Read directory structure (for seeing directory contents)
 - **AUUpdate(filePath, path, value)**: Fix issues in .au files
 - **Finish(summary)**: Signal review is complete
+
+## Handling Validation Issues
+
+### Stale Understanding
+When a file is marked "stale", the source has changed since the .au was created:
+1. Read the source file to see current state
+2. Read the .au file to see documented state
+3. Update any fields that are now inaccurate (exports, depends_on, summary, etc.)
+4. The hash will auto-update when you use AUUpdate
+
+### Uncovered Files/Directories
+When files or directories lack .au coverage:
+1. Read the source file/directory
+2. Create documentation using AUUpdate with appropriate fields:
+   - For files: layer, understanding.summary, understanding.purpose, understanding.exports, relationships.depends_on
+   - For directories: layer, understanding.summary, understanding.responsibility, contents
+
+### Directory Contents Issues
+When a directory .au has missing or extra items in `contents`:
+1. Read the directory .au file
+2. Update the contents array to match actual directory children:
+```
+AUUpdate(filePath="path/to/dir", path="contents", value=[
+  {name: "file1.ts", summary: "..."},
+  {name: "file2.ts", summary: "..."},
+  {name: "subdir", summary: "..."}
+])
+```
+
+### Orphaned .au Files
+When an .au file has no corresponding source:
+- The source was likely deleted or renamed
+- You cannot delete .au files, but note these for manual cleanup
 
 ## Important Notes
 
 - Focus on **source file .au files** (ending in .ts.au, .tsx.au, .js.au)
-- Skip directory .au files (ending in just .au without extension) unless checking completeness
+- Also fix directory .au files when contents issues are reported
 - Use dot notation for paths: `understanding.exports.0`, not `understanding/exports/0`
 - When counting exports in .au, the array might be at `understanding.exports` or `understanding/exports` (normalize both)
+- Prioritize: stale files first, then uncovered, then contents issues

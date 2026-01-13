@@ -1,7 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { getSourceFromAuPath, findAuFiles } from "./au-paths.js";
+import {
+  getSourceFromAuPath,
+  findAuFiles,
+  isRootAuFile,
+  isDirectoryAuFile,
+} from "./au-paths.js";
 
 export interface FileIssue {
   path: string;
@@ -43,9 +48,9 @@ export class ReviewTracker {
       }
 
       // Determine file type
-      const isRoot = auPath === ".au";
-      const isDirectory = auPath.endsWith("/.au");
-      const isSourceFile = !isRoot && !isDirectory;
+      const isRoot = isRootAuFile(auPath);
+      const isDirectory = isDirectoryAuFile(auPath);
+      const isSourceFile = !isDirectory; // directories include root
       const isService = sourcePath.includes("/services/");
       const isUtil = sourcePath.includes("/utils/");
 

@@ -41,20 +41,32 @@ export default class Ingest extends Command {
     const { flags } = await this.parse(Ingest);
     const out = new Output({ verbose: flags.verbose });
 
+    // Change to target directory if --path specified
+    const originalCwd = process.cwd();
+    if (flags.path && flags.path !== ".") {
+      try {
+        process.chdir(flags.path);
+        out.info(`Working in: ${flags.path}`);
+      } catch {
+        out.error(`Cannot access directory: ${flags.path}`);
+        process.exit(1);
+      }
+    }
+
     const client = new LLMist();
 
-    // Generate initial context by executing gadgets directly
+    // Generate initial context by executing gadgets directly (use "." since we already chdir'd)
     out.info("Scanning directory structure...");
     if (!flags.verbose) {
       console.log("Scanning codebase...");
     }
     const dirStructure = await readDirs.execute({
-      paths: flags.path,
+      paths: ".",
       depth: 10,
     });
 
     out.info("Checking existing understanding...");
-    const existingAu = await auList.execute({ path: flags.path });
+    const existingAu = await auList.execute({ path: "." });
 
     // Count existing .au files and lines
     const existingContent = existingAu as string;
@@ -67,8 +79,8 @@ export default class Ingest extends Command {
 
     // Initialize progress tracker by scanning all source files
     const progressTracker = new ProgressTracker();
-    await progressTracker.scanSourceFiles(flags.path);
-    await progressTracker.scanExistingAuFiles(flags.path);
+    await progressTracker.scanSourceFiles(".");
+    await progressTracker.scanExistingAuFiles(".");
     out.setProgressTracker(progressTracker);
 
     const initialCounts = progressTracker.getCounts();
@@ -99,14 +111,14 @@ export default class Ingest extends Command {
     // Inject initial context as synthetic gadget calls
     builder.withSyntheticGadgetCall(
       "ReadDirs",
-      { paths: flags.path, depth: 10 },
+      { paths: ".", depth: 10 },
       dirStructure as string,
       "gc_init_1"
     );
 
     builder.withSyntheticGadgetCall(
       "AUList",
-      { path: flags.path },
+      { path: "." },
       existingAu as string,
       "gc_init_2"
     );
@@ -175,7 +187,11 @@ export default class Ingest extends Command {
     } catch (error) {
       endTextBlock(textState, out);
       out.error(`Agent error: ${error instanceof Error ? error.message : error}`);
+      process.chdir(originalCwd);
       process.exit(1);
+    } finally {
+      // Restore original working directory
+      process.chdir(originalCwd);
     }
 
     out.summary();

@@ -53,6 +53,15 @@ describe("GlobPatterns", () => {
     expect(GlobPatterns.ignoreDirectories).toContain(".git");
     expect(GlobPatterns.ignoreDirectories).toContain("dist");
   });
+
+  it("has source ignore patterns for scanning", () => {
+    expect(GlobPatterns.sourceIgnore).toContain("node_modules/**");
+    expect(GlobPatterns.sourceIgnore).toContain("dist/**");
+    expect(GlobPatterns.sourceIgnore).toContain("build/**");
+    expect(GlobPatterns.sourceIgnore).toContain("**/*.test.ts");
+    expect(GlobPatterns.sourceIgnore).toContain("**/*.spec.ts");
+    expect(GlobPatterns.sourceIgnore).toContain("**/*.d.ts");
+  });
 });
 
 describe("AU_IGNORE_PATTERNS", () => {

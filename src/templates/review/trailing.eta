@@ -4,7 +4,7 @@
 
 **Files reviewed:** <%= it.totalAuFiles %> total
 <% if (it.issueCount > 0) { %>
-**Files with issues:** <%= it.issueCount %>
+**Files with missing fields:** <%= it.issueCount %>
 
 **Issues by type:**
 <% for (const issue of it.issueBreakdown) { %>
@@ -17,8 +17,37 @@
 <% } %>
 <% } else { %>
 **All files pass field presence checks!**
+<% } %>
+<% if (it.stale && it.stale.length > 0) { %>
 
-Now verify accuracy by reading source files and comparing exports/imports.
+**Stale understanding (source changed, needs re-review):**
+<% for (const file of it.stale) { %>
+- `<%= file %>`
+<% } %>
+<% } %>
+<% if (it.uncovered && it.uncovered.length > 0) { %>
+
+**Uncovered (need .au files created):**
+<% for (const path of it.uncovered) { %>
+- `<%= path %>`
+<% } %>
+<% if (it.uncoveredTotal > it.uncovered.length) { %>
+...and <%= it.uncoveredTotal - it.uncovered.length %> more
+<% } %>
+<% } %>
+<% if (it.contentsIssues && it.contentsIssues.length > 0) { %>
+
+**Directory contents issues:**
+<% for (const issue of it.contentsIssues) { %>
+- `<%= issue.path %>`: <% if (issue.missing.length > 0) { %>missing: <%= issue.missing.slice(0, 5).join(", ") %><% if (issue.missing.length > 5) { %> +<%= issue.missing.length - 5 %> more<% } %><% } %><% if (issue.extra.length > 0) { %> extra: <%= issue.extra.slice(0, 3).join(", ") %><% } %>
+<% } %>
+<% } %>
+<% if (it.orphans && it.orphans.length > 0) { %>
+
+**Orphaned .au files (source deleted):**
+<% for (const orphan of it.orphans) { %>
+- `<%= orphan %>`
+<% } %>
 <% } %>
 
-When all files are validated and fixed, call Finish with a summary.
+When all issues are resolved, call Finish with a summary.

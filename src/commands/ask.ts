@@ -49,11 +49,23 @@ export default class Ask extends Command {
     const { args, flags } = await this.parse(Ask);
     const out = new Output({ verbose: flags.verbose });
 
+    // Change to target directory if --path specified
+    const originalCwd = process.cwd();
+    if (flags.path && flags.path !== ".") {
+      try {
+        process.chdir(flags.path);
+        out.info(`Working in: ${flags.path}`);
+      } catch {
+        out.error(`Cannot access directory: ${flags.path}`);
+        process.exit(1);
+      }
+    }
+
     const client = new LLMist();
 
-    // Load existing understanding
+    // Load existing understanding (use "." since we already chdir'd)
     out.info("Loading existing understanding...");
-    const existingAu = await auList.execute({ path: flags.path });
+    const existingAu = await auList.execute({ path: "." });
 
     const existingContent = existingAu as string;
     const existingCount = countAuEntries(existingContent);
@@ -75,7 +87,7 @@ export default class Ask extends Command {
     // Inject existing understanding as context
     builder.withSyntheticGadgetCall(
       "AUList",
-      { path: flags.path },
+      { path: "." },
       existingAu as string,
       "gc_init_1"
     );
@@ -141,7 +153,11 @@ export default class Ask extends Command {
         endTextBlock(textState, out);
       }
       out.error(`Agent error: ${error instanceof Error ? error.message : error}`);
+      process.chdir(originalCwd);
       process.exit(1);
+    } finally {
+      // Restore original working directory
+      process.chdir(originalCwd);
     }
   }
 }

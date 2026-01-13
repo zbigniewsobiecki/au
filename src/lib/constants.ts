@@ -34,6 +34,16 @@ export const GlobPatterns = {
 
   /** Directories to always ignore */
   ignoreDirectories: ["node_modules", ".git", "dist", "build", ".next", ".cache"],
+
+  /** Ignore patterns for source file scanning (used by validator/progress-tracker) */
+  sourceIgnore: [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.d.ts",
+  ],
 } as const;
 
 /**
