@@ -153,48 +153,41 @@ AUUpdate(filePath=".", path="understanding.architecture.entry_points.0", value="
 
 ## Process
 
-**Document 3-5 files per response** using multiple AUUpdate calls:
+**REQUIRED: At least 3 AUUpdate calls per response.** Example:
 
 ```
 AUUpdate(filePath="src/auth.ts", path=".", value={
   layer: "service",
+  behaviors: { has_side_effects: false },
   understanding: {
-    summary: "Authentication service for login and registration",
-    purpose: "Centralizes auth logic including JWT handling",
-    exports: [{ name: "authService", kind: "const", description: "Auth methods" }]
+    summary: "Authentication service",
+    purpose: "Handles login and registration",
+    exports: [{ name: "authService", kind: "const" }]
   },
   relationships: { depends_on: [{ ref: "au:src/models/User.ts", symbols: ["User"], kind: "data_read" }] }
 })
 AUUpdate(filePath="src/users.ts", path=".", value={
   layer: "service",
-  understanding: {
-    summary: "User management service",
-    purpose: "CRUD operations for user accounts",
-    exports: [{ name: "userService", kind: "const", description: "User methods" }]
-  },
-  relationships: { depends_on: [{ ref: "au:src/models/User.ts", symbols: ["User"], kind: "data_write" }] }
+  understanding: { summary: "User management", purpose: "CRUD for users", exports: [...] },
+  relationships: { depends_on: [...] }
 })
-AUUpdate(filePath="src/utils.ts", path=".", value={
-  layer: "shared",
-  understanding: {
-    summary: "Utility functions",
-    purpose: "Common helpers used across the codebase",
-    exports: [{ name: "formatDate", kind: "function", description: "Date formatting" }]
-  }
+AUUpdate(filePath="src/db.ts", path=".", value={
+  layer: "database",
+  understanding: { summary: "Database pool", purpose: "PostgreSQL connection", exports: [...] }
 })
 ```
 
-**Key points:**
-- Make 3-5 AUUpdate calls per response, not just one
-- Use `path="."` to write complete documentation in one call per file
-- Don't wait between files - batch them all in one response
+**Structure (IMPORTANT):**
+- Root level: `layer`, `behaviors`, `tags`
+- Inside `understanding`: `summary`, `purpose`, `exports`, `key_logic`, `constraints`
+- Inside `relationships`: `depends_on`, `collaborates_with`
 
-For directories (same pattern - batch multiple):
+For directories:
 ```
 AUUpdate(filePath="src/services", path=".", value={
   layer: "service",
-  understanding: { summary: "Business logic services", responsibility: "Core operations" },
-  contents: [{ name: "auth.ts", summary: "Authentication" }, { name: "users.ts", summary: "User management" }]
+  understanding: { summary: "Business logic", responsibility: "Core operations" },
+  contents: [{ name: "auth.ts", summary: "Auth" }, { name: "users.ts", summary: "Users" }]
 })
 ```
 

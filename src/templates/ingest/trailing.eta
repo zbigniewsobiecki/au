@@ -82,10 +82,4 @@ const hasWork = hasIssues || hasPending;
 **Priority**: Fix issues in existing docs first, then document pending files.
 <% } %>
 
-**EFFICIENCY**: Document 3-5 files per response. Example:
-```
-AUUpdate(filePath="src/a.ts", path=".", value={layer:..., understanding:{...}})
-AUUpdate(filePath="src/b.ts", path=".", value={layer:..., understanding:{...}})
-AUUpdate(filePath="src/c.ts", path=".", value={layer:..., understanding:{...}})
-```
-Don't stop after one file - batch multiple AUUpdate calls in each response.
+**REQUIRED**: At least 3 AUUpdate calls per response. Don't stop after one file.
