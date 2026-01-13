@@ -15,8 +15,10 @@ A file with only a summary is NOT documented - it needs exports, dependencies, a
 | `understanding.summary` | YES | 1-3 sentences describing what the file does |
 | `understanding.purpose` | YES | Why this file exists, what problem it solves |
 | `understanding.exports` | YES* | Array of exported items (*skip only if file exports nothing) |
-| `relationships.depends_on` | YES* | Array of imports with purpose (*skip only if no imports) |
+| `relationships.depends_on` | YES* | Array of imports with kind (*skip only if no imports) |
 | `understanding.key_logic` | REQUIRED for services/utils | Business rules, algorithms, state machines |
+| `behaviors` | Conditional | For service/repository/database layers only |
+| `constraints` | Optional | Business invariants the code enforces |
 | `tags` | Optional | Cross-cutting concerns: `[auth, validation, error-handling, caching]` |
 
 ### For Directories
@@ -45,6 +47,9 @@ Here is what a COMPLETE documentation file looks like for `apps/backend/src/serv
 ```yaml
 layer: "service"
 tags: [auth, security]
+behaviors:
+  has_side_effects: false
+  is_transactional: false
 understanding:
   summary: "Authentication service providing user registration, login, token refresh, and profile retrieval."
   purpose: "Centralizes authentication business logic, handling credential verification, JWT token management, and user session lifecycle."
@@ -54,19 +59,26 @@ understanding:
       signature: "{ register, login, refreshToken, getMe }"
       description: "Object containing all authentication methods"
   key_logic: "Registration: check existing email → hash password → create user → generate JWT pair. Login: verify credentials → check account status → issue tokens. Refresh: validate refresh token → issue new pair."
+  constraints:
+    - "Email must not already exist for registration"
+    - "Account must be active for login"
 relationships:
   depends_on:
     - ref: "au:apps/backend/src/models/User.model.ts"
       symbols: ["UserModel"]
+      kind: "data_read"
     - ref: "au:apps/backend/src/utils/password.util.ts"
       symbols: ["passwordUtils"]
+      kind: "util_call"
     - ref: "au:apps/backend/src/utils/jwt.util.ts"
       symbols: ["jwtUtils"]
+      kind: "util_call"
     - ref: "au:apps/backend/src/middleware/errorHandler.middleware.ts"
       symbols: ["AppError"]
-      nature: "Structured error throwing (not middleware functionality)"
+      kind: "type_import"
     - ref: "au:packages/shared-types"
       symbols: ["CreateUserDto", "AuthResponse"]
+      kind: "type_import"
 ```
 
 And for a directory `apps/backend/src/services/`:
@@ -181,12 +193,12 @@ AUUpdate(filePath="src/services/auth.service.ts", path="understanding.exports.0"
 })
 ```
 
-Add dependency:
+Add dependency (with kind):
 ```
 AUUpdate(filePath="src/services/auth.service.ts", path="relationships.depends_on.0", value={
   ref: "au:src/models/User.model.ts",
   symbols: ["UserModel"],
-  nature: "User database operations"
+  kind: "data_read"
 })
 ```
 
@@ -197,6 +209,56 @@ AUUpdate(filePath="src/services", path="contents.0", value={
   summary: "Authentication and token management"
 })
 ```
+
+## Dependency Kinds
+
+Classify each dependency by how it's used:
+
+| Kind | When to Use |
+|------|-------------|
+| `type_import` | Importing only types/interfaces/enums (zero runtime impact) |
+| `data_read` | Calling .find(), .get(), .query(), .select() on models |
+| `data_write` | Calling .create(), .update(), .delete(), .save() on models |
+| `service_call` | Calling methods on another service class |
+| `lib_import` | External library (lodash, react, etc.) |
+| `component_use` | Rendering another React/Vue component |
+| `util_call` | Pure utility function call |
+| `config_read` | Reading process.env or config files |
+
+## Behaviors (Service/Repository/Database Layers Only)
+
+For files in `service`, `repository`, or `database` layers, analyze and document:
+
+| Field | Meaning |
+|-------|---------|
+| `has_side_effects` | true if code calls external services (email, payments, webhooks, message queues) |
+| `is_transactional` | true if code uses transaction wrappers (BEGIN/COMMIT, $transaction, etc.) |
+| `concurrency_strategy` | "none", "optimistic" (version checks), or "pessimistic" (row locking) |
+
+**Critical**: If a file does multiple database writes WITHOUT a transaction wrapper, set `is_transactional: false` - this flags "zombie data" risk.
+
+Example:
+```
+AUUpdate(filePath="src/services/order.service.ts", path="behaviors", value={
+  has_side_effects: true,
+  is_transactional: true,
+  concurrency_strategy: "optimistic"
+})
+```
+
+## Constraints
+
+Extract business invariants that the code explicitly enforces (usually from conditionals that throw):
+
+```
+AUUpdate(filePath="src/services/order.service.ts", path="understanding.constraints.0", value="Order total must be positive")
+AUUpdate(filePath="src/services/order.service.ts", path="understanding.constraints.1", value="User must have verified email")
+```
+
+Look for patterns like:
+- `if (!condition) throw new Error(...)`
+- `assert(condition, ...)`
+- Validation checks before operations
 
 ## Conciseness Rules (Important for Large Codebases)
 

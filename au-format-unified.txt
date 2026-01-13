@@ -25,6 +25,14 @@ meta:
 layer: "frontend | api | service | repository | database | infrastructure | config | shared"
 
 # ============================================================================
+# BEHAVIORS [F] (service/repository/database layers only)
+# ============================================================================
+behaviors:
+  has_side_effects: false    # true if calls email, payments, webhooks, message queues
+  is_transactional: false    # true if uses BEGIN/COMMIT, $transaction, etc.
+  concurrency_strategy: "none"  # "none" | "optimistic" (version checks) | "pessimistic" (row locks)
+
+# ============================================================================
 # UNDERSTANDING (Required, structure varies by type. Fully operated by agents)
 # ============================================================================
 understanding:
@@ -89,6 +97,10 @@ understanding:
     - scenario: "Edge case description"
       behavior: "How it's handled"
 
+  # [F] File only - Business invariants the code enforces
+  constraints:
+    - "Business rule this code enforces (e.g., 'User must be active')"
+
 # ============================================================================
 # CONTENTS [D]
 # ============================================================================
@@ -120,7 +132,8 @@ relationships:
   depends_on:
     - ref: "au:path/to/dependency"
       symbols: ["ImportedThing"]           # [F] only
-      nature: "How/why it's used"
+      kind: "type_import | data_read | data_write | service_call | lib_import | component_use | util_call | config_read"
+      nature: "Human-readable context"     # Optional, only when relationship isn't obvious
 
   # [D,F] Reverse dependencies
   used_by:

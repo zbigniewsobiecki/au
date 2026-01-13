@@ -287,3 +287,19 @@ export function stringifyAuFile(doc: AuDocument): string {
     defaultStringType: "QUOTE_DOUBLE",
   });
 }
+
+/**
+ * Strip the meta block from a document.
+ * Used to prepare content for LLM inference (saves tokens, reduces noise).
+ */
+export function stripMeta(doc: AuDocument): AuDocument {
+  const { meta, ...rest } = doc;
+  return rest;
+}
+
+/**
+ * Stringify .au document for inference context (meta stripped).
+ */
+export function stringifyForInference(doc: AuDocument): string {
+  return stringifyAuFile(stripMeta(doc));
+}

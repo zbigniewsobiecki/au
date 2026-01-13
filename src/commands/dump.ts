@@ -2,6 +2,7 @@ import { Command, Flags } from "@oclif/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { findAuFiles, getSourceFromAuPath } from "../lib/au-paths.js";
+import { parseAuFile, stringifyForInference } from "../lib/au-yaml.js";
 
 export default class Dump extends Command {
   static description =
@@ -18,6 +19,10 @@ export default class Dump extends Command {
       char: "p",
       description: "Root path to dump",
       default: ".",
+    }),
+    "with-meta": Flags.boolean({
+      description: "Include meta block (timestamps, hashes) in output",
+      default: false,
     }),
   };
 
@@ -38,7 +43,12 @@ export default class Dump extends Command {
       try {
         const content = await readFile(fullAuPath, "utf-8");
         console.log(`=== ${sourcePath} ===`);
-        console.log(content);
+        if (flags["with-meta"]) {
+          console.log(content);
+        } else {
+          const doc = parseAuFile(content);
+          console.log(stringifyForInference(doc));
+        }
       } catch {
         console.error(`Error reading ${auFile}`);
       }

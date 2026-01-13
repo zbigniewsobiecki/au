@@ -1,6 +1,7 @@
 import { createGadget, z } from "llmist";
 import { readFile } from "node:fs/promises";
 import { resolveAuPath } from "../lib/au-paths.js";
+import { parseAuFile, stringifyForInference } from "../lib/au-yaml.js";
 
 export const auRead = createGadget({
   name: "AURead",
@@ -16,7 +17,9 @@ Returns the existing understanding content, or indicates if no understanding exi
 
     try {
       const content = await readFile(auPath, "utf-8");
-      return `path=${filePath}\n\n${content}`;
+      const doc = parseAuFile(content);
+      const stripped = stringifyForInference(doc);
+      return `path=${filePath}\n\n${stripped}`;
     } catch {
       return `path=${filePath}\n\nNo understanding exists yet for this path.`;
     }

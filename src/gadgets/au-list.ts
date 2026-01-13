@@ -1,6 +1,7 @@
 import { createGadget, z } from "llmist";
 import { readFile } from "node:fs/promises";
 import { getSourceFromAuPath, findAuFiles } from "../lib/au-paths.js";
+import { parseAuFile, stringifyForInference } from "../lib/au-yaml.js";
 
 export const auList = createGadget({
   name: "AUList",
@@ -22,8 +23,10 @@ This shows what understandings already exist so you can refine them.`,
       try {
         const fullPath = path === "." ? auFile : `${path}/${auFile}`;
         const content = await readFile(fullPath, "utf-8");
+        const doc = parseAuFile(content);
+        const stripped = stringifyForInference(doc);
         const sourcePath = getSourceFromAuPath(auFile);
-        results.push(`=== ${sourcePath} ===\n${content}`);
+        results.push(`=== ${sourcePath} ===\n${stripped}`);
       } catch (error) {
         const sourcePath = getSourceFromAuPath(auFile);
         results.push(`=== ${sourcePath} ===\nError reading understanding`);

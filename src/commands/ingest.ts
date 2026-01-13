@@ -1,5 +1,7 @@
-import { Command } from "@oclif/core";
+import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
+import { unlink } from "node:fs/promises";
+import { findAuFiles } from "../lib/au-paths.js";
 import {
   auUpdate,
   auRead,
@@ -35,7 +37,13 @@ export default class Ingest extends Command {
     "<%= config.bin %> ingest -v",
   ];
 
-  static flags = agentFlags;
+  static flags = {
+    ...agentFlags,
+    purge: Flags.boolean({
+      description: "Remove all .au files before running (start fresh)",
+      default: false,
+    }),
+  };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Ingest);
@@ -51,6 +59,20 @@ export default class Ingest extends Command {
         out.error(`Cannot access directory: ${flags.path}`);
         process.exit(1);
       }
+    }
+
+    // Purge existing .au files if requested
+    if (flags.purge) {
+      out.info("Purging existing .au files...");
+      const auFiles = await findAuFiles(".", true);
+      for (const auFile of auFiles) {
+        try {
+          await unlink(auFile);
+        } catch {
+          // Ignore errors (file may not exist)
+        }
+      }
+      out.success(`Removed ${auFiles.length} .au files`);
     }
 
     const client = new LLMist();
