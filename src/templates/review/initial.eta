@@ -1,11 +1,3 @@
-Review all .au files in this repository for completeness and accuracy.
+Fix the validation issues shown in the status section below.
 
-Start by listing all .au files, then systematically verify each source file's documentation against its actual source code.
-
-For each file:
-1. Check all required fields are present
-2. Verify exports match source
-3. Verify depends_on match imports
-4. Fix any discrepancies
-
-Report issues as you find them, fix them immediately, then move to the next file.
+Work through each issue systematically. When all validation issues are resolved, call Finish.

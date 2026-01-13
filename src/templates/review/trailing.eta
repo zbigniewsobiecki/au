@@ -1,33 +1,23 @@
 
 ---
-## Review Progress (Iteration <%= it.iteration %>/<%= it.maxIterations %>)
+## Validation Issues to Fix (Iteration <%= it.iteration %>/<%= it.maxIterations %>)
+<% if (it.staleReferences && it.staleReferences.length > 0) { %>
 
-**Files reviewed:** <%= it.totalAuFiles %> total
-<% if (it.issueCount > 0) { %>
-**Files with missing fields:** <%= it.issueCount %>
-
-**Issues by type:**
-<% for (const issue of it.issueBreakdown) { %>
-- <%= issue %>
+### Stale References
+<% for (const ref of it.staleReferences) { %>
+- `<%= ref.auFile %>` -> <%= ref.field %>: `<%= ref.ref %>` (target not found)
 <% } %>
-
-**Next files to fix:**
-<% for (const file of it.nextFiles) { %>
-- `<%= file.path %>`: <%= file.issues.join(", ") %>
-<% } %>
-<% } else { %>
-**All files pass field presence checks!**
 <% } %>
 <% if (it.stale && it.stale.length > 0) { %>
 
-**Stale understanding (source changed, needs re-review):**
+### Stale Understanding (source changed)
 <% for (const file of it.stale) { %>
 - `<%= file %>`
 <% } %>
 <% } %>
 <% if (it.uncovered && it.uncovered.length > 0) { %>
 
-**Uncovered (need .au files created):**
+### Uncovered (need .au files)
 <% for (const path of it.uncovered) { %>
 - `<%= path %>`
 <% } %>
@@ -37,17 +27,33 @@
 <% } %>
 <% if (it.contentsIssues && it.contentsIssues.length > 0) { %>
 
-**Directory contents issues:**
+### Contents Mismatches
 <% for (const issue of it.contentsIssues) { %>
-- `<%= issue.path %>`: <% if (issue.missing.length > 0) { %>missing: <%= issue.missing.slice(0, 5).join(", ") %><% if (issue.missing.length > 5) { %> +<%= issue.missing.length - 5 %> more<% } %><% } %><% if (issue.extra.length > 0) { %> extra: <%= issue.extra.slice(0, 3).join(", ") %><% } %>
+- `<%= issue.path %>`:<% if (issue.missing.length > 0) { %> missing: <%= issue.missing.slice(0, 5).join(", ") %><% if (issue.missing.length > 5) { %> +<%= issue.missing.length - 5 %> more<% } %><% } %><% if (issue.extra.length > 0) { %> extra: <%= issue.extra.slice(0, 3).join(", ") %><% } %>
+<% } %>
+<% } %>
+<% if (it.issueCount > 0) { %>
+
+### Missing Required Fields
+<% for (const file of it.nextFiles) { %>
+- `<%= file.path %>`: <%= file.issues.join(", ") %>
 <% } %>
 <% } %>
 <% if (it.orphans && it.orphans.length > 0) { %>
 
-**Orphaned .au files (source deleted):**
+### Orphaned .au Files (note for manual cleanup)
 <% for (const orphan of it.orphans) { %>
 - `<%= orphan %>`
 <% } %>
 <% } %>
+<%
+const hasIssues = (it.staleReferences && it.staleReferences.length > 0) ||
+                  (it.stale && it.stale.length > 0) ||
+                  (it.uncovered && it.uncovered.length > 0) ||
+                  (it.contentsIssues && it.contentsIssues.length > 0) ||
+                  (it.issueCount > 0);
+%>
+<% if (!hasIssues) { %>
 
-When all issues are resolved, call Finish with a summary.
+**No validation issues remaining.** Call Finish with a summary.
+<% } %>

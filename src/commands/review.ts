@@ -129,6 +129,7 @@ export default class Review extends Command {
           issueBreakdown: reviewTracker.getIssueBreakdownStrings(),
           nextFiles: reviewTracker.getNextFiles(5),
           // Validation data
+          staleReferences: validationResult.staleReferences,
           stale: validationResult.stale,
           uncovered: validationResult.uncovered.slice(0, 10),
           contentsIssues: validationResult.contentsIssues.slice(0, 5),
