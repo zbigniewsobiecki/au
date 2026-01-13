@@ -104,6 +104,13 @@ export class IngestStateCollector {
   getProgressTracker(): ProgressTracker {
     return this.progressTracker;
   }
+
+  /**
+   * Get the list of source files from the scan.
+   */
+  getSourceFiles(): string[] {
+    return this.validator.getScanData().sourceFiles;
+  }
 }
 
 // Re-export types for convenience

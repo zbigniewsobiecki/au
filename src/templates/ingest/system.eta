@@ -153,40 +153,48 @@ AUUpdate(filePath=".", path="understanding.architecture.entry_points.0", value="
 
 ## Process
 
-For each file you read, create **complete documentation in ONE call** using `path="."`:
+**Document 3-5 files per response** using multiple AUUpdate calls:
 
 ```
 AUUpdate(filePath="src/auth.ts", path=".", value={
   layer: "service",
   understanding: {
-    summary: "Authentication service for user login and registration",
+    summary: "Authentication service for login and registration",
     purpose: "Centralizes auth logic including JWT handling",
-    exports: [
-      { name: "authService", kind: "const", description: "Auth methods" }
-    ]
+    exports: [{ name: "authService", kind: "const", description: "Auth methods" }]
   },
-  relationships: {
-    depends_on: [
-      { ref: "au:src/models/User.ts", symbols: ["User"], kind: "data_read" }
-    ]
+  relationships: { depends_on: [{ ref: "au:src/models/User.ts", symbols: ["User"], kind: "data_read" }] }
+})
+AUUpdate(filePath="src/users.ts", path=".", value={
+  layer: "service",
+  understanding: {
+    summary: "User management service",
+    purpose: "CRUD operations for user accounts",
+    exports: [{ name: "userService", kind: "const", description: "User methods" }]
+  },
+  relationships: { depends_on: [{ ref: "au:src/models/User.ts", symbols: ["User"], kind: "data_write" }] }
+})
+AUUpdate(filePath="src/utils.ts", path=".", value={
+  layer: "shared",
+  understanding: {
+    summary: "Utility functions",
+    purpose: "Common helpers used across the codebase",
+    exports: [{ name: "formatDate", kind: "function", description: "Date formatting" }]
   }
 })
 ```
 
-**One AUUpdate(path=".") per file** - don't split fields across multiple calls.
+**Key points:**
+- Make 3-5 AUUpdate calls per response, not just one
+- Use `path="."` to write complete documentation in one call per file
+- Don't wait between files - batch them all in one response
 
-For directories:
+For directories (same pattern - batch multiple):
 ```
 AUUpdate(filePath="src/services", path=".", value={
   layer: "service",
-  understanding: {
-    summary: "Business logic services",
-    responsibility: "Encapsulating core operations"
-  },
-  contents: [
-    { name: "auth.ts", summary: "Authentication" },
-    { name: "users.ts", summary: "User management" }
-  ]
+  understanding: { summary: "Business logic services", responsibility: "Core operations" },
+  contents: [{ name: "auth.ts", summary: "Authentication" }, { name: "users.ts", summary: "User management" }]
 })
 ```
 

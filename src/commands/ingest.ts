@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import { unlink } from "node:fs/promises";
+import { unlink, stat, readFile } from "node:fs/promises";
 import { findAuFiles } from "../lib/au-paths.js";
 import {
   auUpdate,
@@ -147,6 +147,29 @@ export default class Ingest extends Command {
       out.info(`${pendingCount} items pending documentation`);
     }
 
+    // Pre-load source files under 5KB to reduce read iterations
+    out.info("Pre-loading source files...");
+    const sourceFiles = stateCollector.getSourceFiles();
+    const preloadedFiles: string[] = [];
+    const preloadedPaths: string[] = [];
+    const MAX_FILE_SIZE = 5 * 1024; // 5KB
+
+    for (const filePath of sourceFiles) {
+      try {
+        const fileStat = await stat(filePath);
+        if (fileStat.size > 0 && fileStat.size <= MAX_FILE_SIZE) {
+          const content = await readFile(filePath, "utf-8");
+          preloadedFiles.push(`=== ${filePath} ===\n${content}`);
+          preloadedPaths.push(filePath);
+        }
+      } catch {
+        // Skip files that can't be read
+      }
+    }
+
+    const preloadedContent = preloadedFiles.join("\n\n");
+    out.success(`Pre-loaded ${preloadedPaths.length} source files (${(preloadedContent.length / 1024).toFixed(1)} KB)`);
+
     // Build the agent
     let builder = new AgentBuilder(client)
       .withModel(flags.model)
@@ -189,6 +212,16 @@ export default class Ingest extends Command {
       existingAu as string,
       "gc_init_2"
     );
+
+    // Inject pre-loaded source files if any
+    if (preloadedPaths.length > 0) {
+      builder.withSyntheticGadgetCall(
+        "ReadFiles",
+        { paths: preloadedPaths.join("\n") },
+        preloadedContent,
+        "gc_init_3"
+      );
+    }
 
     // Create and run the agent
     const agent = builder.ask(INITIAL_PROMPT);

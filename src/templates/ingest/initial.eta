@@ -1,9 +1,7 @@
-Please analyze this codebase and create/update agent understanding.
+Document this codebase efficiently:
 
-Based on this information:
+1. Source files are pre-loaded below - don't re-read files you can already see
+2. Document 3-5 files per response using multiple AUUpdate(path=".") calls
+3. Start with entry points and work through the codebase
 
-1. Identify which files and directories are missing documentation
-2. Read the source files to understand them
-3. Create or update understanding with AUUpdate based on what you learned
-
-Start with the most important files first (entry points, main modules) and work your way through the codebase.
+For maximum efficiency, batch your AUUpdate calls - don't stop after documenting one file.

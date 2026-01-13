@@ -82,10 +82,10 @@ const hasWork = hasIssues || hasPending;
 **Priority**: Fix issues in existing docs first, then document pending files.
 <% } %>
 
-**IMPORTANT**: Use `path="."` to write complete documentation in ONE call per file:
+**EFFICIENCY**: Document 3-5 files per response. Example:
 ```
-AUUpdate(filePath="src/foo.ts", path=".", value={layer: "...", understanding: {...}, relationships: {...}})
+AUUpdate(filePath="src/a.ts", path=".", value={layer:..., understanding:{...}})
+AUUpdate(filePath="src/b.ts", path=".", value={layer:..., understanding:{...}})
+AUUpdate(filePath="src/c.ts", path=".", value={layer:..., understanding:{...}})
 ```
-- Read files → Document each with ONE AUUpdate(path=".", value={...full doc...})
-- Each file needs: layer, summary, purpose, exports, depends_on
-- Services/utils also need key_logic. Directories need responsibility + contents.
+Don't stop after one file - batch multiple AUUpdate calls in each response.
