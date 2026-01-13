@@ -74,8 +74,8 @@ export default class Stats extends Command {
     }
 
     const avgAuSize = totalAuSize / auFiles.length;
-    const avgRatio = ratios.length > 0
-      ? ratios.reduce((a, b) => a + b, 0) / ratios.length
+    const medianRatio = ratios.length > 0
+      ? median(ratios)
       : 0;
 
     console.log("\n━━━ Understanding Stats ━━━\n");
@@ -92,7 +92,7 @@ export default class Stats extends Command {
 
     if (filesWithSource > 0) {
       console.log(`\nTotal source size:  ${formatBytes(totalSourceSize)}`);
-      console.log(`Compression:        ${(avgRatio * 100).toFixed(1)}% of source size`);
+      console.log(`Compression:        ${(medianRatio * 100).toFixed(0)}% of source size (median)`);
     }
 
     console.log();
@@ -103,4 +103,12 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
 }
