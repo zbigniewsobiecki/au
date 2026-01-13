@@ -93,6 +93,7 @@ export class Validator {
 
   /**
    * Scan source files and directories once, caching results.
+   * Respects .gitignore via FileFilter.
    */
   private async scanSourceFiles(): Promise<void> {
     const files = await fg([...GlobPatterns.sourceFiles], {
@@ -106,6 +107,11 @@ export class Validator {
     this.directories = new Set();
 
     for (const file of files) {
+      // Skip files that don't pass the filter (respects .gitignore)
+      if (!this.filter!.accepts(file)) {
+        continue;
+      }
+
       // Skip empty files
       try {
         const fileStat = await stat(join(this.basePath, file));
@@ -116,10 +122,13 @@ export class Validator {
 
       this.sourceFiles.push(file);
 
-      // Extract directories
+      // Extract directories (only if they pass the filter)
       const parts = file.split("/");
       for (let i = 1; i < parts.length; i++) {
-        this.directories.add(parts.slice(0, i).join("/"));
+        const dirPath = parts.slice(0, i).join("/");
+        if (this.filter!.accepts(dirPath)) {
+          this.directories.add(dirPath);
+        }
       }
     }
   }
