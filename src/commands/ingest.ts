@@ -191,7 +191,8 @@ export default class Ingest extends Command {
                 out.warn(result.result);
               } else {
                 // Extract filePath and line diff from the result message
-                const match = result.result?.match(/Updated understanding at (.+?) \[\d+→\d+:([+-]?\d+)\]/);
+                // Format: "Updated src/foo.ts.au [path.to.field] [oldLines→newLines:+diff]"
+                const match = result.result?.match(/Updated (.+?) \[.+?\] \[\d+→\d+:([+-]?\d+)\]/);
                 if (match) {
                   const auPath = match[1];
                   const lineDiff = parseInt(match[2], 10);

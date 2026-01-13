@@ -191,7 +191,8 @@ export default class Review extends Command {
                 out.warn(result.result);
               } else {
                 issuesFixed++;
-                const match = result.result?.match(/Updated understanding at (.+?)\.au/);
+                // Format: "Updated src/foo.ts.au [path.to.field] [oldLines→newLines:+diff]"
+                const match = result.result?.match(/Updated (.+?)\.au \[/);
                 if (match) {
                   const filePath = match[1].replace(/\/$/, "");
                   reviewTracker.markReviewed(filePath);
