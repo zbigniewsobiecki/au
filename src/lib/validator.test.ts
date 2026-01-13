@@ -290,13 +290,16 @@ layer: service
       const { createHash } = await import("node:crypto");
       const correctHash = createHash("md5").update(sourceContent).digest("hex");
 
-      vi.mocked(readFile)
-        .mockResolvedValueOnce(`
+      const auContent = `
 meta:
   analyzed_hash: ${correctHash}
 layer: service
-`)
-        .mockResolvedValueOnce(sourceContent);
+`;
+      // Mock readFile to return appropriate content based on path
+      vi.mocked(readFile).mockImplementation(async (path) => {
+        if (String(path).endsWith(".au")) return auContent;
+        return sourceContent;
+      });
 
       const result = await validator.validate(".");
 
@@ -337,8 +340,112 @@ contents: []
     });
   });
 
+  describe("findStaleReferences", () => {
+    it("detects stale depends_on reference", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(stat)
+        .mockResolvedValueOnce({} as any) // src/index.ts exists (orphan check)
+        .mockRejectedValueOnce(new Error("ENOENT")); // src/models/User.ts doesn't exist
+
+      vi.mocked(readFile).mockResolvedValue(`
+layer: service
+relationships:
+  depends_on:
+    - ref: "au:src/models/User.ts"
+      symbols: ["User"]
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.staleReferences).toHaveLength(1);
+      expect(result.staleReferences[0].auFile).toBe("src/index.ts.au");
+      expect(result.staleReferences[0].field).toBe("depends_on");
+      expect(result.staleReferences[0].ref).toBe("au:src/models/User.ts");
+    });
+
+    it("detects stale collaborates_with reference", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      vi.mocked(stat)
+        .mockResolvedValueOnce({} as any) // src exists (orphan check)
+        .mockRejectedValueOnce(new Error("ENOENT")); // src/deleted doesn't exist
+      vi.mocked(readdir).mockResolvedValue([]);
+
+      vi.mocked(readFile).mockResolvedValue(`
+layer: module
+understanding:
+  collaborates_with:
+    - path: "au:src/deleted"
+      nature: "Data processing"
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.staleReferences).toHaveLength(1);
+      expect(result.staleReferences[0].auFile).toBe("src/.au");
+      expect(result.staleReferences[0].field).toBe("collaborates_with");
+      expect(result.staleReferences[0].ref).toBe("au:src/deleted");
+    });
+
+    it("ignores valid references", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(stat).mockResolvedValue({} as any); // All paths exist
+
+      vi.mocked(readFile).mockResolvedValue(`
+layer: service
+relationships:
+  depends_on:
+    - ref: "au:src/models/User.ts"
+      symbols: ["User"]
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.staleReferences).toHaveLength(0);
+    });
+
+    it("handles .au files with no references", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(stat).mockResolvedValue({} as any);
+
+      vi.mocked(readFile).mockResolvedValue(`
+layer: service
+understanding:
+  summary: Simple file with no deps
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.staleReferences).toHaveLength(0);
+    });
+
+    it("detects multiple stale references in one file", async () => {
+      vi.mocked(fg).mockResolvedValue([]);
+      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      vi.mocked(stat)
+        .mockResolvedValueOnce({} as any) // src/index.ts exists (orphan check)
+        .mockRejectedValueOnce(new Error("ENOENT")) // first ref doesn't exist
+        .mockRejectedValueOnce(new Error("ENOENT")); // second ref doesn't exist
+
+      vi.mocked(readFile).mockResolvedValue(`
+layer: service
+relationships:
+  depends_on:
+    - ref: "au:src/deleted1.ts"
+    - ref: "au:src/deleted2.ts"
+`);
+
+      const result = await validator.validate(".");
+
+      expect(result.staleReferences).toHaveLength(2);
+    });
+  });
+
   describe("getIssueCount", () => {
-    it("counts all issue types including stale", () => {
+    it("counts all issue types including staleReferences", () => {
       const result: ValidationResult = {
         uncovered: ["file1.ts", "file2.ts"],
         contentsIssues: [
@@ -346,10 +453,13 @@ contents: []
         ],
         orphans: ["old.ts.au"],
         stale: ["outdated.ts.au"],
+        staleReferences: [
+          { auFile: "src/index.ts.au", field: "depends_on", ref: "au:deleted.ts" },
+        ],
       };
 
-      expect(Validator.getIssueCount(result)).toBe(7);
-      // 2 uncovered + 2 missing + 1 extra + 1 orphan + 1 stale = 7
+      expect(Validator.getIssueCount(result)).toBe(8);
+      // 2 uncovered + 2 missing + 1 extra + 1 orphan + 1 stale + 1 staleRef = 8
     });
 
     it("returns 0 for clean result", () => {
@@ -358,6 +468,7 @@ contents: []
         contentsIssues: [],
         orphans: [],
         stale: [],
+        staleReferences: [],
       };
 
       expect(Validator.getIssueCount(result)).toBe(0);
@@ -369,6 +480,7 @@ contents: []
         contentsIssues: [],
         orphans: [],
         stale: [],
+        staleReferences: [],
       };
 
       expect(Validator.getIssueCount(result)).toBe(1);

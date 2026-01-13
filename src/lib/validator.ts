@@ -18,11 +18,18 @@ export interface ContentsIssue {
   extra: string[];
 }
 
+export interface StaleReference {
+  auFile: string;
+  field: string;
+  ref: string;
+}
+
 export interface ValidationResult {
   uncovered: string[];
   contentsIssues: ContentsIssue[];
   orphans: string[];
   stale: string[];
+  staleReferences: StaleReference[];
 }
 
 export class Validator {
@@ -38,14 +45,15 @@ export class Validator {
     this.filter = await createFileFilter(basePath);
     this.auFiles = await findAuFiles(basePath, true);
 
-    const [uncovered, contentsIssues, orphans, stale] = await Promise.all([
+    const [uncovered, contentsIssues, orphans, stale, staleReferences] = await Promise.all([
       this.findUncovered(),
       this.validateContents(),
       this.findOrphans(),
       this.findStale(),
+      this.findStaleReferences(),
     ]);
 
-    return { uncovered, contentsIssues, orphans, stale };
+    return { uncovered, contentsIssues, orphans, stale, staleReferences };
   }
 
   /**
@@ -242,6 +250,62 @@ export class Validator {
   }
 
   /**
+   * Find stale references in .au files (depends_on.ref and collaborates_with.path).
+   */
+  private async findStaleReferences(): Promise<StaleReference[]> {
+    const staleRefs: StaleReference[] = [];
+
+    for (const auFile of this.auFiles) {
+      const fullAuPath = join(this.basePath, auFile);
+
+      try {
+        const content = await readFile(fullAuPath, "utf-8");
+        const doc = parse(content);
+
+        if (!doc) continue;
+
+        // Check depends_on references (source file .au)
+        const dependsOn = doc?.relationships?.depends_on || [];
+        for (const dep of dependsOn) {
+          if (dep.ref) {
+            const targetPath = dep.ref.replace(/^au:/, "");
+            if (!(await this.pathExists(targetPath))) {
+              staleRefs.push({ auFile, field: "depends_on", ref: dep.ref });
+            }
+          }
+        }
+
+        // Check collaborates_with references (directory .au)
+        const collaborates = doc?.understanding?.collaborates_with || [];
+        for (const collab of collaborates) {
+          if (collab.path) {
+            const targetPath = collab.path.replace(/^au:/, "");
+            if (!(await this.pathExists(targetPath))) {
+              staleRefs.push({ auFile, field: "collaborates_with", ref: collab.path });
+            }
+          }
+        }
+      } catch {
+        // Can't read file, skip
+      }
+    }
+
+    return staleRefs;
+  }
+
+  /**
+   * Check if a path exists relative to basePath.
+   */
+  private async pathExists(relativePath: string): Promise<boolean> {
+    try {
+      await stat(join(this.basePath, relativePath));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Get total issue count from a validation result.
    */
   static getIssueCount(result: ValidationResult): number {
@@ -252,7 +316,8 @@ export class Validator {
         0
       ) +
       result.orphans.length +
-      result.stale.length
+      result.stale.length +
+      result.staleReferences.length
     );
   }
 }

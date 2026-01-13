@@ -77,6 +77,15 @@ export default class Validate extends Command {
       console.log();
     }
 
+    // Stale References
+    if (result.staleReferences.length > 0) {
+      out.header("Stale References");
+      for (const ref of result.staleReferences) {
+        out.item(`${ref.auFile} - ${ref.field}: ${ref.ref} (not found)`);
+      }
+      console.log();
+    }
+
     // Summary
     if (totalIssues === 0) {
       out.success("All validations passed");
