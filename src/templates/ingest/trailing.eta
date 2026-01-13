@@ -17,3 +17,8 @@
 Services/utils also need `key_logic`. Directories need `responsibility` and `contents`. Root needs `architecture`.
 
 **A file with only a summary is INCOMPLETE.** Document ALL required fields before moving on.
+
+**Efficiency** - Batch your work:
+- Use ReadFiles with multiple paths (newline-separated) to read several files at once
+- Make multiple AUUpdate calls in a single response for different files
+- Don't wait for one file to be complete before starting the next
