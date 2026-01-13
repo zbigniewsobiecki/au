@@ -1,7 +1,8 @@
 import { Command, Flags } from "@oclif/core";
-import { stat, readFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { findAuFiles, getSourceFromAuPath } from "../lib/au-paths.js";
+import { ProgressTracker } from "../lib/progress-tracker.js";
 
 export default class Stats extends Command {
   static description =
@@ -23,10 +24,18 @@ export default class Stats extends Command {
   async run(): Promise<void> {
     const { flags } = await this.parse(Stats);
 
+    // Get coverage stats
+    const progressTracker = new ProgressTracker();
+    await progressTracker.scanSourceFiles(flags.path);
+    await progressTracker.scanExistingAuFiles(flags.path);
+    const counts = progressTracker.getCounts();
+
     const auFiles = await findAuFiles(flags.path, true);
 
     if (auFiles.length === 0) {
       console.log("No .au files found.");
+      console.log(`\nSource files: ${counts.total}`);
+      console.log("Coverage: 0%");
       return;
     }
 
@@ -70,14 +79,20 @@ export default class Stats extends Command {
       : 0;
 
     console.log("\n━━━ Understanding Stats ━━━\n");
-    console.log(`AU files:           ${auFiles.length}`);
+
+    // Coverage
+    console.log(`Source files:       ${counts.total}`);
+    console.log(`Documented:         ${counts.documented}`);
+    console.log(`Coverage:           ${progressTracker.getProgressPercent()}%`);
+
+    // Size stats
+    console.log(`\nAU files:           ${auFiles.length}`);
     console.log(`Total AU size:      ${formatBytes(totalAuSize)}`);
     console.log(`Average AU size:    ${formatBytes(avgAuSize)}`);
 
     if (filesWithSource > 0) {
-      console.log(`\nFiles with source:  ${filesWithSource}`);
-      console.log(`Total source size:  ${formatBytes(totalSourceSize)}`);
-      console.log(`AU/Source ratio:    ${(avgRatio * 100).toFixed(1)}%`);
+      console.log(`\nTotal source size:  ${formatBytes(totalSourceSize)}`);
+      console.log(`Compression:        ${(avgRatio * 100).toFixed(1)}% of source size`);
     }
 
     console.log();
