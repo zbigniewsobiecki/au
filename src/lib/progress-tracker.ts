@@ -1,4 +1,5 @@
 import fg from "fast-glob";
+import { dirname } from "node:path";
 import { getSourceFromAuPath, findAuFiles } from "./au-paths.js";
 import { GlobPatterns } from "./constants.js";
 
@@ -13,8 +14,9 @@ export class ProgressTracker {
   private documentedItems: Set<string> = new Set();
 
   /**
-   * Scan the filesystem for all source files that should be documented.
+   * Scan the filesystem for all source files and directories that should be documented.
    * Uses fast-glob to find all .ts files (excluding node_modules, tests, etc.)
+   * Also extracts unique directory paths from the source files.
    */
   async scanSourceFiles(basePath: string = "."): Promise<void> {
     const sourceFiles = await fg([...GlobPatterns.sourceFiles], {
@@ -24,9 +26,24 @@ export class ProgressTracker {
       dot: false,
     });
 
+    const directories = new Set<string>();
+
     for (const file of sourceFiles) {
       this.allItems.add(file);
+
+      // Extract all parent directories
+      let dir = dirname(file);
+      while (dir && dir !== ".") {
+        directories.add(dir);
+        dir = dirname(dir);
+      }
     }
+
+    // Add directories and root to allItems
+    for (const dir of directories) {
+      this.allItems.add(dir);
+    }
+    this.allItems.add("."); // root
   }
 
   /**
@@ -73,7 +90,7 @@ export class ProgressTracker {
 
   /**
    * Get total counts for display.
-   * Only counts documented items that are actual source files (ignores directory .au files).
+   * Counts documented items that are in allItems (source files + directories + root).
    */
   getCounts(): ProgressCounts {
     let documented = 0;
