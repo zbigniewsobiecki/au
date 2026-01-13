@@ -61,17 +61,16 @@ export default class Stats extends Command {
         auSizes.push(auSize);
         totalAuSize += auSize;
 
-        // Try to get source file size
+        // Try to get source file size (only for actual files, not directories)
         try {
           const sourceStat = await stat(fullSourcePath);
-          const sourceSize = sourceStat.size;
-          if (sourceSize > 0) {
-            totalSourceSize += sourceSize;
-            ratios.push(auSize / sourceSize);
+          if (sourceStat.isFile() && sourceStat.size > 0) {
+            totalSourceSize += sourceStat.size;
+            ratios.push(auSize / sourceStat.size);
             filesWithSource++;
           }
         } catch {
-          // Source file doesn't exist (directory .au or deleted file)
+          // Source doesn't exist (deleted file)
         }
       } catch {
         // Can't stat .au file
@@ -97,7 +96,7 @@ export default class Stats extends Command {
 
     if (filesWithSource > 0) {
       console.log(`\nTotal source size:  ${formatBytes(totalSourceSize)}`);
-      console.log(`Compression:        ${(medianRatio * 100).toFixed(0)}% of source size (median)`);
+      console.log(`AU/Source ratio:    ${(medianRatio * 100).toFixed(0)}% (median)`);
     }
 
     console.log();
