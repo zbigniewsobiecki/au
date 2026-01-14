@@ -1,5 +1,10 @@
 import { join, extname } from "node:path";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import fg from "fast-glob";
+
+const require = createRequire(import.meta.url);
+const ignore = require("ignore") as typeof import("ignore").default;
 
 /**
  * Resolves the .au file path for a given source path.
@@ -89,6 +94,7 @@ export function isSourceFileAuFile(path: string): boolean {
 
 /**
  * Find all .au files in a directory.
+ * Respects .gitignore patterns from the repository.
  * @param basePath The directory to search from
  * @param includeRoot Whether to include root .au file in the pattern
  */
@@ -100,11 +106,35 @@ export async function findAuFiles(
     ? ["**/.au", "**/*.au", ".au"]
     : ["**/.au", "**/*.au"];
 
-  return fg(patterns, {
+  // Get all .au files
+  const files = await fg(patterns, {
     cwd: basePath,
-    ignore: ["node_modules/**"],
     absolute: false,
     dot: true,
+  });
+
+  // Load .gitignore patterns
+  const ig = ignore();
+  try {
+    const gitignorePath = join(basePath, ".gitignore");
+    const gitignoreContent = await readFile(gitignorePath, "utf-8");
+    ig.add(gitignoreContent);
+  } catch {
+    // No .gitignore file, return all files
+    return files;
+  }
+
+  // Filter out files in gitignored directories
+  return files.filter((file) => {
+    // Check if file path or any parent directory is ignored
+    const parts = file.split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      const pathToCheck = parts.slice(0, i).join("/");
+      if (ig.ignores(pathToCheck)) {
+        return false;
+      }
+    }
+    return true;
   });
 }
 

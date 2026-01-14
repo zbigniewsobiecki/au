@@ -30,40 +30,48 @@ describe("createFileFilter", () => {
       expect(filter.accepts(".au")).toBe(false);
     });
 
-    it("rejects node_modules", async () => {
+    it("accepts directories when no gitignore exists", async () => {
+      // Without gitignore, no directories are rejected (except those containing .au)
       vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+      const filter = await createFileFilter(".");
+
+      // These are accepted because there's no gitignore
+      expect(filter.accepts("node_modules/package/index.js")).toBe(true);
+      expect(filter.accepts(".git/config")).toBe(true);
+      expect(filter.accepts("dist/index.js")).toBe(true);
+    });
+
+    it("rejects directories specified in gitignore", async () => {
+      // Typical gitignore content
+      vi.mocked(fs.readFile).mockResolvedValue("node_modules\n.git\ndist\nbuild\n.next\n.cache");
       const filter = await createFileFilter(".");
 
       expect(filter.accepts("node_modules/package/index.js")).toBe(false);
-    });
-
-    it("rejects .git directory", async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
-      const filter = await createFileFilter(".");
-
       expect(filter.accepts(".git/config")).toBe(false);
-    });
-
-    it("rejects dist/build directories", async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
-      const filter = await createFileFilter(".");
-
       expect(filter.accepts("dist/index.js")).toBe(false);
       expect(filter.accepts("build/output.js")).toBe(false);
-    });
-
-    it("rejects .next and .cache directories", async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
-      const filter = await createFileFilter(".");
-
       expect(filter.accepts(".next/static/chunks/main.js")).toBe(false);
       expect(filter.accepts(".cache/data.json")).toBe(false);
+    });
+
+    it("rejects directories with trailing slash in gitignore", async () => {
+      // gitignore often has trailing slashes for directories
+      vi.mocked(fs.readFile).mockResolvedValue("node_modules/\ndist/");
+      const filter = await createFileFilter(".");
+
+      // Directory itself should be rejected
+      expect(filter.accepts("node_modules")).toBe(false);
+      expect(filter.accepts("dist")).toBe(false);
+      // Nested directories should also be rejected
+      expect(filter.accepts("packages/backend/node_modules")).toBe(false);
+      // Contents should be rejected
+      expect(filter.accepts("node_modules/pkg/index.js")).toBe(false);
     });
   });
 
   describe("path normalization", () => {
     it("handles paths starting with ./", async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(fs.readFile).mockResolvedValue("node_modules");
       const filter = await createFileFilter(".");
 
       expect(filter.accepts("./src/index.ts")).toBe(true);
@@ -111,14 +119,15 @@ describe("createFileFilter", () => {
       expect(filter.accepts("src/index.ts")).toBe(true);
     });
 
-    it("combines gitignore with default ignores", async () => {
-      vi.mocked(fs.readFile).mockResolvedValue("custom-ignore/");
+    it("combines gitignore with default .au ignores", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue("custom-ignore/\nnode_modules");
       const filter = await createFileFilter(".");
 
       // Custom ignore from gitignore
       expect(filter.accepts("custom-ignore/file.txt")).toBe(false);
-      // Default ignores still apply
+      // node_modules from gitignore
       expect(filter.accepts("node_modules/pkg")).toBe(false);
+      // .au files are always ignored (hardcoded)
       expect(filter.accepts(".au")).toBe(false);
     });
   });

@@ -21,6 +21,7 @@ export const NO_EXISTING_MARKER = "No existing";
 
 /**
  * Glob patterns for finding files.
+ * Note: Directory ignores (node_modules, dist, etc.) come from .gitignore
  */
 export const GlobPatterns = {
   /** Pattern for finding AU files */
@@ -32,14 +33,8 @@ export const GlobPatterns = {
   /** Pattern for source files */
   sourceFiles: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
 
-  /** Directories to always ignore */
-  ignoreDirectories: ["node_modules", ".git", "dist", "build", ".next", ".cache"],
-
-  /** Ignore patterns for source file scanning (used by validator/progress-tracker) */
+  /** File patterns to ignore during source scanning (non-directory patterns only) */
   sourceIgnore: [
-    "node_modules/**",
-    "dist/**",
-    "build/**",
     "**/*.test.ts",
     "**/*.spec.ts",
     "**/*.d.ts",

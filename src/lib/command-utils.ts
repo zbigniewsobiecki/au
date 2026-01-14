@@ -1,5 +1,5 @@
 import { Flags } from "@oclif/core";
-import { AgentBuilder } from "llmist";
+import { AgentBuilder, LLMist, resolveModel } from "llmist";
 import type { ExecutionEvent } from "llmist";
 import { Output } from "./output.js";
 import { AU_SEPARATOR, hasNoExisting } from "./constants.js";
@@ -236,4 +236,41 @@ export function parseIncludePatterns(include: string | undefined): string[] | un
   if (!include) return undefined;
   const patterns = include.split(",").map(p => p.trim()).filter(p => p.length > 0);
   return patterns.length > 0 ? patterns : undefined;
+}
+
+/**
+ * Budget for pre-loading file content into context.
+ */
+export interface PreloadBudget {
+  /** Maximum total bytes to pre-load */
+  maxTotalBytes: number;
+  /** Maximum bytes per individual file */
+  maxPerFileBytes: number;
+}
+
+/**
+ * Calculates pre-load budget based on model's context window size.
+ * Uses ~25% of context for pre-loaded content, with per-file limits.
+ */
+export function getPreloadBudget(client: LLMist, modelName: string): PreloadBudget {
+  const modelId = resolveModel(modelName);
+  const limits = client.modelRegistry.getModelLimits(modelId);
+
+  // Default to 200k tokens if model not found
+  const contextWindow = limits?.contextWindow ?? 200_000;
+
+  // Reserve ~25% of context for pre-loaded content
+  // (rest goes to system prompt, agent responses, tool results)
+  const tokenBudget = Math.floor(contextWindow * 0.25);
+
+  // Rough estimate: 1 token ≈ 4 characters
+  const charBudget = tokenBudget * 4;
+
+  // Cap per-file at 10KB but reduce if total budget is small
+  const maxPerFile = Math.min(10 * 1024, Math.floor(charBudget / 4));
+
+  return {
+    maxTotalBytes: charBudget,
+    maxPerFileBytes: maxPerFile,
+  };
 }

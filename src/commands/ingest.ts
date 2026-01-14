@@ -21,6 +21,7 @@ import {
   createTextBlockState,
   endTextBlock,
   formatResultSize,
+  getPreloadBudget,
   setupIterationTracking,
   countAuEntries,
   countAuBytes,
@@ -151,20 +152,27 @@ export default class Ingest extends Command {
       out.info(`${pendingCount} items pending documentation`);
     }
 
-    // Pre-load source files under 5KB to reduce read iterations
+    // Get pre-load budget based on model context window
+    const budget = getPreloadBudget(client, flags.model);
+
+    // Pre-load source files to reduce read iterations
     out.info("Pre-loading source files...");
     const sourceFiles = stateCollector.getSourceFiles();
     const preloadedFiles: string[] = [];
     const preloadedPaths: string[] = [];
-    const MAX_FILE_SIZE = 5 * 1024; // 5KB
+    let totalBytes = 0;
 
     for (const filePath of sourceFiles) {
       try {
         const fileStat = await stat(filePath);
-        if (fileStat.size > 0 && fileStat.size <= MAX_FILE_SIZE) {
+        // Check per-file limit and total budget
+        if (fileStat.size > 0 &&
+            fileStat.size <= budget.maxPerFileBytes &&
+            totalBytes + fileStat.size <= budget.maxTotalBytes) {
           const content = await readFile(filePath, "utf-8");
           preloadedFiles.push(`=== ${filePath} ===\n${content}`);
           preloadedPaths.push(filePath);
+          totalBytes += content.length;
         }
       } catch {
         // Skip files that can't be read

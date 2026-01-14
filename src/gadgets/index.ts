@@ -5,3 +5,5 @@ export { readFiles } from "./read-files.js";
 export { readDirs } from "./read-dirs.js";
 export { ripGrep } from "./rip-grep.js";
 export { finish } from "./finish.js";
+export { gitDiffList } from "./git-diff-list.js";
+export { gitDiff } from "./git-diff.js";

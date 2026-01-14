@@ -15,11 +15,8 @@ export interface FileFilter {
 export async function createFileFilter(rootPath = "."): Promise<FileFilter> {
   const ig = ignore();
 
-  // Always ignore .au files
+  // Always ignore .au files (these are documentation, not source)
   ig.add(["*.au", ".au", "**/*.au", "**/.au"]);
-
-  // Always ignore common non-source directories
-  ig.add(["node_modules", ".git", "dist", "build", ".next", ".cache"]);
 
   // Try to load .gitignore
   try {
@@ -46,7 +43,17 @@ export async function createFileFilter(rootPath = "."): Promise<FileFilter> {
         return true;
       }
 
-      return !ig.ignores(relativePath);
+      // Check both with and without trailing slash
+      // This handles gitignore patterns like "node_modules/" which only match
+      // the directory contents unless we also check with trailing slash
+      if (ig.ignores(relativePath)) {
+        return false;
+      }
+      // Also check as directory (with trailing slash)
+      if (ig.ignores(relativePath + "/")) {
+        return false;
+      }
+      return true;
     },
   };
 }
