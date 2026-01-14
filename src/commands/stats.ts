@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { getSourceFromAuPath } from "../lib/au-paths.js";
 import { ProgressTracker } from "../lib/progress-tracker.js";
 import { Validator } from "../lib/validator.js";
+import { parseIncludePatterns } from "../lib/command-utils.js";
 
 export default class Stats extends Command {
   static description =
@@ -12,6 +13,7 @@ export default class Stats extends Command {
   static examples = [
     "<%= config.bin %> stats",
     "<%= config.bin %> stats --path ./src",
+    "<%= config.bin %> stats --include '*.tsx,*.jsx'",
   ];
 
   static flags = {
@@ -20,6 +22,9 @@ export default class Stats extends Command {
       description: "Root path to analyze",
       default: ".",
     }),
+    include: Flags.string({
+      description: "Comma-separated glob patterns to include (e.g., *.tsx,*.jsx)",
+    }),
   };
 
   async run(): Promise<void> {
@@ -27,7 +32,8 @@ export default class Stats extends Command {
 
     // Get coverage stats via Validator (single source of truth for scanning)
     const validator = new Validator();
-    await validator.validate(flags.path);
+    const includePatterns = parseIncludePatterns(flags.include);
+    await validator.validate(flags.path, { includePatterns });
     const scanData = validator.getScanData();
 
     const progressTracker = new ProgressTracker();
@@ -39,7 +45,7 @@ export default class Stats extends Command {
 
     if (auFiles.length === 0) {
       console.log("No .au files found.");
-      console.log(`\nSource files: ${counts.total}`);
+      console.log(`\nTotal items: ${counts.total}`);
       console.log("Coverage: 0%");
       return;
     }
@@ -84,9 +90,9 @@ export default class Stats extends Command {
 
     console.log("\n━━━ Understanding Stats ━━━\n");
 
-    // Coverage
-    console.log(`Source files:       ${counts.total}`);
-    console.log(`Documented:         ${counts.documented}`);
+    // Coverage (files + directories + root)
+    console.log(`Total items:        ${counts.total}`);
+    console.log(`Documented items:   ${counts.documented}`);
     console.log(`Coverage:           ${progressTracker.getProgressPercent()}%`);
 
     // Size stats

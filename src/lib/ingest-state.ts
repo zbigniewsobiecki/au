@@ -1,5 +1,5 @@
 import { ProgressTracker } from "./progress-tracker.js";
-import { Validator, ContentsIssue, StaleReference, FileIssue } from "./validator.js";
+import { Validator, ContentsIssue, StaleReference, FileIssue, ValidateOptions } from "./validator.js";
 
 export interface IngestState {
   // Coverage
@@ -35,9 +35,9 @@ export class IngestStateCollector {
    * Collect complete state for ingest command.
    * Uses Validator as single source of truth for scanning.
    */
-  async collect(basePath: string = "."): Promise<IngestState> {
+  async collect(basePath: string = ".", options: ValidateOptions = {}): Promise<IngestState> {
     // Run validation (does a single comprehensive scan)
-    const validationResult = await this.validator.validate(basePath);
+    const validationResult = await this.validator.validate(basePath, options);
 
     // Initialize progress tracker from validator's scan data
     const scanData = this.validator.getScanData();
@@ -114,4 +114,4 @@ export class IngestStateCollector {
 }
 
 // Re-export types for convenience
-export type { FileIssue, ContentsIssue, StaleReference };
+export type { FileIssue, ContentsIssue, StaleReference, ValidateOptions };

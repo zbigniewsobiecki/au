@@ -145,13 +145,24 @@ describe("Output", () => {
   });
 
   describe("documenting", () => {
-    it("logs in verbose mode with diff", () => {
+    it("logs in verbose mode with byte diff", () => {
       output = new Output({ verbose: true });
-      output.documenting("src/index.ts", 10);
+      output.documenting("src/index.ts", 100, false);
       expect(consoleSpy).toHaveBeenCalled();
       const calls = consoleSpy.mock.calls.flat().join(" ");
       expect(calls).toContain("src/index.ts");
-      expect(calls).toContain("+10");
+      expect(calls).toContain("+100B");
+      expect(calls).toContain("[upd]");
+    });
+
+    it("logs in verbose mode with new marker", () => {
+      output = new Output({ verbose: true });
+      output.documenting("src/index.ts", 200, true);
+      expect(consoleSpy).toHaveBeenCalled();
+      const calls = consoleSpy.mock.calls.flat().join(" ");
+      expect(calls).toContain("src/index.ts");
+      expect(calls).toContain("+200B");
+      expect(calls).toContain("[new]");
     });
 
     it("logs in non-verbose mode", () => {
@@ -232,15 +243,24 @@ describe("Output", () => {
     });
   });
 
-  describe("setInitialLines", () => {
-    it("sets initial line count for tracking", () => {
+  describe("setInitialBytes", () => {
+    it("sets initial byte count for tracking", () => {
       output = new Output({ verbose: true });
-      output.setInitialLines(500);
+      output.setInitialBytes(500);
       output.documenting("file.ts", 50);
       output.summary();
 
       const calls = consoleSpy.mock.calls.flat().join(" ");
-      expect(calls).toContain("550 lines");
+      expect(calls).toContain("550B");
+    });
+
+    it("formats bytes as KB when >= 1024", () => {
+      output = new Output({ verbose: true });
+      output.setInitialBytes(2048);
+      output.summary();
+
+      const calls = consoleSpy.mock.calls.flat().join(" ");
+      expect(calls).toContain("2.0KB");
     });
   });
 

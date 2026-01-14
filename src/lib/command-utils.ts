@@ -23,6 +23,9 @@ export const commonFlags = {
     description: "Show detailed output with colors",
     default: false,
   }),
+  include: Flags.string({
+    description: "Comma-separated glob patterns to include (e.g., *.tsx,*.jsx)",
+  }),
   rpm: Flags.integer({
     description: "Rate limit: requests per minute",
     default: 50,
@@ -200,9 +203,18 @@ export function countAuEntries(content: string): number {
 
 /**
  * Counts lines in AU content (excluding separator lines).
+ * @deprecated Use countAuBytes instead
  */
 export function countAuLines(content: string): number {
   return content.split("\n").filter(line => !line.startsWith(AU_SEPARATOR)).length;
+}
+
+/**
+ * Counts bytes in AU content (excluding separator lines).
+ */
+export function countAuBytes(content: string): number {
+  const lines = content.split("\n").filter(line => !line.startsWith(AU_SEPARATOR));
+  return Buffer.byteLength(lines.join("\n"), "utf-8");
 }
 
 /**
@@ -214,4 +226,14 @@ export function parsePathList(pathsString: string): string[] {
     .split("\n")
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
+}
+
+/**
+ * Parses comma-separated include patterns into an array.
+ * Returns undefined if no patterns provided.
+ */
+export function parseIncludePatterns(include: string | undefined): string[] | undefined {
+  if (!include) return undefined;
+  const patterns = include.split(",").map(p => p.trim()).filter(p => p.length > 0);
+  return patterns.length > 0 ? patterns : undefined;
 }

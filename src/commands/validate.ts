@@ -1,6 +1,7 @@
 import { Command, Flags } from "@oclif/core";
 import { Validator } from "../lib/validator.js";
 import { Output } from "../lib/output.js";
+import { parseIncludePatterns } from "../lib/command-utils.js";
 
 export default class Validate extends Command {
   static description =
@@ -10,6 +11,7 @@ export default class Validate extends Command {
     "<%= config.bin %> validate",
     "<%= config.bin %> validate --path ./src",
     "<%= config.bin %> validate --verbose",
+    "<%= config.bin %> validate --include '*.tsx,*.jsx'",
   ];
 
   static flags = {
@@ -23,6 +25,9 @@ export default class Validate extends Command {
       description: "Show detailed output",
       default: false,
     }),
+    include: Flags.string({
+      description: "Comma-separated glob patterns to include (e.g., *.tsx,*.jsx)",
+    }),
   };
 
   async run(): Promise<void> {
@@ -32,7 +37,8 @@ export default class Validate extends Command {
     out.info("Validating AU coverage...");
 
     const validator = new Validator();
-    const result = await validator.validate(flags.path);
+    const includePatterns = parseIncludePatterns(flags.include);
+    const result = await validator.validate(flags.path, { includePatterns });
 
     const totalIssues = Validator.getIssueCount(result);
 

@@ -259,9 +259,23 @@ export function detectType(
   }
   // Check if path has a file extension (simple heuristic)
   const lastPart = filePath.split("/").pop() || "";
+
+  // Regular files with extensions (not starting with dot)
   if (lastPart.includes(".") && !lastPart.startsWith(".")) {
     return "file";
   }
+
+  // Dotfiles: most are files, but some patterns are directories
+  if (lastPart.startsWith(".")) {
+    // Known directory patterns
+    const directoryPatterns = [".git", ".github", ".vscode", ".idea", ".aws", ".ssh", ".cache", ".npm", ".yarn", ".pnpm"];
+    if (directoryPatterns.includes(lastPart)) {
+      return "directory";
+    }
+    // Dotfiles like .gitignore, .npmrc, .env, .dockerignore are files
+    return "file";
+  }
+
   return "directory";
 }
 

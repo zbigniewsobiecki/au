@@ -8,8 +8,11 @@ import fg from "fast-glob";
  * - File /foo/bar/baz.ts -> /foo/bar/baz.ts.au (append .au)
  * - Directory /foo/bar -> /foo/bar/.au
  * - Root . -> .au
+ *
+ * @param sourcePath - The source file or directory path
+ * @param isDirectory - If known, whether the source is a directory (avoids heuristics)
  */
-export function resolveAuPath(sourcePath: string): string {
+export function resolveAuPath(sourcePath: string, isDirectory?: boolean): string {
   // Normalize path
   const normalized = sourcePath.replace(/\/$/, "") || ".";
 
@@ -17,7 +20,12 @@ export function resolveAuPath(sourcePath: string): string {
     return ".au";
   }
 
-  // Check if it's a file (has extension) or directory
+  // Use explicit isDirectory if provided, otherwise use heuristics
+  if (isDirectory !== undefined) {
+    return isDirectory ? join(normalized, ".au") : `${normalized}.au`;
+  }
+
+  // Heuristic: Check if it's a file (has extension) or directory
   const ext = extname(normalized);
 
   if (ext && ext !== ".") {

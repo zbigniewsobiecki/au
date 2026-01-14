@@ -46,19 +46,26 @@ export interface ScanData {
   documented: Set<string>;
 }
 
+export interface ValidateOptions {
+  /** Glob patterns to include (e.g., ["*.tsx", "*.jsx"]). Replaces default patterns when provided. */
+  includePatterns?: string[];
+}
+
 export class Validator {
   private filter: FileFilter | null = null;
   private basePath: string = ".";
   private auFiles: string[] = [];
   private sourceFiles: string[] = [];
   private directories: Set<string> = new Set();
+  private includePatterns?: string[];
 
   /**
    * Run all validations and return consolidated results.
    * Also caches scan data for reuse by other components.
    */
-  async validate(basePath: string = "."): Promise<ValidationResult> {
+  async validate(basePath: string = ".", options: ValidateOptions = {}): Promise<ValidationResult> {
     this.basePath = basePath;
+    this.includePatterns = options.includePatterns;
     this.filter = await createFileFilter(basePath);
     this.auFiles = await findAuFiles(basePath, true);
 
@@ -96,7 +103,19 @@ export class Validator {
    * Respects .gitignore via FileFilter.
    */
   private async scanSourceFiles(): Promise<void> {
-    const files = await fg([...GlobPatterns.sourceFiles], {
+    // Use custom include patterns or fall back to defaults
+    let patterns: string[];
+    if (this.includePatterns && this.includePatterns.length > 0) {
+      // Ensure patterns match deeply by adding **/ prefix if not present
+      patterns = this.includePatterns.map(p => {
+        if (p.startsWith("**/") || p.startsWith("/")) return p;
+        return `**/${p}`;
+      });
+    } else {
+      patterns = [...GlobPatterns.sourceFiles];
+    }
+
+    const files = await fg(patterns, {
       cwd: this.basePath,
       ignore: [...GlobPatterns.sourceIgnore],
       absolute: false,

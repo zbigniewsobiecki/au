@@ -8,7 +8,6 @@ import {
   setByPath,
   deleteByPath,
   generateMeta,
-  detectType,
   type AuDocument,
 } from "../lib/au-yaml.js";
 
@@ -46,24 +45,28 @@ Meta fields are auto-managed.`,
     value: valueSchema.describe("Value to set, or null to delete"),
   }),
   execute: async ({ filePath, path, value }) => {
-    // Validate source exists (except for root)
+    // Validate source exists and determine type (except for root)
+    let isDirectory = filePath === "." || filePath === "";
     if (filePath !== "." && filePath !== "") {
       try {
-        await stat(filePath);
+        const statResult = await stat(filePath);
+        isDirectory = statResult.isDirectory();
       } catch {
         return `Error: Source "${filePath}" does not exist. Cannot create understanding for non-existent paths.`;
       }
     }
 
-    const auPath = resolveAuPath(filePath);
+    const auPath = resolveAuPath(filePath, isDirectory);
 
     // Read existing or start fresh
     let doc: AuDocument = {};
-    let oldLines = 0;
+    let oldBytes = 0;
+    let isNew = true;
     try {
       const content = await readFile(auPath, "utf-8");
-      oldLines = content.split("\n").length;
+      oldBytes = Buffer.byteLength(content, "utf-8");
       doc = parseAuFile(content);
+      isNew = false;
     } catch {
       // New file - start with empty doc
     }
@@ -80,7 +83,7 @@ Meta fields are auto-managed.`,
     }
 
     // Generate/update meta
-    const type = detectType(filePath);
+    const type = filePath === "." || filePath === "" ? "repository" : isDirectory ? "directory" : "file";
     let sourceContent = "";
     if (type === "file") {
       try {
@@ -99,9 +102,10 @@ Meta fields are auto-managed.`,
     }
     await writeFile(auPath, yamlContent, "utf-8");
 
-    const newLines = yamlContent.split("\n").length;
-    const diff = newLines - oldLines;
+    const newBytes = Buffer.byteLength(yamlContent, "utf-8");
+    const diff = newBytes - oldBytes;
+    const marker = isNew ? "new" : "upd";
 
-    return `Updated ${auPath} [${path}] [${oldLines}→${newLines}:${diff >= 0 ? "+" : ""}${diff}]`;
+    return `Updated ${auPath} [${path}] [${marker}] [${oldBytes}→${newBytes}:${diff >= 0 ? "+" : ""}${diff}]`;
   },
 });

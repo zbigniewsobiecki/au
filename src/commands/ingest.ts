@@ -23,7 +23,8 @@ import {
   formatResultSize,
   setupIterationTracking,
   countAuEntries,
-  countAuLines,
+  countAuBytes,
+  parseIncludePatterns,
 } from "../lib/command-utils.js";
 import { GadgetName, isFileReadingGadget } from "../lib/constants.js";
 
@@ -35,6 +36,7 @@ export default class Ingest extends Command {
     "<%= config.bin %> ingest --model sonnet",
     "<%= config.bin %> ingest --max-iterations 20",
     "<%= config.bin %> ingest -v",
+    "<%= config.bin %> ingest --include '*.tsx,*.jsx'",
   ];
 
   static flags = {
@@ -90,19 +92,21 @@ export default class Ingest extends Command {
     out.info("Checking existing understanding...");
     const existingAu = await auList.execute({ path: "." });
 
-    // Count existing .au files and lines
+    // Count existing .au files and bytes
     const existingContent = existingAu as string;
     const existingCount = countAuEntries(existingContent);
     if (existingCount > 0) {
-      const lines = countAuLines(existingContent);
-      out.setInitialLines(lines);
-      out.success(`Found ${existingCount} existing understanding entries (${lines} lines)`);
+      const bytes = countAuBytes(existingContent);
+      out.setInitialBytes(bytes);
+      const bytesStr = bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}KB` : `${bytes}B`;
+      out.success(`Found ${existingCount} existing understanding entries (${bytesStr})`);
     }
 
     // Collect unified state (coverage + validation)
     out.info("Running validation checks...");
     const stateCollector = new IngestStateCollector();
-    let state = await stateCollector.collect(".");
+    const includePatterns = parseIncludePatterns(flags.include);
+    let state = await stateCollector.collect(".", { includePatterns });
 
     const progressTracker = stateCollector.getProgressTracker();
     out.setProgressTracker(progressTracker);
@@ -268,12 +272,13 @@ export default class Ingest extends Command {
               if (result.result?.startsWith("Error:")) {
                 out.warn(result.result);
               } else {
-                // Extract filePath and line diff from the result message
-                // Format: "Updated src/foo.ts.au [path.to.field] [oldLines→newLines:+diff]"
-                const match = result.result?.match(/Updated (.+?) \[.+?\] \[\d+→\d+:([+-]?\d+)\]/);
+                // Extract filePath, marker, and byte diff from the result message
+                // Format: "Updated src/foo.ts.au [path.to.field] [new|upd] [oldBytes→newBytes:+diff]"
+                const match = result.result?.match(/Updated (.+?) \[.+?\] \[(new|upd)\] \[\d+→\d+:([+-]?\d+)\]/);
                 if (match) {
                   const auPath = match[1];
-                  const lineDiff = parseInt(match[2], 10);
+                  const isNew = match[2] === "new";
+                  const byteDiff = parseInt(match[3], 10);
                   const sourcePath = auPath.replace(/\.au$/, "").replace(/\/\.au$/, "");
                   progressTracker.markDocumented(sourcePath);
 
@@ -281,7 +286,7 @@ export default class Ingest extends Command {
                   state.staleFiles = state.staleFiles.filter(f => !f.includes(sourcePath));
                   state.incompleteFiles = state.incompleteFiles.filter(f => f.path !== sourcePath);
 
-                  out.documenting(sourcePath, lineDiff);
+                  out.documenting(sourcePath, byteDiff, isNew);
                 }
               }
             }

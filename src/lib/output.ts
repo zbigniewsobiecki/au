@@ -20,9 +20,9 @@ export class Output {
   private iterationOutputTokens: number = 0;
   private iterationCost: number = 0;
 
-  // Line tracking for understanding
-  private totalLines: number = 0;
-  private linesSinceCheckpoint: number = 0;
+  // Byte tracking for understanding
+  private totalBytes: number = 0;
+  private bytesSinceCheckpoint: number = 0;
 
   // Progress tracker reference
   private progressTracker?: ProgressTracker;
@@ -154,11 +154,11 @@ export class Output {
   }
 
   // Documenting a file (shown in both modes)
-  documenting(filePath: string, lineDiff?: number): void {
+  documenting(filePath: string, byteDiff?: number, isNew?: boolean): void {
     this.filesDocumented++;
-    if (lineDiff !== undefined) {
-      this.linesSinceCheckpoint += lineDiff;
-      this.totalLines += lineDiff;
+    if (byteDiff !== undefined) {
+      this.bytesSinceCheckpoint += byteDiff;
+      this.totalBytes += byteDiff;
     }
 
     // Get progress if tracker is available
@@ -168,19 +168,21 @@ export class Output {
 
     if (this.verbose) {
       let diffStr = "";
-      if (lineDiff !== undefined) {
-        if (lineDiff > 0) {
-          diffStr = " " + chalk.green(`+${lineDiff}`);
-        } else if (lineDiff < 0) {
-          diffStr = " " + chalk.red(`${lineDiff}`);
+      if (byteDiff !== undefined) {
+        if (byteDiff > 0) {
+          diffStr = " " + chalk.green(`+${byteDiff}B`);
+        } else if (byteDiff < 0) {
+          diffStr = " " + chalk.red(`${byteDiff}B`);
         } else {
-          diffStr = " " + chalk.dim("±0");
+          diffStr = " " + chalk.dim("±0B");
         }
       }
+      const marker = isNew !== undefined ? (isNew ? chalk.yellow(" [new]") : chalk.blue(" [upd]")) : "";
       console.log(
         chalk.green("✓") + " " +
         chalk.white("Documented") + " " +
         chalk.cyan(filePath) +
+        marker +
         diffStr +
         chalk.magenta(progressStr)
       );
@@ -189,9 +191,9 @@ export class Output {
     }
   }
 
-  // Set initial total lines (from existing .au files)
-  setInitialLines(lines: number): void {
-    this.totalLines = lines;
+  // Set initial total bytes (from existing .au files)
+  setInitialBytes(bytes: number): void {
+    this.totalBytes = bytes;
   }
 
   // Iteration stats (tokens and cost)
@@ -224,17 +226,17 @@ export class Output {
           chalk.white(this.formatCost(this.totalCost)) +
           chalk.dim(` (${this.formatTokens(this.totalInputTokens, this.totalOutputTokens)})`)
       );
-      // Lines line
-      const diffStr = this.linesSinceCheckpoint >= 0
-        ? chalk.green(`+${this.linesSinceCheckpoint}`)
-        : chalk.red(`${this.linesSinceCheckpoint}`);
+      // Bytes line
+      const diffStr = this.bytesSinceCheckpoint >= 0
+        ? chalk.green(`+${this.bytesSinceCheckpoint}B`)
+        : chalk.red(`${this.bytesSinceCheckpoint}B`);
       console.log(
         chalk.magenta("📝 Understanding: ") +
-          chalk.white(`${this.totalLines} lines`) +
+          chalk.white(this.formatBytes(this.totalBytes)) +
           chalk.dim(" (") + diffStr + chalk.dim(" since last checkpoint)")
       );
       // Reset checkpoint counter
-      this.linesSinceCheckpoint = 0;
+      this.bytesSinceCheckpoint = 0;
     }
   }
 
@@ -254,7 +256,7 @@ export class Output {
         console.log(chalk.white(`Coverage: ${percent}% (${counts.documented}/${counts.total} items)`));
       }
 
-      console.log(chalk.white(`Understanding: ${this.totalLines} lines`));
+      console.log(chalk.white(`Understanding: ${this.formatBytes(this.totalBytes)}`));
       console.log(chalk.white(`Iterations: ${this.currentIteration}`));
       console.log(chalk.white(`Time: ${elapsed}s`));
       console.log(
@@ -316,5 +318,15 @@ export class Output {
       return `$${cost.toFixed(4)}`;
     }
     return "$0.00";
+  }
+
+  // Format bytes for display
+  private formatBytes(bytes: number): string {
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+    } else if (bytes >= 1024) {
+      return `${(bytes / 1024).toFixed(1)}KB`;
+    }
+    return `${bytes}B`;
   }
 }
