@@ -33,9 +33,11 @@
     "fast-glob": "^3.3.3",
     "ignore": "^6.0.2",
     "llmist": "^15.5.0",
+    "micromatch": "^4.0.8",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@types/micromatch": "^4.0.10",
     "@types/node": "^22.10.5",
     "typescript": "^5.7.3",
     "vitest": "^4.0.16"

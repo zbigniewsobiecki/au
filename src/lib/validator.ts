@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { createHash } from "node:crypto";
 import fg from "fast-glob";
+import micromatch from "micromatch";
 import {
   findAuFiles,
   getSourceFromAuPath,
@@ -328,12 +329,30 @@ export class Validator {
         if (!this.filter!.accepts(entryPath)) {
           continue;
         }
+        // When include patterns are specified, only check matching files (directories always included)
+        if (this.includePatterns && this.includePatterns.length > 0 && !entry.isDirectory()) {
+          if (!micromatch.isMatch(entry.name, this.includePatterns)) {
+            continue;
+          }
+        }
         actualContents.push(entry.name);
       }
 
       const actualSet = new Set(actualContents);
       const missing = actualContents.filter((item) => !declaredSet.has(item));
-      const extra = declaredContents.filter((item) => !actualSet.has(item));
+      // For "extra" check, also filter by include patterns (skip items that don't match when filtering)
+      const extra = declaredContents.filter((item) => {
+        if (actualSet.has(item)) return false; // Not extra if it exists
+        // When include patterns specified, only flag files that match the patterns
+        if (this.includePatterns && this.includePatterns.length > 0) {
+          // Can't easily tell if declared item is dir or file, so check if it matches patterns
+          // Items that don't match patterns are ignored (not flagged as extra)
+          if (!micromatch.isMatch(item, this.includePatterns)) {
+            return false;
+          }
+        }
+        return true;
+      });
 
       if (missing.length > 0 || extra.length > 0) {
         return { path: auPath, missing, extra };
@@ -413,10 +432,10 @@ export class Validator {
 
         if (!doc) continue;
 
-        // Check depends_on references
+        // Check depends_on references (only validate au: prefixed internal refs)
         const dependsOn = doc?.relationships?.depends_on || [];
         for (const dep of dependsOn) {
-          if (dep.ref) {
+          if (dep.ref && dep.ref.startsWith("au:")) {
             const targetPath = dep.ref.replace(/^au:/, "");
             if (!(await this.pathExists(targetPath))) {
               staleRefs.push({ auFile, field: "depends_on", ref: dep.ref });
@@ -424,10 +443,10 @@ export class Validator {
           }
         }
 
-        // Check collaborates_with references
+        // Check collaborates_with references (only validate au: prefixed internal refs)
         const collaborates = doc?.understanding?.collaborates_with || [];
         for (const collab of collaborates) {
-          if (collab.path) {
+          if (collab.path && collab.path.startsWith("au:")) {
             const targetPath = collab.path.replace(/^au:/, "");
             if (!(await this.pathExists(targetPath))) {
               staleRefs.push({ auFile, field: "collaborates_with", ref: collab.path });

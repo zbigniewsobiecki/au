@@ -279,7 +279,8 @@ export default class Ingest extends Command {
                   const auPath = match[1];
                   const isNew = match[2] === "new";
                   const byteDiff = parseInt(match[3], 10);
-                  const sourcePath = auPath.replace(/\.au$/, "").replace(/\/\.au$/, "");
+                  // Order matters: check for directory .au first (/.au), then file .au (.au)
+                  const sourcePath = auPath.replace(/\/\.au$/, "").replace(/\.au$/, "");
                   progressTracker.markDocumented(sourcePath);
 
                   // Also remove from stale/incomplete lists if present

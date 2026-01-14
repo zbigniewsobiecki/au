@@ -59,9 +59,9 @@ const hasWork = hasIssues || hasPending;
 <% } %>
 <% if (hasContents) { %>
 
-**Directory contents mismatches:**
+**Directory contents mismatches (update contents field to add missing / remove extra):**
 <% for (const issue of it.contentsIssues.slice(0, 5)) { %>
-- <%= issue.path %>:<% if (issue.missing.length > 0) { %> missing: <%= issue.missing.slice(0, 3).join(", ") %><% if (issue.missing.length > 3) { %> +<%= issue.missing.length - 3 %><% } %><% } %><% if (issue.extra.length > 0) { %> extra: <%= issue.extra.slice(0, 3).join(", ") %><% } %>
+- <%= issue.path %>:<% if (issue.missing.length > 0) { %> missing: [<%= issue.missing.join(", ") %>]<% } %><% if (issue.extra.length > 0) { %> extra (remove): [<%= issue.extra.join(", ") %>]<% } %>
 <% } %>
 <% } %>
 <% } %>
