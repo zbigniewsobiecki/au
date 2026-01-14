@@ -4,6 +4,7 @@ import { GadgetName } from "./constants.js";
 
 export interface OutputOptions {
   verbose: boolean;
+  progressLabel?: string;  // Default: "Understanding"
 }
 
 export class Output {
@@ -27,8 +28,12 @@ export class Output {
   // Progress tracker reference
   private progressTracker?: ProgressTracker;
 
+  // Configurable label for progress display
+  private progressLabel: string;
+
   constructor(options: OutputOptions) {
     this.verbose = options.verbose;
+    this.progressLabel = options.progressLabel || "Understanding";
     this.startTime = Date.now();
   }
 
@@ -231,7 +236,7 @@ export class Output {
         ? chalk.green(`+${this.bytesSinceCheckpoint}B`)
         : chalk.red(`${this.bytesSinceCheckpoint}B`);
       console.log(
-        chalk.magenta("📝 Understanding: ") +
+        chalk.magenta(`📝 ${this.progressLabel}: `) +
           chalk.white(this.formatBytes(this.totalBytes)) +
           chalk.dim(" (") + diffStr + chalk.dim(" since last checkpoint)")
       );
@@ -256,7 +261,7 @@ export class Output {
         console.log(chalk.white(`Coverage: ${percent}% (${counts.documented}/${counts.total} items)`));
       }
 
-      console.log(chalk.white(`Understanding: ${this.formatBytes(this.totalBytes)}`));
+      console.log(chalk.white(`${this.progressLabel}: ${this.formatBytes(this.totalBytes)}`));
       console.log(chalk.white(`Iterations: ${this.currentIteration}`));
       console.log(chalk.white(`Time: ${elapsed}s`));
       console.log(

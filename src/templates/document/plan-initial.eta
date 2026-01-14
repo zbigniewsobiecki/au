@@ -1,0 +1,25 @@
+## Codebase Structure
+
+Below are the AU entries available for this codebase (summaries only - use AURead for full content).
+
+<au-summary>
+<%= it.auSummary %>
+</au-summary>
+
+## Instructions
+
+1. **Analyze the AU summaries** to identify:
+   - What the project does
+   - Key features and components
+   - Architecture patterns
+   - Cross-cutting concerns (auth, validation, error handling, etc.)
+
+2. **Plan documentation** using standard categories:
+   - `getting-started/` - Installation, quick start
+   - `guides/` - Feature how-to guides
+   - `reference/` - API, config, CLI docs
+   - `architecture/` - System design
+
+3. **Call DocPlan** with documents to generate. Each needs: path, title, description, order.
+
+Do NOT include sections in DocPlan - just list the documents.

@@ -1,9 +1,13 @@
 export { auUpdate } from "./au-update.js";
 export { auRead } from "./au-read.js";
 export { auList } from "./au-list.js";
+export { auListSummary } from "./au-list-summary.js";
 export { readFiles } from "./read-files.js";
 export { readDirs } from "./read-dirs.js";
 export { ripGrep } from "./rip-grep.js";
 export { finish } from "./finish.js";
 export { gitDiffList } from "./git-diff-list.js";
 export { gitDiff } from "./git-diff.js";
+export { docPlan, finishPlanning, finishDocs } from "./doc-gadgets.js";
+export type { DocumentOutline, DirectoryStructure, DocPlanStructure } from "./doc-gadgets.js";
+export { writeDoc, setTargetDir } from "./write-doc.js";
