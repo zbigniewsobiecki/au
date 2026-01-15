@@ -2,7 +2,7 @@ import { Flags } from "@oclif/core";
 import { AgentBuilder, LLMist, resolveModel } from "llmist";
 import type { ExecutionEvent } from "llmist";
 import { Output } from "./output.js";
-import { AU_SEPARATOR, hasNoExisting } from "./constants.js";
+import { AU_SEPARATOR } from "./constants.js";
 
 /**
  * Common flags shared by all AU commands.
@@ -189,16 +189,6 @@ export function setupIterationTracking(
   });
 
   return () => currentIteration;
-}
-
-/**
- * Counts AU file entries from an AU list result.
- */
-export function countAuEntries(content: string): number {
-  if (hasNoExisting(content)) {
-    return 0;
-  }
-  return content.split(AU_SEPARATOR).length - 1;
 }
 
 /**

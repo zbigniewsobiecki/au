@@ -16,9 +16,9 @@ import {
   endTextBlock,
   formatResultSize,
   setupIterationTracking,
-  countAuEntries,
 } from "../lib/command-utils.js";
 import { isFileReadingGadget } from "../lib/constants.js";
+import { findAuFiles } from "../lib/au-paths.js";
 
 export default class Ask extends Command {
   static description = "Ask questions about the codebase using AU understanding";
@@ -82,13 +82,13 @@ export default class Ask extends Command {
     let existingAu: string | null = null;
     if (!codeOnly) {
       out.info("Loading existing understanding...");
-      existingAu = await auList.execute({ path: "." }) as string;
+      const auFiles = await findAuFiles(".", true);
 
-      const existingCount = countAuEntries(existingAu);
-      if (existingCount === 0) {
+      if (auFiles.length === 0) {
         out.warn("No existing understanding found. Run 'au ingest' first for best results.");
       } else {
-        out.success(`Loaded ${existingCount} understanding entries`);
+        existingAu = await auList.execute({ path: "." }) as string;
+        out.success(`Loaded ${auFiles.length} understanding entries`);
       }
     }
 

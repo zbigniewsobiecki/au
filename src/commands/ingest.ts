@@ -23,7 +23,6 @@ import {
   formatResultSize,
   getPreloadBudget,
   setupIterationTracking,
-  countAuEntries,
   countAuBytes,
   parseIncludePatterns,
 } from "../lib/command-utils.js";
@@ -91,12 +90,12 @@ export default class Ingest extends Command {
     });
 
     out.info("Checking existing understanding...");
-    const existingAu = await auList.execute({ path: "." });
+    const existingAuFiles = await findAuFiles(".", true);
+    const existingCount = existingAuFiles.length;
 
-    // Count existing .au files and bytes
-    const existingContent = existingAu as string;
-    const existingCount = countAuEntries(existingContent);
     if (existingCount > 0) {
+      const existingAu = await auList.execute({ path: "." });
+      const existingContent = existingAu as string;
       const bytes = countAuBytes(existingContent);
       out.setInitialBytes(bytes);
       const bytesStr = bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}KB` : `${bytes}B`;

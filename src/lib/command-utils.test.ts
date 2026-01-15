@@ -1,42 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  countAuEntries,
   countAuLines,
   formatResultSize,
   createTextBlockState,
   parsePathList,
 } from "./command-utils.js";
-
-describe("countAuEntries", () => {
-  it("returns 0 for no existing content", () => {
-    expect(countAuEntries("No existing understanding files found")).toBe(0);
-  });
-
-  it("counts entries by separator occurrences", () => {
-    // Each entry has a header with "===" in it twice, so we count === occurrences - 1
-    // The format is "=== path.au ===" so each entry contributes 2 separators to split
-    const content = `=== src/index.ts.au ===
-layer: core
-=== src/lib/utils.ts.au ===
-layer: util
-=== src/commands/ingest.ts.au ===
-layer: command`;
-    // 3 entries means 6 "===" parts when split
-    expect(countAuEntries(content)).toBe(6);
-  });
-
-  it("returns 0 for empty content (split produces 1 part)", () => {
-    // Empty string split by "===" produces [""], which is length 1, so 1-1=0
-    expect(countAuEntries("")).toBe(0);
-  });
-
-  it("handles single entry (2 separators)", () => {
-    const content = `=== .au ===
-layer: repository`;
-    // One entry has 2 "===" markers, split produces 3 parts, so 3-1=2
-    expect(countAuEntries(content)).toBe(2);
-  });
-});
 
 describe("countAuLines", () => {
   it("counts lines excluding separators", () => {
