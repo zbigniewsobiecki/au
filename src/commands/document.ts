@@ -1,6 +1,7 @@
 import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
 import { rm, mkdir, access, readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import {
   auRead,
   auList,
@@ -35,6 +36,49 @@ interface DocPlanStructure {
   }>;
 }
 
+interface ProjectMetadata {
+  name: string;
+  description: string;
+  repository?: string;
+}
+
+async function readProjectMetadata(): Promise<ProjectMetadata> {
+  try {
+    const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+    let repository = pkg.repository;
+    if (typeof repository === "object" && repository?.url) {
+      repository = repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
+    }
+    return {
+      name: pkg.name || "Documentation",
+      description: pkg.description || "",
+      repository: typeof repository === "string" ? repository : undefined,
+    };
+  } catch {
+    return { name: "Documentation", description: "" };
+  }
+}
+
+function formatLabel(directory: string): string {
+  return directory
+    .replace(/\/$/, "")
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+const SECTION_DESCRIPTIONS: Record<string, string> = {
+  "getting-started": "Install and set up for local development",
+  guides: "Learn how to use features effectively",
+  architecture: "Understand system design and patterns",
+  reference: "API documentation and configuration options",
+};
+
+function getSectionDescription(directory: string): string {
+  const key = directory.replace(/\/$/, "");
+  return SECTION_DESCRIPTIONS[key] || `Documentation for ${formatLabel(directory)}`;
+}
+
 export default class Document extends Command {
   static description = "Generate markdown documentation from AU understanding";
 
@@ -44,6 +88,7 @@ export default class Document extends Command {
     "<%= config.bin %> document --target ./docs --dry-run",
     "<%= config.bin %> document --target ./docs --au-only",
     "<%= config.bin %> document --target ./docs --code-only",
+    "<%= config.bin %> document --target ./docs --format starlight",
   ];
 
   static flags = {
@@ -52,6 +97,12 @@ export default class Document extends Command {
       char: "t",
       description: "Target directory for generated documentation",
       required: true,
+    }),
+    format: Flags.string({
+      char: "f",
+      description: "Output format (markdown, starlight)",
+      default: "markdown",
+      options: ["markdown", "starlight"],
     }),
     "dry-run": Flags.boolean({
       description: "Show planned structure without writing files",
@@ -135,7 +186,7 @@ export default class Document extends Command {
 
     // Phase 1: Planning (or load cached plan)
     const targetDir = flags.target;
-    const planFile = `${targetDir}/.doc-plan.json`;
+    const planFile = `${targetDir}/.au/doc-plan.json`;
     const client = new LLMist();
     let documentPlan: DocPlanStructure | null = null;
 
@@ -250,7 +301,7 @@ export default class Document extends Command {
 
       // Save plan to cache
       try {
-        await mkdir(targetDir, { recursive: true });
+        await mkdir(`${targetDir}/.au`, { recursive: true });
         await writeFile(planFile, JSON.stringify(documentPlan, null, 2));
         out.info(`Saved plan to ${planFile}`);
       } catch (error) {
@@ -458,6 +509,33 @@ Call FinishDocs when all ${pendingDocs.length} documents are written.`;
         process.chdir(originalCwd);
         process.exit(1);
       }
+    }
+
+    // Generate index.mdx for Starlight format
+    if (flags.format === "starlight") {
+      out.info("Generating Starlight index.mdx...");
+      const metadata = await readProjectMetadata();
+
+      // Build section info from plan
+      const sections = documentPlan.structure.map((dir) => ({
+        label: formatLabel(dir.directory),
+        description: getSectionDescription(dir.directory),
+        directory: dir.directory.replace(/\/$/, ""),
+        firstDoc: dir.documents[0]?.path.split("/").pop()?.replace(".md", "") || "",
+      }));
+
+      const indexContent = render("document/index-mdx", {
+        projectName: metadata.name,
+        projectDescription: metadata.description,
+        repository: metadata.repository,
+        firstSection: sections[0]?.directory || "getting-started",
+        firstDoc: sections[0]?.firstDoc || "installation",
+        sections,
+      });
+
+      const indexPath = resolve(targetDir, "index.mdx");
+      await writeFile(indexPath, indexContent);
+      out.success("Generated index.mdx landing page");
     }
 
     process.chdir(originalCwd);

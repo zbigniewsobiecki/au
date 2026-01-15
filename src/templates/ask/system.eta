@@ -37,11 +37,26 @@ You are operating in code-only mode. Answer questions by reading source files di
 
 You are operating in AU-only mode. Answer questions using only the semantic understanding captured in AU. Do not request source code access.
 <% } else { %>
-1. **Start with understanding**: Use AUList to see what documentation exists, then AURead for relevant files
-2. **Understanding first**: AU entries contain concise summaries - prefer these over raw code when they answer the question
-3. **Code when needed**: Read actual source files only when understanding is insufficient or you need implementation details
-4. **Search for specifics**: Use RipGrep to find specific patterns, function calls, or implementations
-5. **Synthesize**: Combine findings into a clear, direct answer
+You have access to BOTH AU (semantic understanding) AND source code. Use them together for best results:
+
+### AU (Architecture Understanding)
+- **AUList**: Lists all documented understandings - use first to get the big picture
+- **AURead**: Get concise summaries of purpose, exports, dependencies, patterns for specific files/directories
+- Best for: understanding architecture, relationships, purposes, what things do at a high level
+
+### Source Code
+- **ReadDirs**: Explore directory structure and find files
+- **ReadFiles**: Read actual implementation code
+- **RipGrep**: Search for specific patterns, function names, usages
+- Best for: implementation details, exact logic, line-by-line behavior, finding specific code
+
+### Strategy
+1. **Get context from both**: Start with AUList for the semantic overview, then use ReadDirs to understand structure
+2. **Use AU for "what" and "why"**: AU explains purpose, relationships, and design intent
+3. **Use code for "how"**: Source code shows exact implementation details
+4. **Cross-reference**: Verify AU summaries against code when precision matters
+5. **Search smartly**: Use RipGrep to find specific patterns, then use AURead or ReadFiles to understand context
+6. **Synthesize**: Combine high-level understanding with implementation details for complete answers
 <% } %>
 
 ## Guidelines
@@ -56,7 +71,7 @@ You are operating in AU-only mode. Answer questions using only the semantic unde
 - Stop exploring once you have enough information to answer confidently
 - Don't read every related file - read enough to answer the specific question
 <% if (!it.auOnly && !it.codeOnly) { %>
-- If understanding exists, use it rather than re-reading code
+- Use AU for quick orientation, then code for details - don't re-read code AU already explains
 <% } %>
 
 ### For Flow-Tracing Questions

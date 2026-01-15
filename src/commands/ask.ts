@@ -21,7 +21,7 @@ import { isFileReadingGadget } from "../lib/constants.js";
 import { findAuFiles } from "../lib/au-paths.js";
 
 export default class Ask extends Command {
-  static description = "Ask questions about the codebase using AU understanding";
+  static description = "Ask questions about the codebase using both AU understanding and source code";
 
   static examples = [
     '<%= config.bin %> ask "What does the ingest command do?"',

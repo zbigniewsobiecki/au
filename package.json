@@ -32,7 +32,7 @@
     "eta": "^4.5.0",
     "fast-glob": "^3.3.3",
     "ignore": "^6.0.2",
-    "llmist": "^15.5.0",
+    "llmist": "^15.8.1",
     "micromatch": "^4.0.8",
     "yaml": "^2.8.2"
   },
@@ -44,5 +44,23 @@
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "llmist": {
+    "gadgets": "./dist/index.js",
+    "subagents": {
+      "AskAboutCodebase": {
+        "entryPoint": "./dist/index.js",
+        "export": "AU",
+        "description": "Query codebase understanding from AI-captured documentation",
+        "uses": ["AURead", "AUList", "ReportResult"],
+        "defaultModel": "sonnet",
+        "maxIterations": 10
+      }
+    },
+    "presets": {
+      "all": "*",
+      "subagent": ["AskAboutCodebase"],
+      "readonly": ["AURead", "AUList"]
+    }
   }
 }

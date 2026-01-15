@@ -93,9 +93,10 @@ export default class Ingest extends Command {
     const existingAuFiles = await findAuFiles(".", true);
     const existingCount = existingAuFiles.length;
 
+    let existingAu: string | null = null;
     if (existingCount > 0) {
-      const existingAu = await auList.execute({ path: "." });
-      const existingContent = existingAu as string;
+      existingAu = await auList.execute({ path: "." }) as string;
+      const existingContent = existingAu;
       const bytes = countAuBytes(existingContent);
       out.setInitialBytes(bytes);
       const bytesStr = bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}KB` : `${bytes}B`;
@@ -217,12 +218,14 @@ export default class Ingest extends Command {
       "gc_init_1"
     );
 
-    builder.withSyntheticGadgetCall(
-      "AUList",
-      { path: "." },
-      existingAu as string,
-      "gc_init_2"
-    );
+    if (existingAu) {
+      builder.withSyntheticGadgetCall(
+        "AUList",
+        { path: "." },
+        existingAu,
+        "gc_init_2"
+      );
+    }
 
     // Inject pre-loaded source files if any
     if (preloadedPaths.length > 0) {

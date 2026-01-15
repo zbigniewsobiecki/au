@@ -47,6 +47,41 @@ Look for AU entries with tags like `auth`, `validation`, `error-handling`, `cach
 
 Identify key user journeys or data flows that span multiple components. These deserve dedicated guides showing the complete flow from start to finish.
 
+## Diagram Strategy
+
+When planning architecture/ documents, identify opportunities for D2 diagrams:
+
+### Diagram Types to Consider
+
+1. **System Overview** (architecture/system-overview.md)
+   - All major components at a glance
+   - High-level data flow between them
+
+2. **Request Flow** (architecture/ or guides/)
+   - How a user action flows through the system
+   - Useful for debugging and onboarding
+
+3. **Data Model** (architecture/ or reference/)
+   - Key entities and their relationships
+   - Foreign key connections
+
+4. **Component Dependencies** (architecture/)
+   - Which modules depend on which
+   - Package/import relationships
+
+5. **State Diagrams** (guides/ or architecture/)
+   - For stateful entities (workflows, sessions, orders)
+   - Show transitions and triggers
+
+### Detection Hints
+
+Look for these patterns in AU to identify diagram opportunities:
+- Multiple services/packages → System Overview diagram
+- Event sourcing/CQRS → Event Flow diagram
+- Database schemas → Entity Relationship diagram
+- State machines/workflows → State Diagram
+- External integrations → Integration diagram
+
 ## Guidelines
 
 1. **Analyze AU content**: Understand what the codebase does and its key components

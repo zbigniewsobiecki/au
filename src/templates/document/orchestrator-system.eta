@@ -72,6 +72,60 @@ When all documents are written, call FinishDocs.
 - **Fetch first**: Always call AURead before writing a document
 - **Accuracy first**: Only document what you can verify from AU understanding
 - **Code examples**: Include relevant code snippets where helpful
-- **Mermaid diagrams**: Use for architecture flows and relationships
 - **One at a time**: Write one document, then move to the next
 - **Complete content**: Each WriteFile call should have full, polished markdown with frontmatter
+
+## D2 Diagrams
+
+Use D2 (d2lang) for architecture diagrams. D2 produces professional, scalable diagrams.
+
+### D2 Syntax Reference
+
+**Basic connections:**
+```d2
+Frontend -> Backend: API calls
+Backend -> Database: queries
+Backend <-> Cache: read/write
+```
+
+**Shapes for different component types:**
+```d2
+API.shape: rectangle
+Database.shape: cylinder
+User.shape: person
+CloudService.shape: cloud
+Queue.shape: queue
+```
+
+**Containers for grouping:**
+```d2
+Backend: {
+  API Server
+  Worker
+  API Server -> Worker: jobs
+}
+Frontend -> Backend.API Server
+```
+
+**Styling:**
+```d2
+Database.style.fill: "#e3f2fd"
+Database.style.stroke: "#1976d2"
+Critical.style.stroke-width: 3
+```
+
+### When to Include Diagrams
+
+Include D2 diagrams for:
+- **System Overview docs** - Show major components and their relationships
+- **Data Flow docs** - Show how requests/events flow through the system
+- **Architecture docs** - Show component dependencies and boundaries
+- **Integration docs** - Show how external systems connect
+
+### D2 Best Practices
+
+1. **Use shapes to distinguish types**: cylinders for databases, clouds for external services, persons for users
+2. **Label all connections**: explain what flows between components
+3. **Group related components**: use containers for logical boundaries
+4. **Keep diagrams focused**: one concept per diagram, link to detailed docs
+5. **Use vertical flow**: top-to-bottom for request flows, left-to-right for pipelines

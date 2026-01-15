@@ -1,0 +1,204 @@
+# D2 Diagram Pattern Examples
+
+Use these patterns as reference when generating D2 diagrams in documentation.
+
+## System Architecture Pattern
+
+```d2
+direction: down
+
+Frontend: {
+  shape: rectangle
+  Web App
+  Mobile App
+}
+
+Backend: {
+  shape: rectangle
+  API Gateway.shape: hexagon
+  Service A
+  Service B
+  API Gateway -> Service A
+  API Gateway -> Service B
+}
+
+Data: {
+  Database.shape: cylinder
+  Cache.shape: cylinder
+  Queue.shape: queue
+}
+
+Frontend -> Backend.API Gateway: HTTPS
+Backend.Service A -> Data.Database
+Backend.Service B -> Data.Cache
+Backend.Service A -> Data.Queue
+```
+
+## Event/Request Flow Pattern
+
+```d2
+direction: down
+
+User.shape: person
+User -> API: request
+
+API -> CommandQueue: enqueue
+CommandQueue.shape: queue
+
+CommandQueue -> Handler: process
+Handler -> EventStore: persist
+EventStore.shape: cylinder
+
+EventStore -> Projector: project
+Projector -> ReadModel: update
+ReadModel.shape: cylinder
+
+ReadModel -> API: query
+API -> User: response
+```
+
+## Entity Relationship Pattern
+
+```d2
+User.shape: sql_table
+User: {
+  id: uuid {constraint: primary_key}
+  email: string
+  created_at: timestamp
+}
+
+Post.shape: sql_table
+Post: {
+  id: uuid {constraint: primary_key}
+  user_id: uuid {constraint: foreign_key}
+  title: string
+  content: text
+}
+
+Comment.shape: sql_table
+Comment: {
+  id: uuid {constraint: primary_key}
+  post_id: uuid {constraint: foreign_key}
+  user_id: uuid {constraint: foreign_key}
+  body: text
+}
+
+User.id <-> Post.user_id: has many
+Post.id <-> Comment.post_id: has many
+User.id <-> Comment.user_id: authored by
+```
+
+## State Machine Pattern
+
+```d2
+direction: right
+
+new.style.fill: "#e3f2fd"
+running.style.fill: "#fff3e0"
+waiting.style.fill: "#fce4ec"
+completed.style.fill: "#e8f5e9"
+failed.style.fill: "#ffebee"
+cancelled.style.fill: "#f5f5f5"
+
+new -> running: start
+running -> waiting: pause
+waiting -> running: resume
+running -> completed: finish
+running -> failed: error
+waiting -> cancelled: cancel
+```
+
+## Monorepo/Package Dependencies Pattern
+
+```d2
+direction: down
+
+packages: {
+  frontend: {
+    shape: rectangle
+    React App
+  }
+  backend: {
+    shape: rectangle
+    API Server
+  }
+  shared: {
+    shape: hexagon
+    Types & Utils
+  }
+  sdk: {
+    shape: rectangle
+    Client SDK
+  }
+}
+
+packages.frontend -> packages.sdk: imports
+packages.frontend -> packages.shared: imports
+packages.backend -> packages.shared: imports
+packages.sdk -> packages.shared: imports
+```
+
+## External Integration Pattern
+
+```d2
+direction: right
+
+App.shape: rectangle
+App: {
+  API Server
+  Worker
+}
+
+External: {
+  Auth Provider.shape: cloud
+  Payment Gateway.shape: cloud
+  Email Service.shape: cloud
+  Storage.shape: cloud
+}
+
+App.API Server -> External.Auth Provider: OAuth
+App.API Server -> External.Payment Gateway: payments
+App.Worker -> External.Email Service: notifications
+App.API Server -> External.Storage: file uploads
+```
+
+## Deployment Architecture Pattern
+
+```d2
+direction: down
+
+Users.shape: person
+
+CDN.shape: cloud
+CDN: Cloudflare
+
+Compute: {
+  Frontend.shape: rectangle
+  Frontend: Static Site
+
+  Backend.shape: rectangle
+  Backend: API Server
+
+  Workers.shape: rectangle
+  Workers: Background Jobs
+}
+
+Data: {
+  Primary DB.shape: cylinder
+  Read Replica.shape: cylinder
+  Cache.shape: cylinder
+  Queue.shape: queue
+}
+
+Users -> CDN: HTTPS
+CDN -> Compute.Frontend: static assets
+CDN -> Compute.Backend: API requests
+
+Compute.Backend -> Data.Primary DB: writes
+Compute.Backend -> Data.Read Replica: reads
+Compute.Backend -> Data.Cache: caching
+Compute.Backend -> Data.Queue: jobs
+
+Compute.Workers -> Data.Queue: consume
+Compute.Workers -> Data.Primary DB: writes
+```
