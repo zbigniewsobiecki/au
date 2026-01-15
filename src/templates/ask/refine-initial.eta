@@ -1,0 +1,30 @@
+## Original Question
+<%= it.question %>
+
+## Proposed Implementation
+<%= it.proposal %>
+
+## Your Task
+
+Review this implementation proposal against the actual codebase patterns.
+
+### Step 1: Verify Patterns
+For each pattern used in the proposal, search the codebase to verify it's correct:
+
+- **Dependency injection**: How are services actually instantiated in this codebase? Search for container/factory patterns.
+- **Configuration**: How is the Environment type structured? Is config flat or nested?
+- **Error handling**: Are there error serialization utilities? How are errors logged?
+- **Optional services**: How does the codebase handle missing/optional dependencies?
+- **Imports and naming**: Do the import paths and naming conventions match?
+
+### Step 2: Search and Compare
+Use RipGrep and ReadFiles to find actual examples in the codebase. Don't assume the proposal is correct.
+
+### Step 3: Output Final Implementation
+After verifying, output ONLY the final implementation plan:
+- Do NOT include "corrections made" or "summary of changes" sections
+- Do NOT explain what you verified or changed
+- Output the implementation as if it were your original answer
+- Format it cleanly, ready to be used directly as an implementation plan
+
+IMPORTANT: Make your verification searches IN PARALLEL to be efficient.

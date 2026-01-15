@@ -7,7 +7,7 @@ import {
   readDirs,
   ripGrep,
 } from "../gadgets/index.js";
-import { ASK_SYSTEM_PROMPT, ASK_INITIAL_PROMPT } from "../lib/ask-system-prompt.js";
+import { ASK_SYSTEM_PROMPT, ASK_INITIAL_PROMPT, REFINE_SYSTEM_PROMPT, REFINE_INITIAL_PROMPT } from "../lib/ask-system-prompt.js";
 import { Output } from "../lib/output.js";
 import {
   commonFlags,
@@ -54,6 +54,10 @@ export default class Ask extends Command {
       description: "Use only source code, no AU files",
       default: false,
       exclusive: ["au-only"],
+    }),
+    "no-refine": Flags.boolean({
+      description: "Skip the refinement pass (faster but may miss patterns)",
+      default: false,
     }),
   };
 
@@ -102,42 +106,43 @@ export default class Ask extends Command {
       gadgets = [auRead, auList, readFiles, readDirs, ripGrep];
     }
 
-    let builder = new AgentBuilder(client)
-      .withModel(flags.model)
-      .withSystem(ASK_SYSTEM_PROMPT({ auOnly, codeOnly }))
-      .withMaxIterations(flags["max-iterations"])
-      .withGadgets(...gadgets);
+    // Helper to run an agent and collect its output
+    const runAgent = async (
+      systemPrompt: string,
+      initialPrompt: string,
+      label: string
+    ): Promise<string> => {
+      let agentBuilder = new AgentBuilder(client)
+        .withModel(flags.model)
+        .withSystem(systemPrompt)
+        .withMaxIterations(flags["max-iterations"])
+        .withGadgets(...gadgets);
 
-    builder = configureBuilder(builder, out, flags.rpm, flags.tpm);
+      agentBuilder = configureBuilder(agentBuilder, out, flags.rpm, flags.tpm);
 
-    // Inject existing understanding as context (unless code-only mode)
-    if (existingAu) {
-      builder.withSyntheticGadgetCall(
-        "AUList",
-        { path: "." },
-        existingAu,
-        "gc_init_1"
-      );
-    }
+      // Inject AU context
+      if (existingAu) {
+        agentBuilder.withSyntheticGadgetCall(
+          "AUList",
+          { path: "." },
+          existingAu,
+          "gc_init_1"
+        );
+      }
 
-    // Create and run the agent with the question
-    const agent = builder.ask(ASK_INITIAL_PROMPT(args.question));
+      const agent = agentBuilder.ask(initialPrompt);
 
-    out.info("Thinking...");
+      out.info(`${label}...`);
 
-    // Track text block state and iteration (only show in verbose mode)
-    const textState = createTextBlockState();
-    const tree = agent.getTree();
+      const textState = createTextBlockState();
+      const tree = agent.getTree();
 
-    if (flags.verbose) {
-      setupIterationTracking(tree, { out });
-    }
+      if (flags.verbose) {
+        setupIterationTracking(tree, { out });
+      }
 
-    // Collect the answer text
-    let answer = "";
+      let answer = "";
 
-    // Run and stream events from the agent
-    try {
       for await (const event of agent.run()) {
         if (event.type === "text") {
           answer += event.content;
@@ -171,15 +176,39 @@ export default class Ask extends Command {
         endTextBlock(textState, out);
       }
 
-      // In non-verbose mode, print the final answer
+      return answer;
+    };
+
+    const noRefine = flags["no-refine"];
+
+    try {
+      // Phase 1: Initial exploration and answer
+      const initialAnswer = await runAgent(
+        ASK_SYSTEM_PROMPT({ auOnly, codeOnly }),
+        ASK_INITIAL_PROMPT(args.question, { auOnly, codeOnly }),
+        "Thinking"
+      );
+
+      let finalAnswer = initialAnswer;
+
+      // Phase 2: Refinement pass (unless --no-refine or au-only/code-only modes)
+      if (!noRefine && !auOnly && !codeOnly) {
+        if (flags.verbose) {
+          out.info("\n--- Refinement Phase ---");
+        }
+        finalAnswer = await runAgent(
+          REFINE_SYSTEM_PROMPT(),
+          REFINE_INITIAL_PROMPT(args.question, initialAnswer),
+          "Refining"
+        );
+      }
+
+      // Output final answer
       if (!flags.verbose) {
         console.log();
-        console.log(answer.trim());
+        console.log(finalAnswer.trim());
       }
     } catch (error) {
-      if (flags.verbose) {
-        endTextBlock(textState, out);
-      }
       out.error(`Agent error: ${error instanceof Error ? error.message : error}`);
       process.chdir(originalCwd);
       process.exit(1);

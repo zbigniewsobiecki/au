@@ -1,3 +1,28 @@
-Answer this question about the codebase:
+<% if (!it.auOnly && !it.codeOnly) { %>
+Before answering, you must explore the codebase using ReadFiles or RipGrep. The AU summaries provided give you orientation, but you need to read actual source code to give a thorough, grounded answer.
 
-<%= it.question %>
+<% } %>
+Question: <%= it.question %>
+<% if (!it.auOnly && !it.codeOnly) { %>
+
+For implementation questions, you must first discover existing patterns:
+1. Search for similar existing services/features and read their full implementation
+2. Search for error handling patterns (how are errors caught and logged?)
+3. Search for logging patterns (how is the logger imported and used?)
+4. Search for configuration patterns (how do services get their config?)
+
+Only propose an implementation that mirrors these patterns exactly. Show code examples from the codebase that your proposal follows.
+
+IMPORTANT - Use a two-phase approach:
+
+PHASE 1 (first turn) - Understand via AU:
+- Use AURead on relevant directories/files to understand architecture, patterns, dependencies, and conventions
+- The AU summaries above give you the map - use AURead to go deeper on areas relevant to the question
+- Understand the codebase philosophy before writing any code
+
+PHASE 2 (second turn) - Verify via source code:
+- ReadFiles for implementation details of the most relevant files
+- RipGrep for specific patterns AU mentioned (error handling, logging, config)
+
+Batch calls within each phase - don't make sequential single tool calls.
+<% } %>
