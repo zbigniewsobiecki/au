@@ -19,6 +19,7 @@
   },
   "scripts": {
     "build": "tsc && cp -r src/templates dist/",
+    "prepare": "npm run build",
     "dev": "./bin/dev.js",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
