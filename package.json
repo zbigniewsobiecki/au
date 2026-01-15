@@ -4,6 +4,13 @@
   "description": "Agent Understanding - AI-powered codebase documentation",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "bin": {
     "au": "./bin/run.js"
   },
