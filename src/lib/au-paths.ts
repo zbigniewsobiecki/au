@@ -92,25 +92,33 @@ export function isSourceFileAuFile(path: string): boolean {
   return isAuFile(path) && !isDirectoryAuFile(path);
 }
 
+export interface FindAuFilesResult {
+  files: string[];
+  truncatedPaths: string[];
+}
+
 /**
  * Find all .au files in a directory.
  * Respects .gitignore patterns from the repository.
  * @param basePath The directory to search from
  * @param includeRoot Whether to include root .au file in the pattern
+ * @param maxDepth Maximum directory depth to search (undefined = unlimited)
  */
 export async function findAuFiles(
   basePath: string = ".",
-  includeRoot: boolean = true
-): Promise<string[]> {
+  includeRoot: boolean = true,
+  maxDepth?: number
+): Promise<FindAuFilesResult> {
   const patterns = includeRoot
     ? ["**/.au", "**/*.au", ".au"]
     : ["**/.au", "**/*.au"];
 
-  // Get all .au files
+  // Get all .au files up to maxDepth
   const files = await fg(patterns, {
     cwd: basePath,
     absolute: false,
     dot: true,
+    deep: maxDepth,
   });
 
   // Load .gitignore patterns
@@ -120,13 +128,11 @@ export async function findAuFiles(
     const gitignoreContent = await readFile(gitignorePath, "utf-8");
     ig.add(gitignoreContent);
   } catch {
-    // No .gitignore file, return all files
-    return files;
+    // No .gitignore file, continue without filtering
   }
 
   // Filter out files in gitignored directories
-  return files.filter((file) => {
-    // Check if file path or any parent directory is ignored
+  const filteredFiles = files.filter((file) => {
     const parts = file.split("/");
     for (let i = 1; i <= parts.length; i++) {
       const pathToCheck = parts.slice(0, i).join("/");
@@ -136,5 +142,49 @@ export async function findAuFiles(
     }
     return true;
   });
+
+  // Find truncated paths (directories with deeper .au files)
+  let truncatedPaths: string[] = [];
+  if (maxDepth !== undefined) {
+    // Search one level deeper to find what's beyond maxDepth
+    const deeperFiles = await fg(patterns, {
+      cwd: basePath,
+      absolute: false,
+      dot: true,
+      deep: maxDepth + 1,
+    });
+
+    // Filter by gitignore
+    const filteredDeeperFiles = deeperFiles.filter((file) => {
+      const parts = file.split("/");
+      for (let i = 1; i <= parts.length; i++) {
+        const pathToCheck = parts.slice(0, i).join("/");
+        if (ig.ignores(pathToCheck)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // Find files that are exactly at maxDepth+1
+    const filesAtCutoff = filteredDeeperFiles.filter((file) => {
+      const depth = file.split("/").length;
+      return depth > maxDepth;
+    });
+
+    // Extract unique parent directories at the cutoff depth
+    const truncatedSet = new Set<string>();
+    for (const file of filesAtCutoff) {
+      const parts = file.split("/");
+      // Get path up to maxDepth level
+      const truncatedPath = parts.slice(0, maxDepth).join("/");
+      if (truncatedPath) {
+        truncatedSet.add(truncatedPath);
+      }
+    }
+    truncatedPaths = Array.from(truncatedSet).sort();
+  }
+
+  return { files: filteredFiles, truncatedPaths };
 }
 

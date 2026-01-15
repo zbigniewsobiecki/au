@@ -66,7 +66,7 @@ export default class Ingest extends Command {
     // Purge existing .au files if requested
     if (flags.purge) {
       out.info("Purging existing .au files...");
-      const auFiles = await findAuFiles(".", true);
+      const { files: auFiles } = await findAuFiles(".", true);
       for (const auFile of auFiles) {
         try {
           await unlink(auFile);
@@ -90,7 +90,7 @@ export default class Ingest extends Command {
     });
 
     out.info("Checking existing understanding...");
-    const existingAuFiles = await findAuFiles(".", true);
+    const { files: existingAuFiles } = await findAuFiles(".", true);
     const existingCount = existingAuFiles.length;
 
     let existingAu: string | null = null;

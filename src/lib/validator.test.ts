@@ -40,6 +40,11 @@ import fg from "fast-glob";
 import { findAuFiles } from "./au-paths.js";
 import { readFile, readdir, stat } from "node:fs/promises";
 
+// Helper to mock findAuFiles with the expected return structure
+const mockFindAuFiles = (files: string[]) => {
+  vi.mocked(findAuFiles).mockResolvedValue({ files, truncatedPaths: [] });
+};
+
 describe("Validator", () => {
   let validator: Validator;
 
@@ -57,7 +62,7 @@ describe("Validator", () => {
         "src/lib/utils.ts",
         "src/commands/test.ts",
       ]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
 
       const result = await validator.validate(".");
 
@@ -71,7 +76,7 @@ describe("Validator", () => {
         "src/lib/utils.ts",
         "src/commands/test.ts",
       ]);
-      vi.mocked(findAuFiles).mockResolvedValue([
+      mockFindAuFiles([
         "src/lib/utils.ts.au",
         "src/commands/test.ts.au",
         "src/.au", // src has .au but src/lib and src/commands don't
@@ -85,7 +90,7 @@ describe("Validator", () => {
 
     it("returns empty array when all files are covered", async () => {
       vi.mocked(fg).mockResolvedValue(["src/index.ts"]);
-      vi.mocked(findAuFiles).mockResolvedValue([
+      mockFindAuFiles([
         "src/index.ts.au",
         "src/.au",
       ]);
@@ -97,7 +102,7 @@ describe("Validator", () => {
 
     it("handles empty project", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue([]);
+      mockFindAuFiles([]);
 
       const result = await validator.validate(".");
 
@@ -109,7 +114,7 @@ describe("Validator", () => {
         "src/index.ts",
         "src/empty.ts",
       ]);
-      vi.mocked(findAuFiles).mockResolvedValue([]);
+      mockFindAuFiles([]);
       // First file non-empty, second file empty
       vi.mocked(stat)
         .mockResolvedValueOnce({ size: 100 } as any)
@@ -126,7 +131,7 @@ describe("Validator", () => {
   describe("validateContents", () => {
     it("finds missing items in directory .au contents", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: service
 contents:
@@ -146,7 +151,7 @@ contents:
 
     it("finds extra items in directory .au contents", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: service
 contents:
@@ -165,7 +170,7 @@ contents:
 
     it("ignores .au files in actual directory contents", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: service
 contents:
@@ -185,7 +190,7 @@ contents:
 
     it("handles directory .au with no contents field", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: service
 understanding:
@@ -204,7 +209,7 @@ understanding:
 
     it("validates root .au file contents", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue([".au"]);
+      mockFindAuFiles([".au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: repository
 contents:
@@ -224,7 +229,7 @@ contents:
 
     it("returns no issues when contents matches exactly", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: service
 contents:
@@ -245,7 +250,7 @@ contents:
   describe("findOrphans", () => {
     it("finds .au files without corresponding source", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue([
+      mockFindAuFiles([
         "src/index.ts.au",
         "src/deleted.ts.au",
       ]);
@@ -261,7 +266,7 @@ contents:
 
     it("finds orphaned directory .au files", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/deleted/.au"]);
+      mockFindAuFiles(["src/deleted/.au"]);
       vi.mocked(stat).mockRejectedValue(new Error("ENOENT"));
 
       const result = await validator.validate(".");
@@ -271,7 +276,7 @@ contents:
 
     it("returns empty when all sources exist", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(stat).mockResolvedValue({} as any);
 
       const result = await validator.validate(".");
@@ -283,7 +288,7 @@ contents:
   describe("findStale", () => {
     it("detects stale .au file when hash mismatches", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(stat).mockResolvedValue({} as any);
 
       // .au file has old hash
@@ -302,7 +307,7 @@ layer: service
 
     it("ignores fresh .au file when hash matches", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(stat).mockResolvedValue({} as any);
 
       const sourceContent = "source content";
@@ -328,7 +333,7 @@ layer: service
 
     it("skips .au files without meta.analyzed_hash", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(stat).mockResolvedValue({} as any);
 
       vi.mocked(readFile).mockResolvedValueOnce(`
@@ -344,7 +349,7 @@ understanding:
 
     it("skips directory .au files", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au", ".au"]);
+      mockFindAuFiles(["src/.au", ".au"]);
       vi.mocked(stat).mockResolvedValue({} as any);
       vi.mocked(readdir).mockResolvedValue([]);
       vi.mocked(readFile).mockResolvedValue(`
@@ -363,7 +368,7 @@ contents: []
   describe("findStaleReferences", () => {
     it("detects stale depends_on reference", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(stat)
         .mockResolvedValueOnce({} as any) // src/index.ts exists (orphan check)
         .mockRejectedValueOnce(new Error("ENOENT")); // src/models/User.ts doesn't exist
@@ -386,7 +391,7 @@ relationships:
 
     it("detects stale collaborates_with reference", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(stat)
         .mockResolvedValueOnce({} as any) // src exists (orphan check)
         .mockRejectedValueOnce(new Error("ENOENT")); // src/deleted doesn't exist
@@ -410,7 +415,7 @@ understanding:
 
     it("ignores valid references", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(stat).mockResolvedValue({} as any); // All paths exist
 
       vi.mocked(readFile).mockResolvedValue(`
@@ -428,7 +433,7 @@ relationships:
 
     it("handles .au files with no references", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(stat).mockResolvedValue({} as any);
 
       vi.mocked(readFile).mockResolvedValue(`
@@ -444,7 +449,7 @@ understanding:
 
     it("detects multiple stale references in one file", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(stat)
         .mockResolvedValueOnce({} as any) // src/index.ts exists (orphan check)
         .mockRejectedValueOnce(new Error("ENOENT")) // first ref doesn't exist
@@ -467,7 +472,7 @@ relationships:
   describe("findIncomplete", () => {
     it("detects missing layer", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 understanding:
   summary: A test file
@@ -482,7 +487,7 @@ understanding:
 
     it("detects missing summary", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: core
 understanding:
@@ -497,7 +502,7 @@ understanding:
 
     it("detects missing purpose for source files", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: core
 understanding:
@@ -512,7 +517,7 @@ understanding:
 
     it("does not require purpose for directory .au files", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: core
 understanding:
@@ -532,7 +537,7 @@ contents:
 
     it("detects missing responsibility for directories", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: core
 understanding:
@@ -552,7 +557,7 @@ contents:
 
     it("detects missing contents for directories", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/.au"]);
+      mockFindAuFiles(["src/.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: core
 understanding:
@@ -569,7 +574,7 @@ understanding:
 
     it("detects missing architecture for root .au", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue([".au"]);
+      mockFindAuFiles([".au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: repository
 understanding:
@@ -587,7 +592,7 @@ contents: []
 
     it("detects missing key_logic for service files", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/services/auth.ts.au"]);
+      mockFindAuFiles(["src/services/auth.ts.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: service
 understanding:
@@ -603,7 +608,7 @@ understanding:
 
     it("detects missing key_logic for util files", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/utils/format.ts.au"]);
+      mockFindAuFiles(["src/utils/format.ts.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: util
 understanding:
@@ -619,7 +624,7 @@ understanding:
 
     it("handles empty YAML file", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(readFile).mockResolvedValue("");
 
       const result = await validator.validate(".");
@@ -630,7 +635,7 @@ understanding:
 
     it("returns no incomplete files when all have required fields", async () => {
       vi.mocked(fg).mockResolvedValue([]);
-      vi.mocked(findAuFiles).mockResolvedValue(["src/index.ts.au"]);
+      mockFindAuFiles(["src/index.ts.au"]);
       vi.mocked(readFile).mockResolvedValue(`
 layer: core
 understanding:

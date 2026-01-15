@@ -68,7 +68,8 @@ export class Validator {
     this.basePath = basePath;
     this.includePatterns = options.includePatterns;
     this.filter = await createFileFilter(basePath);
-    this.auFiles = await findAuFiles(basePath, true);
+    const { files } = await findAuFiles(basePath, true);
+    this.auFiles = files;
 
     // Scan source files once and cache
     await this.scanSourceFiles();

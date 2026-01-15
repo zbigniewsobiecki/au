@@ -86,7 +86,7 @@ export default class Ask extends Command {
     let existingAu: string | null = null;
     if (!codeOnly) {
       out.info("Loading existing understanding...");
-      const auFiles = await findAuFiles(".", true);
+      const { files: auFiles } = await findAuFiles(".", true);
 
       if (auFiles.length === 0) {
         out.warn("No existing understanding found. Run 'au ingest' first for best results.");

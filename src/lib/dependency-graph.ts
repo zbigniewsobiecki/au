@@ -24,7 +24,7 @@ export type DependencyGraph = Map<string, DependencyInfo>;
  * Returns a map of source file paths to their dependency information.
  */
 export async function buildDependencyGraph(basePath: string = "."): Promise<DependencyGraph> {
-  const auFiles = await findAuFiles(basePath, true);
+  const { files: auFiles } = await findAuFiles(basePath, true);
   const graph: DependencyGraph = new Map();
 
   // First pass: collect all depends_on relationships

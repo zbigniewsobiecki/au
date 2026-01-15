@@ -15,7 +15,7 @@ Use this for planning - use AURead to get full content.`,
     path: z.string().default(".").describe("Starting path to search from"),
   }),
   execute: async ({ path }) => {
-    const auFiles = await findAuFiles(path, true);
+    const { files: auFiles } = await findAuFiles(path, true);
     if (auFiles.length === 0) {
       return "No AU entries found.";
     }

@@ -29,7 +29,7 @@ export default class Dump extends Command {
   async run(): Promise<void> {
     const { flags } = await this.parse(Dump);
 
-    const auFiles = await findAuFiles(flags.path, true);
+    const { files: auFiles } = await findAuFiles(flags.path, true);
 
     if (auFiles.length === 0) {
       console.error("No .au files found.");
