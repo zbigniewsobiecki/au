@@ -20,6 +20,6 @@ Below are the AU entries available for this codebase (summaries only - use AURea
    - `reference/` - API, config, CLI docs
    - `architecture/` - System design
 
-3. **Call DocPlan** with documents to generate. Each needs: path, title, description, order.
+3. **Call DocPlan** with documents to generate. Each needs: path, title, description, order, sections.
 
-Do NOT include sections in DocPlan - just list the documents.
+Include a `sections` array for each document listing the main headings to cover (3-6 sections per doc).

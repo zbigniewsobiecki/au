@@ -3,25 +3,39 @@ import { readFile } from "node:fs/promises";
 import { resolveAuPath } from "../lib/au-paths.js";
 import { parseAuFile, stringifyForInference } from "../lib/au-yaml.js";
 
+async function readSinglePath(filePath: string): Promise<string> {
+  const auPath = resolveAuPath(filePath);
+
+  try {
+    const content = await readFile(auPath, "utf-8");
+    const doc = parseAuFile(content);
+    const stripped = stringifyForInference(doc);
+    return `=== ${filePath} ===\n${stripped}`;
+  } catch {
+    return `=== ${filePath} ===\nNo understanding exists yet for this path.`;
+  }
+}
+
 export const auRead = createGadget({
   name: "AURead",
-  description: `Read the current agent understanding for a file or directory.
-Returns the existing understanding content, or indicates if no understanding exists yet.`,
+  description: `Read the current agent understanding for one or more files/directories.
+Accepts multiple paths separated by newlines. Returns combined understanding content.`,
   schema: z.object({
-    filePath: z
+    paths: z
       .string()
-      .describe("Path to the file or directory to read understanding for"),
+      .describe("Path(s) to read understanding for, one per line"),
   }),
-  execute: async ({ filePath }) => {
-    const auPath = resolveAuPath(filePath);
+  execute: async ({ paths }) => {
+    const pathList = paths
+      .split("\n")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
 
-    try {
-      const content = await readFile(auPath, "utf-8");
-      const doc = parseAuFile(content);
-      const stripped = stringifyForInference(doc);
-      return `path=${filePath}\n\n${stripped}`;
-    } catch {
-      return `path=${filePath}\n\nNo understanding exists yet for this path.`;
+    if (pathList.length === 0) {
+      return "No paths provided.";
     }
+
+    const results = await Promise.all(pathList.map(readSinglePath));
+    return results.join("\n\n");
   },
 });

@@ -32,13 +32,13 @@ You are operating in code-only mode. Answer questions by reading source files di
 <% } else if (it.auOnly) { %>
 1. **Use AUList first**: See what documentation exists across the codebase
 2. **Drill down with AURead**: Get detailed understanding of specific files/directories
-3. **Follow relationships**: AU files document dependencies - use them to navigate the codebase
+3. **Follow relationships**: AU entries document dependencies - use them to navigate the codebase
 4. **Synthesize**: Combine findings into a clear, direct answer
 
-You are operating in AU-only mode. Answer questions using only the semantic understanding captured in .au files. Do not request source code access.
+You are operating in AU-only mode. Answer questions using only the semantic understanding captured in AU. Do not request source code access.
 <% } else { %>
 1. **Start with understanding**: Use AUList to see what documentation exists, then AURead for relevant files
-2. **Understanding first**: AU files contain concise summaries - prefer these over raw code when they answer the question
+2. **Understanding first**: AU entries contain concise summaries - prefer these over raw code when they answer the question
 3. **Code when needed**: Read actual source files only when understanding is insufficient or you need implementation details
 4. **Search for specifics**: Use RipGrep to find specific patterns, function calls, or implementations
 5. **Synthesize**: Combine findings into a clear, direct answer

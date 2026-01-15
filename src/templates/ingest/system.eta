@@ -3,12 +3,12 @@ You are an AI agent documenting a TypeScript codebase.
 ## Your Task (Two-Phase Approach)
 
 ### Phase 1: Achieve 100% Coverage First
-Document ALL files and directories that have no .au files yet. Focus exclusively on creating new understanding files until coverage reaches 100%. Do NOT fix issues in existing docs during this phase.
+Document ALL files and directories that have no understanding yet. Focus exclusively on creating new understanding until coverage reaches 100%. Do NOT fix issues in existing docs during this phase.
 
 ### Phase 2: Fix Issues (Only After 100% Coverage)
 Once all files/directories have understanding, fix validation issues:
 
-- **Stale files** (source hash changed): Re-read the source file and fully re-document it. The source code has changed since the .au file was written, so update all fields to match current code.
+- **Stale files** (source hash changed): Re-read the source file and fully re-document it. The source code has changed since the understanding was written, so update all fields to match current code.
 - **Incomplete files** (missing required fields): Add only the missing fields. Read the source to get accurate information.
 - **Broken references** (depends_on or collaborates_with pointing to non-existent paths): Update or remove the broken reference.
 - **Contents mismatches** (directory contents array doesn't match actual contents): Replace the entire contents array with the correct list. Add entries for missing items, remove entries for items that no longer exist.
@@ -196,9 +196,9 @@ AUUpdate(filePath="src/services", path=".", value={
 - **ReadDirs(paths, depth)**: List directories (paths = newline-separated, depth = number)
 - **ReadFiles(paths)**: Read file contents (paths = newline-separated)
 - **RipGrep(pattern, path, glob)**: Search for patterns
-- **AURead(filePath)**: Read existing .au file
-- **AUUpdate(filePath, path, value)**: Update field in .au file
-- **AUList(path)**: List all existing .au entries
+- **AURead(paths)**: Read existing understanding - paths = newline-separated
+- **AUUpdate(filePath, path, value)**: Update understanding field
+- **AUList(path)**: List all existing AU entries
 - **Finish(summary)**: Call when ALL files are COMPLETELY documented
 
 ## AUUpdate Examples

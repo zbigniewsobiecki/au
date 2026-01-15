@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import { rm, mkdir } from "node:fs/promises";
+import { rm, mkdir, access, readFile, writeFile } from "node:fs/promises";
 import {
   auRead,
   auList,
@@ -30,6 +30,7 @@ interface DocPlanStructure {
       title: string;
       description: string;
       order: number;
+      sections?: string[];
     }>;
   }>;
 }
@@ -57,7 +58,11 @@ export default class Document extends Command {
       default: false,
     }),
     "skip-clear": Flags.boolean({
-      description: "Skip clearing target directory",
+      description: "Skip clearing target directory (default: resume mode)",
+      default: true,
+    }),
+    replan: Flags.boolean({
+      description: "Force re-planning even if cached plan exists",
       default: false,
     }),
     "plan-iterations": Flags.integer({
@@ -128,108 +133,136 @@ export default class Document extends Command {
       out.info("Code-only mode: skipping AU files");
     }
 
-    // Phase 1: Planning
-    out.info("Planning documentation structure...");
+    // Phase 1: Planning (or load cached plan)
+    const targetDir = flags.target;
+    const planFile = `${targetDir}/.doc-plan.json`;
     const client = new LLMist();
-
-    const planSystemPrompt = render("document/plan-system", {});
-    const planInitialPrompt = render("document/plan-initial", { auSummary: auSummary || "" });
-
-    // Build gadgets based on mode
-    let planGadgets;
-    if (auOnly) {
-      planGadgets = [docPlan, finishPlanning, auRead, auList];
-    } else if (codeOnly) {
-      planGadgets = [docPlan, finishPlanning, readFiles, readDirs, ripGrep];
-    } else {
-      planGadgets = [docPlan, finishPlanning, auRead, auList, readFiles, readDirs, ripGrep];
-    }
-
-    let planBuilder = new AgentBuilder(client)
-      .withModel(flags.model)
-      .withSystem(planSystemPrompt)
-      .withMaxIterations(flags["plan-iterations"])
-      .withGadgetOutputLimitPercent(30)
-      .withGadgets(...planGadgets);
-
-    planBuilder = configureBuilder(planBuilder, out, flags.rpm, flags.tpm);
-
-    // Inject AU summary as synthetic call (only if available)
-    if (auSummary) {
-      planBuilder.withSyntheticGadgetCall(
-        "AUListSummary",
-        { path: "." },
-        auSummary,
-        "gc_init_1"
-      );
-    }
-
-    const planAgent = planBuilder.ask(planInitialPrompt);
-
-    // Track text block state for planning
-    const planTextState = createTextBlockState();
-
-    // Subscribe to planning agent for iteration tracking
-    const planTree = planAgent.getTree();
-    setupIterationTracking(planTree, {
-      out,
-      showCumulativeCostEvery: 5,
-      onIterationChange: () => endTextBlock(planTextState, out),
-    });
-
-    // Run planning agent and capture DocPlan
     let documentPlan: DocPlanStructure | null = null;
 
-    try {
-      for await (const event of planAgent.run()) {
-        if (event.type === "text") {
-          planTextState.inTextBlock = true;
-          out.thinkingChunk(event.content);
-        } else if (event.type === "gadget_call") {
-          endTextBlock(planTextState, out);
-          const params = event.call.parameters as Record<string, unknown>;
-          out.gadgetCall(event.call.gadgetName, params);
-        } else if (event.type === "gadget_result") {
-          const result = event.result;
+    // Try to load cached plan (unless --replan)
+    if (!flags.replan) {
+      try {
+        const cached = await readFile(planFile, "utf-8");
+        documentPlan = JSON.parse(cached);
+        const cachedDocs = documentPlan!.structure.reduce((sum, dir) => sum + dir.documents.length, 0);
+        out.success(`Loaded cached plan: ${cachedDocs} documents`);
+      } catch {
+        // No cached plan, will run planning
+      }
+    }
 
-          if (result.error) {
-            out.gadgetError(result.gadgetName, result.error);
-          } else {
-            out.gadgetResult(result.gadgetName);
+    // Run planning if no cached plan
+    if (!documentPlan) {
+      out.info("Planning documentation structure...");
 
-            // Capture DocPlan result
-            if (result.gadgetName === "DocPlan" && result.result) {
-              // Extract JSON from the result (it's wrapped in <plan> tags)
-              const planMatch = result.result.match(/<plan>\s*([\s\S]*?)\s*<\/plan>/);
-              if (planMatch) {
-                try {
-                  documentPlan = JSON.parse(planMatch[1]);
-                } catch {
-                  out.warn("Failed to parse documentation plan");
+      const planSystemPrompt = render("document/plan-system", {});
+      const planInitialPrompt = render("document/plan-initial", { auSummary: auSummary || "" });
+
+      // Build gadgets based on mode
+      let planGadgets;
+      if (auOnly) {
+        planGadgets = [docPlan, finishPlanning, auRead, auList];
+      } else if (codeOnly) {
+        planGadgets = [docPlan, finishPlanning, readFiles, readDirs, ripGrep];
+      } else {
+        planGadgets = [docPlan, finishPlanning, auRead, auList, readFiles, readDirs, ripGrep];
+      }
+
+      let planBuilder = new AgentBuilder(client)
+        .withModel(flags.model)
+        .withSystem(planSystemPrompt)
+        .withMaxIterations(flags["plan-iterations"])
+        .withGadgetOutputLimitPercent(30)
+        .withGadgets(...planGadgets);
+
+      planBuilder = configureBuilder(planBuilder, out, flags.rpm, flags.tpm);
+
+      // Inject AU summary as synthetic call (only if available)
+      if (auSummary) {
+        planBuilder.withSyntheticGadgetCall(
+          "AUListSummary",
+          { path: "." },
+          auSummary,
+          "gc_init_1"
+        );
+      }
+
+      const planAgent = planBuilder.ask(planInitialPrompt);
+
+      // Track text block state for planning
+      const planTextState = createTextBlockState();
+
+      // Subscribe to planning agent for iteration tracking
+      const planTree = planAgent.getTree();
+      setupIterationTracking(planTree, {
+        out,
+        showCumulativeCostEvery: 5,
+        onIterationChange: () => endTextBlock(planTextState, out),
+      });
+
+      // Run planning agent and capture DocPlan
+      try {
+        for await (const event of planAgent.run()) {
+          if (event.type === "text") {
+            planTextState.inTextBlock = true;
+            out.thinkingChunk(event.content);
+          } else if (event.type === "gadget_call") {
+            endTextBlock(planTextState, out);
+            const params = event.call.parameters as Record<string, unknown>;
+            out.gadgetCall(event.call.gadgetName, params);
+          } else if (event.type === "gadget_result") {
+            const result = event.result;
+
+            if (result.error) {
+              out.gadgetError(result.gadgetName, result.error);
+            } else {
+              out.gadgetResult(result.gadgetName);
+
+              // Capture DocPlan result
+              if (result.gadgetName === "DocPlan" && result.result) {
+                // Extract JSON from the result (it's wrapped in <plan> tags)
+                const planMatch = result.result.match(/<plan>\s*([\s\S]*?)\s*<\/plan>/);
+                if (planMatch) {
+                  try {
+                    documentPlan = JSON.parse(planMatch[1]);
+                  } catch {
+                    out.warn("Failed to parse documentation plan");
+                  }
                 }
               }
             }
           }
         }
+
+        endTextBlock(planTextState, out);
+      } catch (error) {
+        endTextBlock(planTextState, out);
+        out.error(`Planning failed: ${error instanceof Error ? error.message : error}`);
+        process.chdir(originalCwd);
+        process.exit(1);
       }
 
-      endTextBlock(planTextState, out);
-    } catch (error) {
-      endTextBlock(planTextState, out);
-      out.error(`Planning failed: ${error instanceof Error ? error.message : error}`);
-      process.chdir(originalCwd);
-      process.exit(1);
+      if (!documentPlan) {
+        out.error("No documentation plan was created. Check verbose output for details.");
+        process.chdir(originalCwd);
+        process.exit(1);
+      }
+
+      // Save plan to cache
+      try {
+        await mkdir(targetDir, { recursive: true });
+        await writeFile(planFile, JSON.stringify(documentPlan, null, 2));
+        out.info(`Saved plan to ${planFile}`);
+      } catch (error) {
+        out.warn(`Could not cache plan: ${error instanceof Error ? error.message : error}`);
+      }
+
+      const newPlanDocs = documentPlan.structure.reduce((sum, dir) => sum + dir.documents.length, 0);
+      out.success(`Plan created: ${newPlanDocs} documents in ${documentPlan.structure.length} directories`);
     }
 
-    if (!documentPlan) {
-      out.error("No documentation plan was created. Check verbose output for details.");
-      process.chdir(originalCwd);
-      process.exit(1);
-    }
-
-    // Display plan summary
+    // Calculate total docs for progress tracking
     const totalDocs = documentPlan.structure.reduce((sum, dir) => sum + dir.documents.length, 0);
-    out.success(`Plan created: ${totalDocs} documents in ${documentPlan.structure.length} directories`);
 
     console.log();
     out.header("Documentation Plan:");
@@ -248,8 +281,7 @@ export default class Document extends Command {
       return;
     }
 
-    // Clear target directory
-    const targetDir = flags.target;
+    // Clear target directory (if requested)
     if (!flags["skip-clear"]) {
       out.warn(`Clearing target directory: ${targetDir}`);
       try {
@@ -284,26 +316,58 @@ export default class Document extends Command {
       }))
     );
 
+    // Check which documents already exist (for resume mode)
+    const existingDocs = new Set<string>();
+    for (const doc of allDocs) {
+      const fullPath = `${targetDir}/${doc.path}`;
+      try {
+        await access(fullPath);
+        existingDocs.add(doc.path);
+      } catch {
+        // File doesn't exist, needs to be written
+      }
+    }
+
+    // Filter to only pending documents
+    const pendingDocs = allDocs.filter((d) => !existingDocs.has(d.path));
+
+    if (pendingDocs.length === 0) {
+      out.success("All documents already exist. Nothing to generate.");
+      process.chdir(originalCwd);
+      return;
+    }
+
+    if (existingDocs.size > 0) {
+      out.info(`Resuming: ${existingDocs.size} docs exist, ${pendingDocs.length} remaining`);
+    }
+
     // Build research instruction based on mode
     let researchInstruction: string;
     if (auOnly) {
-      researchInstruction = "Use AURead to gather relevant information about the topic";
+      researchInstruction = "ONE AURead call with 2-4 relevant paths";
     } else if (codeOnly) {
-      researchInstruction = "Use ReadFiles/ReadDirs/RipGrep to gather relevant source code";
+      researchInstruction = "ReadFiles/ReadDirs/RipGrep calls to gather source code";
     } else {
-      researchInstruction = "Use AURead and/or ReadFiles/RipGrep to gather relevant information";
+      researchInstruction = "ONE AURead call (with multiple paths) or ReadFiles as needed";
     }
 
     const orchestratorInitialPrompt = `Generate documentation based on this plan.
 
-Documents to write (${allDocs.length} total):
-${allDocs.map((d) => `- ${d.path}: ${d.title} - ${d.description} (order: ${d.order})`).join("\n")}
+## Available AU Entries
+The AUListSummary above shows all paths with understanding. ONLY use paths from that list.
 
-For each document:
-1. ${researchInstruction}
-2. Call WriteFile with the path and complete markdown content (including frontmatter)
+## Documents to write (${pendingDocs.length} remaining):
+${pendingDocs.map((d) => `- ${d.path}: ${d.title}
+  Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`).join("\n")}
 
-Work through ALL ${allDocs.length} documents. Call FinishDocs when done.`;
+## Workflow (STRICT)
+For EACH document:
+1. ${researchInstruction} - ONLY use paths from AUListSummary above
+2. WriteFile with complete markdown content following the sections outline
+3. Move to next document
+
+Do ONE document at a time: Read -> Write -> Next.
+Call FinishDocs when all ${pendingDocs.length} documents are written.`;
 
     // Build gadgets based on mode
     let genGadgets;
@@ -324,7 +388,15 @@ Work through ALL ${allDocs.length} documents. Call FinishDocs when done.`;
 
     genBuilder = configureBuilder(genBuilder, out, flags.rpm, flags.tpm);
 
-    // No pre-loading - orchestrator uses AURead on-demand for each document
+    // Inject AU summary so model knows what paths exist
+    if (auSummary) {
+      genBuilder.withSyntheticGadgetCall(
+        "AUListSummary",
+        { path: "." },
+        auSummary,
+        "gc_init_summary"
+      );
+    }
 
     const genAgent = genBuilder.ask(orchestratorInitialPrompt);
 

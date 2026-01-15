@@ -9,6 +9,7 @@ const documentSchema = z.object({
   title: z.string().default("Untitled").describe("Document title"),
   description: z.string().default("").describe("Brief description (1 sentence)"),
   order: z.number().int().default(1).describe("Order within directory (1, 2, 3...)"),
+  sections: z.array(z.string()).default([]).describe("Section headings to include in this document"),
 });
 
 /**
@@ -26,15 +27,16 @@ Use these path prefixes:
 - reference/ - API, CLI, configuration docs
 - architecture/ - System design, patterns
 
-Each document needs: path, title, description, order. Directory is inferred from path prefix.`,
+Each document needs: path, title, description, order, sections. Directory is inferred from path prefix.
+The sections array lists the main headings to include in the document.`,
   examples: [
     {
       comment: "Small project with basic docs",
       params: {
         documents: [
-          { path: "getting-started/installation.md", title: "Installation", description: "Setup guide", order: 1 },
-          { path: "guides/usage.md", title: "Usage Guide", description: "How to use the tool", order: 1 },
-          { path: "reference/api.md", title: "API Reference", description: "API documentation", order: 1 },
+          { path: "getting-started/installation.md", title: "Installation", description: "Setup guide", order: 1, sections: ["Prerequisites", "Installation", "Verification"] },
+          { path: "guides/usage.md", title: "Usage Guide", description: "How to use the tool", order: 1, sections: ["Overview", "Basic Usage", "Advanced Features"] },
+          { path: "reference/api.md", title: "API Reference", description: "API documentation", order: 1, sections: ["Endpoints", "Authentication", "Error Codes"] },
         ],
       },
     },
@@ -42,13 +44,13 @@ Each document needs: path, title, description, order. Directory is inferred from
       comment: "Full documentation structure",
       params: {
         documents: [
-          { path: "getting-started/installation.md", title: "Installation", description: "Setup guide", order: 1 },
-          { path: "getting-started/quick-start.md", title: "Quick Start", description: "First steps", order: 2 },
-          { path: "guides/authentication.md", title: "Authentication", description: "Auth guide", order: 1 },
-          { path: "guides/api-usage.md", title: "API Usage", description: "Using the API", order: 2 },
-          { path: "reference/api.md", title: "API Reference", description: "API docs", order: 1 },
-          { path: "reference/config.md", title: "Configuration", description: "Config options", order: 2 },
-          { path: "architecture/overview.md", title: "Overview", description: "System design", order: 1 },
+          { path: "getting-started/installation.md", title: "Installation", description: "Setup guide", order: 1, sections: ["Prerequisites", "Installation Steps", "Verification"] },
+          { path: "getting-started/quick-start.md", title: "Quick Start", description: "First steps", order: 2, sections: ["Overview", "Your First Project", "Next Steps"] },
+          { path: "guides/authentication.md", title: "Authentication", description: "Auth guide", order: 1, sections: ["Overview", "Login Flow", "Session Management", "Security"] },
+          { path: "guides/api-usage.md", title: "API Usage", description: "Using the API", order: 2, sections: ["Making Requests", "Handling Responses", "Error Handling"] },
+          { path: "reference/api.md", title: "API Reference", description: "API docs", order: 1, sections: ["Endpoints", "Parameters", "Response Formats"] },
+          { path: "reference/config.md", title: "Configuration", description: "Config options", order: 2, sections: ["Environment Variables", "Config File", "Defaults"] },
+          { path: "architecture/overview.md", title: "Overview", description: "System design", order: 1, sections: ["High-Level Architecture", "Components", "Data Flow"] },
         ],
       },
     },
