@@ -5,7 +5,6 @@ import { resolve } from "node:path";
 import {
   auRead,
   auList,
-  auListSummary,
   writeDoc,
   setTargetDir,
   readFiles,
@@ -160,7 +159,7 @@ export default class Document extends Command {
     if (!codeOnly) {
       out.info("Loading AU understanding...");
       try {
-        auSummary = (await auListSummary.execute({ path: "." })) as string;
+        auSummary = (await auList.execute({ path: "." })) as string;
       } catch (error) {
         out.error(`Failed to load AU understanding: ${error instanceof Error ? error.message : error}`);
         process.chdir(originalCwd);

@@ -1,12 +1,12 @@
 import { createGadget, z } from "llmist";
 import { readFile } from "node:fs/promises";
 import { getSourceFromAuPath, findAuFiles } from "../lib/au-paths.js";
-import { parseAuFile, stringifyForInference } from "../lib/au-yaml.js";
+import { parseAuFile } from "../lib/au-yaml.js";
 
 export const auList = createGadget({
   name: "AUList",
-  description: `List existing agent understanding entries with their contents.
-This shows what understandings already exist so you can refine them.`,
+  description: `List AU entries with paths, layers, and summaries.
+Use this to see what exists - use AURead to get full content.`,
   schema: z.object({
     path: z.string().default(".").describe("Starting path to search from"),
     maxDepth: z
@@ -17,7 +17,6 @@ This shows what understandings already exist so you can refine them.`,
       .describe("Maximum directory depth to search"),
   }),
   execute: async ({ path, maxDepth }) => {
-    // Find all .au files up to maxDepth
     const { files: auFiles, truncatedPaths } = await findAuFiles(
       path,
       true,
@@ -25,7 +24,7 @@ This shows what understandings already exist so you can refine them.`,
     );
 
     if (auFiles.length === 0 && truncatedPaths.length === 0) {
-      return "No existing understanding entries found.";
+      return "No AU entries found.";
     }
 
     const results: string[] = [];
@@ -34,20 +33,34 @@ This shows what understandings already exist so you can refine them.`,
         const fullPath = path === "." ? auFile : `${path}/${auFile}`;
         const content = await readFile(fullPath, "utf-8");
         const doc = parseAuFile(content);
-        const stripped = stringifyForInference(doc);
         const sourcePath = getSourceFromAuPath(auFile);
-        results.push(`=== ${sourcePath} ===\n${stripped}`);
-      } catch (error) {
+
+        const lines: string[] = [`=== ${sourcePath} ===`];
+
+        if (doc.layer) {
+          lines.push(`layer: ${doc.layer}`);
+        }
+
+        const understanding = doc.understanding as
+          | { summary?: string }
+          | undefined;
+        const summary = understanding?.summary;
+        if (summary) {
+          const truncated =
+            summary.length > 120 ? summary.slice(0, 120) + "..." : summary;
+          lines.push(`summary: ${truncated}`);
+        }
+
+        results.push(lines.join("\n"));
+      } catch {
         const sourcePath = getSourceFromAuPath(auFile);
-        results.push(`=== ${sourcePath} ===\nError reading understanding`);
+        results.push(`=== ${sourcePath} ===\n(error reading)`);
       }
     }
 
-    // Add truncation notice if there are deeper levels
     if (truncatedPaths.length > 0) {
-      const pathsList = truncatedPaths.map((p) => `  ${p}/...`).join("\n");
       results.push(
-        `--- Deeper levels exist (use path parameter to explore) ---\n${pathsList}`
+        `--- Deeper levels (use path param) ---\n${truncatedPaths.map((p) => p + "/...").join("\n")}`
       );
     }
 
