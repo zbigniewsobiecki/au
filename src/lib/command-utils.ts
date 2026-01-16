@@ -1,8 +1,49 @@
 import { Flags } from "@oclif/core";
 import { AgentBuilder, LLMist, resolveModel } from "llmist";
-import type { ExecutionEvent } from "llmist";
+import type { ExecutionEvent, AbstractGadget } from "llmist";
+import { stat, readFile } from "node:fs/promises";
 import { Output } from "./output.js";
 import { AU_SEPARATOR } from "./constants.js";
+import {
+  auRead,
+  auList,
+  readFiles,
+  readDirs,
+  ripGrep,
+} from "../gadgets/index.js";
+
+/**
+ * Changes to a working directory if specified and returns a restore function.
+ * Handles error cases by logging and exiting.
+ */
+export function withWorkingDirectory(
+  path: string | undefined,
+  out: Output
+): { originalCwd: string; restore: () => void } {
+  const originalCwd = process.cwd();
+  if (path && path !== ".") {
+    try {
+      process.chdir(path);
+      out.info(`Working in: ${path}`);
+    } catch {
+      out.error(`Cannot access directory: ${path}`);
+      process.exit(1);
+    }
+  }
+  return { originalCwd, restore: () => process.chdir(originalCwd) };
+}
+
+/**
+ * Selects the appropriate read gadgets based on the mode.
+ * - auOnly: Only AU reading gadgets
+ * - codeOnly: Only source code reading gadgets
+ * - default: Both AU and source code gadgets
+ */
+export function selectReadGadgets(mode: { auOnly?: boolean; codeOnly?: boolean }): AbstractGadget[] {
+  if (mode.auOnly) return [auRead, auList];
+  if (mode.codeOnly) return [readFiles, readDirs, ripGrep];
+  return [auRead, auList, readFiles, readDirs, ripGrep];
+}
 
 /**
  * Common flags shared by all AU commands.
@@ -262,5 +303,55 @@ export function getPreloadBudget(client: LLMist, modelName: string): PreloadBudg
   return {
     maxTotalBytes: charBudget,
     maxPerFileBytes: maxPerFile,
+  };
+}
+
+/**
+ * Result of preloading files into context.
+ */
+export interface PreloadResult {
+  /** Combined content of all preloaded files */
+  content: string;
+  /** Paths of files that were successfully preloaded */
+  paths: string[];
+  /** Total bytes of preloaded content */
+  totalBytes: number;
+}
+
+/**
+ * Preloads files into context within the given budget.
+ * Formats each file as `=== ${path} ===\n${content}` and joins with double newlines.
+ */
+export async function preloadFiles(
+  files: string[],
+  budget: PreloadBudget
+): Promise<PreloadResult> {
+  const preloadedFiles: string[] = [];
+  const preloadedPaths: string[] = [];
+  let totalBytes = 0;
+
+  for (const filePath of files) {
+    try {
+      const fileStat = await stat(filePath);
+      // Check per-file limit and total budget before reading
+      if (
+        fileStat.size > 0 &&
+        fileStat.size <= budget.maxPerFileBytes &&
+        totalBytes + fileStat.size <= budget.maxTotalBytes
+      ) {
+        const content = await readFile(filePath, "utf-8");
+        preloadedFiles.push(`=== ${filePath} ===\n${content}`);
+        preloadedPaths.push(filePath);
+        totalBytes += content.length;
+      }
+    } catch {
+      // Skip files that can't be read
+    }
+  }
+
+  return {
+    content: preloadedFiles.join("\n\n"),
+    paths: preloadedPaths,
+    totalBytes,
   };
 }

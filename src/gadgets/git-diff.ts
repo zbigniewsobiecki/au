@@ -1,5 +1,6 @@
 import { createGadget, z } from "llmist";
 import { getFileDiff } from "../lib/git-utils.js";
+import { parsePathList } from "../lib/command-utils.js";
 
 export const gitDiff = createGadget({
   name: "GitDiff",
@@ -16,10 +17,7 @@ IMPORTANT: Pay attention to:
     paths: z.string().describe("File path(s) to get diff for, one per line"),
   }),
   execute: async ({ baseBranch, paths }) => {
-    const pathList = paths
-      .split("\n")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
+    const pathList = parsePathList(paths);
 
     if (pathList.length === 0) {
       return "No file paths provided.";

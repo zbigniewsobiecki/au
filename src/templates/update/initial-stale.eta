@@ -1,0 +1,37 @@
+## Files Requiring Updates
+
+<% if (it.stale.length > 0) { %>
+### Stale Files (source changed since AU was written)
+<% for (const file of it.stale) { %>
+- <%= file %>
+<% } %>
+<% } %>
+
+<% if (it.missing.length > 0) { %>
+### Missing Files (no AU documentation)
+<% for (const file of it.missing) { %>
+- <%= file %>
+<% } %>
+<% } %>
+
+<% if (it.dependents.length > 0) { %>
+## Dependent Files That May Need Updates
+
+The following files reference the changed files and may need their understanding updated:
+<%= it.dependentsContext %>
+<% } %>
+
+## Instructions
+
+1. For each **stale** file:
+   - The source file content has been pre-loaded
+   - The existing AU content has been pre-loaded (compare with current source)
+   - Update only the fields that are now incorrect or outdated
+
+2. For each **missing** file:
+   - Create complete understanding with all required fields
+
+3. For **dependents**:
+   - Check if their depends_on references need updates based on changes to the files they depend on
+
+4. Call **Finish** when done with a summary of updates made

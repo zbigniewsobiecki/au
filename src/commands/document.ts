@@ -2,15 +2,7 @@ import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
 import { rm, mkdir, access, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import {
-  auRead,
-  auList,
-  writeDoc,
-  setTargetDir,
-  readFiles,
-  readDirs,
-  ripGrep,
-} from "../gadgets/index.js";
+import { writeDoc, setTargetDir, auList } from "../gadgets/index.js";
 import { docPlan, finishPlanning, finishDocs } from "../gadgets/doc-gadgets.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
@@ -20,7 +12,10 @@ import {
   createTextBlockState,
   endTextBlock,
   setupIterationTracking,
+  withWorkingDirectory,
+  selectReadGadgets,
 } from "../lib/command-utils.js";
+import { runAgentWithEvents } from "../lib/agent-runner.js";
 
 interface DocPlanStructure {
   structure: Array<{
@@ -139,17 +134,7 @@ export default class Document extends Command {
     const { flags } = await this.parse(Document);
     const out = new Output({ verbose: flags.verbose, progressLabel: "Documentation" });
 
-    // Change to target directory if --path specified
-    const originalCwd = process.cwd();
-    if (flags.path && flags.path !== ".") {
-      try {
-        process.chdir(flags.path);
-        out.info(`Working in: ${flags.path}`);
-      } catch {
-        out.error(`Cannot access directory: ${flags.path}`);
-        process.exit(1);
-      }
-    }
+    const { restore } = withWorkingDirectory(flags.path, out);
 
     const auOnly = flags["au-only"];
     const codeOnly = flags["code-only"];
@@ -162,14 +147,14 @@ export default class Document extends Command {
         auSummary = (await auList.execute({ path: "." })) as string;
       } catch (error) {
         out.error(`Failed to load AU understanding: ${error instanceof Error ? error.message : error}`);
-        process.chdir(originalCwd);
+        restore();
         process.exit(1);
       }
 
       if (!auSummary || auSummary.trim() === "" || auSummary === "No AU entries found.") {
         if (auOnly) {
           out.error("No AU understanding found. Run 'au ingest' first to create understanding files.");
-          process.chdir(originalCwd);
+          restore();
           process.exit(1);
         } else {
           out.warn("No AU understanding found. Will use source code only.");
@@ -209,14 +194,7 @@ export default class Document extends Command {
       const planInitialPrompt = render("document/plan-initial", { auSummary: auSummary || "" });
 
       // Build gadgets based on mode
-      let planGadgets;
-      if (auOnly) {
-        planGadgets = [docPlan, finishPlanning, auRead, auList];
-      } else if (codeOnly) {
-        planGadgets = [docPlan, finishPlanning, readFiles, readDirs, ripGrep];
-      } else {
-        planGadgets = [docPlan, finishPlanning, auRead, auList, readFiles, readDirs, ripGrep];
-      }
+      const planGadgets = [docPlan, finishPlanning, ...selectReadGadgets({ auOnly, codeOnly })];
 
       let planBuilder = new AgentBuilder(client)
         .withModel(flags.model)
@@ -252,71 +230,60 @@ export default class Document extends Command {
 
       // Run planning agent and capture DocPlan
       try {
-        for await (const event of planAgent.run()) {
-          if (event.type === "text") {
-            planTextState.inTextBlock = true;
-            out.thinkingChunk(event.content);
-          } else if (event.type === "gadget_call") {
-            endTextBlock(planTextState, out);
-            const params = event.call.parameters as Record<string, unknown>;
-            out.gadgetCall(event.call.gadgetName, params);
-          } else if (event.type === "gadget_result") {
-            const result = event.result;
-
-            if (result.error) {
-              out.gadgetError(result.gadgetName, result.error);
-            } else {
-              out.gadgetResult(result.gadgetName);
-
-              // Capture DocPlan result
-              if (result.gadgetName === "DocPlan" && result.result) {
-                // Extract JSON from the result (it's wrapped in <plan> tags)
-                const planMatch = result.result.match(/<plan>\s*([\s\S]*?)\s*<\/plan>/);
-                if (planMatch) {
-                  try {
-                    documentPlan = JSON.parse(planMatch[1]);
-                  } catch {
-                    out.warn("Failed to parse documentation plan");
-                  }
+        await runAgentWithEvents(planAgent, {
+          out,
+          textState: planTextState,
+          onGadgetResult: (gadgetName, result) => {
+            // Capture DocPlan result
+            if (gadgetName === "DocPlan" && result) {
+              // Extract JSON from the result (it's wrapped in <plan> tags)
+              const planMatch = result.match(/<plan>\s*([\s\S]*?)\s*<\/plan>/);
+              if (planMatch) {
+                try {
+                  documentPlan = JSON.parse(planMatch[1]);
+                } catch {
+                  out.warn("Failed to parse documentation plan");
                 }
               }
             }
-          }
-        }
-
-        endTextBlock(planTextState, out);
+          },
+        });
       } catch (error) {
-        endTextBlock(planTextState, out);
         out.error(`Planning failed: ${error instanceof Error ? error.message : error}`);
-        process.chdir(originalCwd);
+        restore();
         process.exit(1);
       }
 
       if (!documentPlan) {
         out.error("No documentation plan was created. Check verbose output for details.");
-        process.chdir(originalCwd);
+        restore();
         process.exit(1);
       }
+
+      // At this point documentPlan is guaranteed non-null
+      const newPlan = documentPlan as DocPlanStructure;
 
       // Save plan to cache
       try {
         await mkdir(`${targetDir}/.au`, { recursive: true });
-        await writeFile(planFile, JSON.stringify(documentPlan, null, 2));
+        await writeFile(planFile, JSON.stringify(newPlan, null, 2));
         out.info(`Saved plan to ${planFile}`);
       } catch (error) {
         out.warn(`Could not cache plan: ${error instanceof Error ? error.message : error}`);
       }
 
-      const newPlanDocs = documentPlan.structure.reduce((sum, dir) => sum + dir.documents.length, 0);
-      out.success(`Plan created: ${newPlanDocs} documents in ${documentPlan.structure.length} directories`);
+      const newPlanDocs = newPlan.structure.reduce((sum, dir) => sum + dir.documents.length, 0);
+      out.success(`Plan created: ${newPlanDocs} documents in ${newPlan.structure.length} directories`);
     }
 
     // Calculate total docs for progress tracking
-    const totalDocs = documentPlan.structure.reduce((sum, dir) => sum + dir.documents.length, 0);
+    // At this point documentPlan is guaranteed non-null (either from cache or planning)
+    const plan = documentPlan!;
+    const totalDocs = plan.structure.reduce((sum: number, dir) => sum + dir.documents.length, 0);
 
     console.log();
     out.header("Documentation Plan:");
-    for (const dir of documentPlan.structure) {
+    for (const dir of plan.structure) {
       console.log(`  ${dir.directory} (${dir.documents.length} docs)`);
       for (const doc of dir.documents) {
         console.log(`    - ${doc.path}`);
@@ -327,7 +294,7 @@ export default class Document extends Command {
     // Handle dry-run mode
     if (flags["dry-run"]) {
       out.success("Dry run complete. Use without --dry-run to generate documentation.");
-      process.chdir(originalCwd);
+      restore();
       return;
     }
 
@@ -346,7 +313,7 @@ export default class Document extends Command {
       await mkdir(targetDir, { recursive: true });
     } catch (error) {
       out.error(`Failed to create target directory: ${error instanceof Error ? error.message : error}`);
-      process.chdir(originalCwd);
+      restore();
       process.exit(1);
     }
 
@@ -359,7 +326,7 @@ export default class Document extends Command {
     const orchestratorSystemPrompt = render("document/orchestrator-system", {});
 
     // Flatten documents for the orchestrator
-    const allDocs = documentPlan.structure.flatMap((dir) =>
+    const allDocs = plan.structure.flatMap((dir) =>
       dir.documents.map((doc) => ({
         ...doc,
         directory: dir.directory,
@@ -383,7 +350,7 @@ export default class Document extends Command {
 
     if (pendingDocs.length === 0) {
       out.success("All documents already exist. Nothing to generate.");
-      process.chdir(originalCwd);
+      restore();
       return;
     }
 
@@ -420,14 +387,7 @@ Do ONE document at a time: Read -> Write -> Next.
 Call FinishDocs when all ${pendingDocs.length} documents are written.`;
 
     // Build gadgets based on mode
-    let genGadgets;
-    if (auOnly) {
-      genGadgets = [writeDoc, auRead, auList, finishDocs];
-    } else if (codeOnly) {
-      genGadgets = [writeDoc, readFiles, readDirs, ripGrep, finishDocs];
-    } else {
-      genGadgets = [writeDoc, auRead, auList, readFiles, readDirs, ripGrep, finishDocs];
-    }
+    const genGadgets = [writeDoc, ...selectReadGadgets({ auOnly, codeOnly }), finishDocs];
 
     let genBuilder = new AgentBuilder(client)
       .withModel(flags.model)
@@ -464,48 +424,32 @@ Call FinishDocs when all ${pendingDocs.length} documents are written.`;
 
     // Run generation agent
     try {
-      for await (const event of genAgent.run()) {
-        if (event.type === "text") {
-          genTextState.inTextBlock = true;
-          out.thinkingChunk(event.content);
-        } else if (event.type === "gadget_call") {
-          endTextBlock(genTextState, out);
-          const params = event.call.parameters as Record<string, unknown>;
-          out.gadgetCall(event.call.gadgetName, params);
-        } else if (event.type === "gadget_result") {
-          const result = event.result;
-
-          if (result.error) {
-            out.gadgetError(result.gadgetName, result.error);
-          } else {
-            out.gadgetResult(result.gadgetName);
-
-            // Track WriteFile completions
-            if (result.gadgetName === "WriteFile" && result.result) {
-              docsWritten++;
-              // Parse bytes from result: "Written: path (123 bytes)"
-              const match = result.result.match(/Written: (.+) \((\d+) bytes\)/);
-              if (match) {
-                const [, filePath, bytesStr] = match;
-                const bytes = parseInt(bytesStr, 10);
-                out.documenting(filePath, bytes, true);
-              } else {
-                out.success(`[${docsWritten}/${totalDocs}] ${result.result}`);
-              }
+      await runAgentWithEvents(genAgent, {
+        out,
+        textState: genTextState,
+        onGadgetResult: (gadgetName, result) => {
+          // Track WriteFile completions
+          if (gadgetName === "WriteFile" && result) {
+            docsWritten++;
+            // Parse bytes from result: "Written: path (123 bytes)"
+            const match = result.match(/Written: (.+) \((\d+) bytes\)/);
+            if (match) {
+              const [, filePath, bytesStr] = match;
+              const bytes = parseInt(bytesStr, 10);
+              out.documenting(filePath, bytes, true);
+            } else {
+              out.success(`[${docsWritten}/${totalDocs}] ${result}`);
             }
           }
-        }
-      }
-
-      endTextBlock(genTextState, out);
+        },
+      });
     } catch (error) {
-      endTextBlock(genTextState, out);
       // TaskCompletionSignal is expected
       if (error instanceof Error && error.message.includes("Documentation complete")) {
         // This is fine, it means we're done
       } else {
         out.error(`Generation failed: ${error instanceof Error ? error.message : error}`);
-        process.chdir(originalCwd);
+        restore();
         process.exit(1);
       }
     }
@@ -516,7 +460,7 @@ Call FinishDocs when all ${pendingDocs.length} documents are written.`;
       const metadata = await readProjectMetadata();
 
       // Build section info from plan
-      const sections = documentPlan.structure.map((dir) => ({
+      const sections = plan.structure.map((dir) => ({
         label: formatLabel(dir.directory),
         description: getSectionDescription(dir.directory),
         directory: dir.directory.replace(/\/$/, ""),
@@ -537,7 +481,7 @@ Call FinishDocs when all ${pendingDocs.length} documents are written.`;
       out.success("Generated index.mdx landing page");
     }
 
-    process.chdir(originalCwd);
+    restore();
     out.success(`Done. Generated ${docsWritten} documentation files in ${targetDir}`);
   }
 }

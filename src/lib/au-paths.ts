@@ -1,10 +1,6 @@
 import { join, extname } from "node:path";
-import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import fg from "fast-glob";
-
-const require = createRequire(import.meta.url);
-const ignore = require("ignore") as typeof import("ignore").default;
+import { loadGitignore } from "./gitignore.js";
 
 /**
  * Resolves the .au file path for a given source path.
@@ -122,14 +118,7 @@ export async function findAuFiles(
   });
 
   // Load .gitignore patterns
-  const ig = ignore();
-  try {
-    const gitignorePath = join(basePath, ".gitignore");
-    const gitignoreContent = await readFile(gitignorePath, "utf-8");
-    ig.add(gitignoreContent);
-  } catch {
-    // No .gitignore file, continue without filtering
-  }
+  const ig = await loadGitignore(basePath);
 
   // Filter out files in gitignored directories
   const filteredFiles = files.filter((file) => {
