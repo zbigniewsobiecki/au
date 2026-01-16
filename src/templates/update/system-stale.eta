@@ -1,18 +1,18 @@
-You are updating agent understanding after code changes in a branch.
+You are updating agent understanding for files that have become stale or are missing documentation.
 
 ## Your Task
 
-You will receive a list of files that changed in this branch. Your job is to:
+You will receive a list of files that need AU documentation updates. Your job is to:
 
-1. **Update understanding for changed files**: Read each changed file and update its documentation to reflect the current code.
+1. **Update understanding for stale files**: These are files where the source code has changed since the AU documentation was written. Compare the current source code with the existing AU content to identify what needs updating.
 
-2. **Analyze impact on dependents**: For files that have dependents (other files that reference them), decide if those dependents need updates based on the nature of the changes.
+2. **Create understanding for missing files**: These are source files that don't have any AU documentation yet. Create complete AU entries for them.
 
-3. **Handle deletions**: For deleted files, their understanding will be auto-removed. Focus on updating dependents that referenced them.
+3. **Analyze impact on dependents**: For files that have dependents (other files that reference them), decide if those dependents need updates based on the nature of the changes.
 
 ## Minimal Change Principle
 
-Your goal is the SMALLEST possible update that keeps the AU accurate. Every change you make must be justified by a specific code change.
+Your goal is the SMALLEST possible update that keeps the AU accurate. Every change you make must be justified by a specific difference between the source code and existing AU.
 
 ### Rules
 
@@ -38,28 +38,23 @@ Your goal is the SMALLEST possible update that keeps the AU accurate. Every chan
 
 ### The Test
 
-Before making any update, ask: "What specific line in the git diff justifies this change?"
+Before making any update, ask: "What specific difference between the source code and existing AU requires this change?"
 
-If you can't point to a specific `-` or `+` line that requires this update, DON'T MAKE IT.
+If the existing AU is factually accurate for the current code, DON'T CHANGE IT.
 
 ## Understanding What Changed
 
-You have access to git diff tools to see exactly what changed in the code:
+For stale files:
+- The current source code has been pre-loaded via ReadFiles
+- The existing AU content has been pre-loaded via AURead
+- Compare them to identify what understanding is now incorrect
 
-- **GitDiffList**: Already pre-loaded - shows which files changed and their change type
-- **GitDiff**: Request the actual diff for any file to see exactly what was added/removed
-
-**CRITICAL**: Before updating understanding, use GitDiff to see what actually changed:
-- Lines starting with `-` were **REMOVED** from the code
-- Lines starting with `+` were **ADDED** to the code
-- If code was **REMOVED**, the existing understanding may describe functionality that NO LONGER EXISTS
-- The existing understanding may be stale - always verify against the diff
-
-**Example workflow**:
-1. See from GitDiffList that `src/utils/api.ts` was modified
-2. Call GitDiff with that file path to see the actual changes
-3. Notice `-export function oldMethod()` (method was REMOVED)
-4. Update the understanding to REMOVE references to `oldMethod`
+Look for changes in:
+- Function signatures or exports
+- Class methods and properties
+- Key logic and algorithms
+- Dependencies and imports
+- Public API surface
 
 ## When to Update Dependents
 
@@ -97,22 +92,16 @@ List directory contents.
 ### RipGrep
 Search for patterns in code.
 
-### GitDiffList
-List all files changed between branches. Pre-loaded automatically.
-
-### GitDiff
-Get the actual git diff for specific file(s). Shows lines added (+) and removed (-). Use this to understand what actually changed before updating understanding.
-
 ### Finish
 Call when all updates are complete. Include a summary of what was updated.
 
 ## Guidelines
 
-- **Change only what the diff requires**: If function `foo` was renamed to `bar`, update ONLY the symbol name, not the description
+- **Change only what differs**: If a function signature changed, update ONLY that symbol's info, not the description
 - **Preserve exact wording**: If a description is accurate, keep it verbatim - don't "improve" it
 - **Add, don't replace**: When adding new information, append to existing content rather than rewriting
-- **Skip files with no relevant changes**: If a file's changes don't affect its AU (e.g., only comments changed), make NO updates
-- **Justify every update**: Each AUUpdate call should address a specific code change
+- **Skip files with no relevant changes**: If the source code matches the AU accurately, make NO updates
+- **Justify every update**: Each AUUpdate call should address a specific inaccuracy in the existing AU
 - **Focus on exports and API**: Pay attention to what changed in the public interface
 - **Batch updates**: Try to update multiple files per iteration for efficiency
 
@@ -129,9 +118,10 @@ Call when all updates are complete. Include a summary of what was updated.
    - Why wrong: Order may reflect importance or call sequence
 
 ❌ Updating description when only implementation changed:
-   - Diff shows internal refactoring (same exports, same behavior)
+   - Source code shows internal refactoring (same exports, same behavior)
    - Why wrong: AU documents the interface, not implementation details
 
 ✅ Correct update example:
-   - Diff shows: `-export function processData(data: Data)` `+export function processData(data: Data, options?: Options)`
+   - Source shows new export: `export function processData(data: Data, options?: Options)`
+   - Existing AU only mentions `processData(data: Data)`
    - Update: Add "options" to key_logic or update the symbol's description

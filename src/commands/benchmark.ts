@@ -2,18 +2,13 @@ import { Command, Flags } from "@oclif/core";
 import { readFile, writeFile } from "node:fs/promises";
 import { AgentBuilder, LLMist } from "llmist";
 import { parse as parseYaml } from "yaml";
-import {
-  auRead,
-  auList,
-  readFiles,
-  readDirs,
-  ripGrep,
-} from "../gadgets/index.js";
 import { ASK_SYSTEM_PROMPT, ASK_INITIAL_PROMPT } from "../lib/ask-system-prompt.js";
 import { Output } from "../lib/output.js";
 import {
   commonFlags,
   configureBuilder,
+  withWorkingDirectory,
+  selectReadGadgets,
 } from "../lib/command-utils.js";
 
 type Mode = "au-only" | "code-only" | "default";
@@ -77,17 +72,7 @@ export default class Benchmark extends Command {
     const { flags } = await this.parse(Benchmark);
     const out = new Output({ verbose: flags.verbose });
 
-    // Change to target directory
-    const originalCwd = process.cwd();
-    if (flags.path && flags.path !== ".") {
-      try {
-        process.chdir(flags.path);
-        out.info(`Working in: ${flags.path}`);
-      } catch {
-        out.error(`Cannot access directory: ${flags.path}`);
-        process.exit(1);
-      }
-    }
+    const { restore } = withWorkingDirectory(flags.path, out);
 
     // Load questions
     let questions: QuestionEntry[] = [];
@@ -154,8 +139,7 @@ export default class Benchmark extends Command {
       console.log();
     }
 
-    // Restore directory
-    process.chdir(originalCwd);
+    restore();
 
     // Output results
     if (flags.json) {
@@ -189,14 +173,7 @@ export default class Benchmark extends Command {
     const codeOnly = mode === "code-only";
 
     // Select gadgets - no preloading, agent discovers on demand
-    let gadgets;
-    if (auOnly) {
-      gadgets = [auRead, auList];
-    } else if (codeOnly) {
-      gadgets = [readFiles, readDirs, ripGrep];
-    } else {
-      gadgets = [auRead, auList, readFiles, readDirs, ripGrep];
-    }
+    const gadgets = selectReadGadgets({ auOnly, codeOnly });
 
     let builder = new AgentBuilder(client)
       .withModel(flags.model)

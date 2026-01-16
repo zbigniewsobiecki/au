@@ -2,6 +2,7 @@ import { createGadget, z } from "llmist";
 import { readFile } from "node:fs/promises";
 import { resolveAuPath } from "../lib/au-paths.js";
 import { parseAuFile, stringifyForInference } from "../lib/au-yaml.js";
+import { parsePathList } from "../lib/command-utils.js";
 
 async function readSinglePath(filePath: string): Promise<string> {
   const auPath = resolveAuPath(filePath);
@@ -26,10 +27,7 @@ Accepts multiple paths separated by newlines. Returns combined understanding con
       .describe("Path(s) to read understanding for, one per line"),
   }),
   execute: async ({ paths }) => {
-    const pathList = paths
-      .split("\n")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
+    const pathList = parsePathList(paths);
 
     if (pathList.length === 0) {
       return "No paths provided.";

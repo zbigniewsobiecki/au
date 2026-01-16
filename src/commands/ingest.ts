@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import { unlink, stat, readFile } from "node:fs/promises";
+import { unlink } from "node:fs/promises";
 import { findAuFiles } from "../lib/au-paths.js";
 import {
   auUpdate,
@@ -20,13 +20,15 @@ import {
   configureBuilder,
   createTextBlockState,
   endTextBlock,
-  formatResultSize,
   getPreloadBudget,
   setupIterationTracking,
   countAuBytes,
   parseIncludePatterns,
+  withWorkingDirectory,
+  preloadFiles,
 } from "../lib/command-utils.js";
-import { GadgetName, isFileReadingGadget } from "../lib/constants.js";
+import { runAgentWithEvents } from "../lib/agent-runner.js";
+import { GadgetName } from "../lib/constants.js";
 
 export default class Ingest extends Command {
   static description = "Create and update agent understanding files for TypeScript code";
@@ -51,17 +53,7 @@ export default class Ingest extends Command {
     const { flags } = await this.parse(Ingest);
     const out = new Output({ verbose: flags.verbose });
 
-    // Change to target directory if --path specified
-    const originalCwd = process.cwd();
-    if (flags.path && flags.path !== ".") {
-      try {
-        process.chdir(flags.path);
-        out.info(`Working in: ${flags.path}`);
-      } catch {
-        out.error(`Cannot access directory: ${flags.path}`);
-        process.exit(1);
-      }
-    }
+    const { restore } = withWorkingDirectory(flags.path, out);
 
     // Purge existing .au files if requested
     if (flags.purge) {
@@ -115,13 +107,13 @@ export default class Ingest extends Command {
     // Check if there's anything to do
     if (state.totalItems === 0) {
       out.warn("No source files found to document.");
-      process.chdir(originalCwd);
+      restore();
       return;
     }
 
     if (!state.hasWork) {
       out.success(`All documentation complete and valid. (${state.coveragePercent}% coverage)`);
-      process.chdir(originalCwd);
+      restore();
       return;
     }
 
@@ -158,29 +150,8 @@ export default class Ingest extends Command {
     // Pre-load source files to reduce read iterations
     out.info("Pre-loading source files...");
     const sourceFiles = stateCollector.getSourceFiles();
-    const preloadedFiles: string[] = [];
-    const preloadedPaths: string[] = [];
-    let totalBytes = 0;
-
-    for (const filePath of sourceFiles) {
-      try {
-        const fileStat = await stat(filePath);
-        // Check per-file limit and total budget
-        if (fileStat.size > 0 &&
-            fileStat.size <= budget.maxPerFileBytes &&
-            totalBytes + fileStat.size <= budget.maxTotalBytes) {
-          const content = await readFile(filePath, "utf-8");
-          preloadedFiles.push(`=== ${filePath} ===\n${content}`);
-          preloadedPaths.push(filePath);
-          totalBytes += content.length;
-        }
-      } catch {
-        // Skip files that can't be read
-      }
-    }
-
-    const preloadedContent = preloadedFiles.join("\n\n");
-    out.success(`Pre-loaded ${preloadedPaths.length} source files (${(preloadedContent.length / 1024).toFixed(1)} KB)`);
+    const preloaded = await preloadFiles(sourceFiles, budget);
+    out.success(`Pre-loaded ${preloaded.paths.length} source files (${(preloaded.content.length / 1024).toFixed(1)} KB)`);
 
     // Build the agent
     let builder = new AgentBuilder(client)
@@ -228,11 +199,11 @@ export default class Ingest extends Command {
     }
 
     // Inject pre-loaded source files if any
-    if (preloadedPaths.length > 0) {
+    if (preloaded.paths.length > 0) {
       builder.withSyntheticGadgetCall(
         "ReadFiles",
-        { paths: preloadedPaths.join("\n") },
-        preloadedContent,
+        { paths: preloaded.paths.join("\n") },
+        preloaded.content,
         "gc_init_3"
       );
     }
@@ -255,65 +226,42 @@ export default class Ingest extends Command {
 
     // Run and stream events from the agent
     try {
-      for await (const event of agent.run()) {
-        if (event.type === "text") {
-          textState.inTextBlock = true;
-          out.thinkingChunk(event.content);
-        } else if (event.type === "gadget_call") {
-          endTextBlock(textState, out);
-          const params = event.call.parameters as Record<string, unknown>;
-          out.gadgetCall(event.call.gadgetName, params);
-        } else if (event.type === "gadget_result") {
-          const result = event.result;
+      await runAgentWithEvents(agent, {
+        out,
+        textState,
+        onGadgetResult: (gadgetName, result) => {
+          // Special handling for AUUpdate
+          if (gadgetName === GadgetName.AUUpdate) {
+            if (result?.startsWith("Error:")) {
+              out.warn(result);
+            } else {
+              // Extract filePath, marker, and byte diff from the result message
+              // Format: "Updated src/foo.ts.au [path.to.field] [new|upd] [oldBytes→newBytes:+diff]"
+              const match = result?.match(/Updated (.+?) \[.+?\] \[(new|upd)\] \[\d+→\d+:([+-]?\d+)\]/);
+              if (match) {
+                const auPath = match[1];
+                const isNew = match[2] === "new";
+                const byteDiff = parseInt(match[3], 10);
+                // Order matters: check for directory .au first (/.au), then file .au (.au)
+                const sourcePath = auPath.replace(/\/\.au$/, "").replace(/\.au$/, "");
+                progressTracker.markDocumented(sourcePath);
 
-          if (result.error) {
-            out.gadgetError(result.gadgetName, result.error);
-          } else {
-            // Create summary based on gadget type
-            let summary: string | undefined;
-            if (isFileReadingGadget(result.gadgetName)) {
-              summary = formatResultSize(result.result);
-            }
+                // Also remove from stale/incomplete lists if present
+                state.staleFiles = state.staleFiles.filter(f => !f.includes(sourcePath));
+                state.incompleteFiles = state.incompleteFiles.filter(f => f.path !== sourcePath);
 
-            out.gadgetResult(result.gadgetName, summary);
-
-            // Special handling for AUUpdate
-            if (result.gadgetName === GadgetName.AUUpdate) {
-              if (result.result?.startsWith("Error:")) {
-                out.warn(result.result);
-              } else {
-                // Extract filePath, marker, and byte diff from the result message
-                // Format: "Updated src/foo.ts.au [path.to.field] [new|upd] [oldBytes→newBytes:+diff]"
-                const match = result.result?.match(/Updated (.+?) \[.+?\] \[(new|upd)\] \[\d+→\d+:([+-]?\d+)\]/);
-                if (match) {
-                  const auPath = match[1];
-                  const isNew = match[2] === "new";
-                  const byteDiff = parseInt(match[3], 10);
-                  // Order matters: check for directory .au first (/.au), then file .au (.au)
-                  const sourcePath = auPath.replace(/\/\.au$/, "").replace(/\.au$/, "");
-                  progressTracker.markDocumented(sourcePath);
-
-                  // Also remove from stale/incomplete lists if present
-                  state.staleFiles = state.staleFiles.filter(f => !f.includes(sourcePath));
-                  state.incompleteFiles = state.incompleteFiles.filter(f => f.path !== sourcePath);
-
-                  out.documenting(sourcePath, byteDiff, isNew);
-                }
+                out.documenting(sourcePath, byteDiff, isNew);
               }
             }
           }
-        }
-      }
-
-      endTextBlock(textState, out);
+        },
+      });
     } catch (error) {
-      endTextBlock(textState, out);
       out.error(`Agent error: ${error instanceof Error ? error.message : error}`);
-      process.chdir(originalCwd);
+      restore();
       process.exit(1);
     } finally {
-      // Restore original working directory
-      process.chdir(originalCwd);
+      restore();
     }
 
     out.summary();

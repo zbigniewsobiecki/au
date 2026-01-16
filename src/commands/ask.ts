@@ -1,23 +1,17 @@
 import { Command, Flags, Args } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import {
-  auRead,
-  auList,
-  readFiles,
-  readDirs,
-  ripGrep,
-} from "../gadgets/index.js";
+import { auList } from "../gadgets/index.js";
 import { ASK_SYSTEM_PROMPT, ASK_INITIAL_PROMPT, REFINE_SYSTEM_PROMPT, REFINE_INITIAL_PROMPT } from "../lib/ask-system-prompt.js";
 import { Output } from "../lib/output.js";
 import {
   commonFlags,
   configureBuilder,
   createTextBlockState,
-  endTextBlock,
-  formatResultSize,
   setupIterationTracking,
+  withWorkingDirectory,
+  selectReadGadgets,
 } from "../lib/command-utils.js";
-import { isFileReadingGadget } from "../lib/constants.js";
+import { runAgentWithEvents } from "../lib/agent-runner.js";
 import { findAuFiles } from "../lib/au-paths.js";
 
 export default class Ask extends Command {
@@ -65,17 +59,7 @@ export default class Ask extends Command {
     const { args, flags } = await this.parse(Ask);
     const out = new Output({ verbose: flags.verbose });
 
-    // Change to target directory if --path specified
-    const originalCwd = process.cwd();
-    if (flags.path && flags.path !== ".") {
-      try {
-        process.chdir(flags.path);
-        out.info(`Working in: ${flags.path}`);
-      } catch {
-        out.error(`Cannot access directory: ${flags.path}`);
-        process.exit(1);
-      }
-    }
+    const { restore } = withWorkingDirectory(flags.path, out);
 
     const client = new LLMist();
 
@@ -97,14 +81,7 @@ export default class Ask extends Command {
     }
 
     // Build the agent with appropriate gadgets
-    let gadgets;
-    if (auOnly) {
-      gadgets = [auRead, auList];
-    } else if (codeOnly) {
-      gadgets = [readFiles, readDirs, ripGrep];
-    } else {
-      gadgets = [auRead, auList, readFiles, readDirs, ripGrep];
-    }
+    const gadgets = selectReadGadgets({ auOnly, codeOnly });
 
     // Helper to run an agent and collect its output
     const runAgent = async (
@@ -135,48 +112,17 @@ export default class Ask extends Command {
       out.info(`${label}...`);
 
       const textState = createTextBlockState();
-      const tree = agent.getTree();
 
       if (flags.verbose) {
+        const tree = agent.getTree();
         setupIterationTracking(tree, { out });
       }
 
-      let answer = "";
-
-      for await (const event of agent.run()) {
-        if (event.type === "text") {
-          answer += event.content;
-          if (flags.verbose) {
-            textState.inTextBlock = true;
-            out.thinkingChunk(event.content);
-          }
-        } else if (event.type === "gadget_call") {
-          if (flags.verbose) {
-            endTextBlock(textState, out);
-            const params = event.call.parameters as Record<string, unknown>;
-            out.gadgetCall(event.call.gadgetName, params);
-          }
-        } else if (event.type === "gadget_result") {
-          if (flags.verbose) {
-            const result = event.result;
-            if (result.error) {
-              out.gadgetError(result.gadgetName, result.error);
-            } else {
-              let summary: string | undefined;
-              if (isFileReadingGadget(result.gadgetName)) {
-                summary = formatResultSize(result.result);
-              }
-              out.gadgetResult(result.gadgetName, summary);
-            }
-          }
-        }
-      }
-
-      if (flags.verbose) {
-        endTextBlock(textState, out);
-      }
-
-      return answer;
+      return runAgentWithEvents(agent, {
+        out,
+        textState,
+        verbose: flags.verbose,
+      });
     };
 
     const noRefine = flags["no-refine"];
@@ -210,11 +156,10 @@ export default class Ask extends Command {
       }
     } catch (error) {
       out.error(`Agent error: ${error instanceof Error ? error.message : error}`);
-      process.chdir(originalCwd);
+      restore();
       process.exit(1);
     } finally {
-      // Restore original working directory
-      process.chdir(originalCwd);
+      restore();
     }
   }
 }
