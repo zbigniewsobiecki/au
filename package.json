@@ -68,15 +68,24 @@
         "entryPoint": "./dist/index.js",
         "export": "AU",
         "description": "Query codebase understanding from AI-captured documentation",
-        "uses": ["AURead", "AUList", "ReportResult"],
+        "uses": [
+          "AURead",
+          "AUList",
+          "ReportResult"
+        ],
         "defaultModel": "sonnet",
         "maxIterations": 10
       }
     },
     "presets": {
       "all": "*",
-      "subagent": ["AskAboutCodebase"],
-      "readonly": ["AURead", "AUList"]
+      "subagent": [
+        "AskAboutCodebase"
+      ],
+      "readonly": [
+        "AURead",
+        "AUList"
+      ]
     }
   }
 }
