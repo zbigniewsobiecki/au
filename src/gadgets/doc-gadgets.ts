@@ -1,4 +1,5 @@
-import { createGadget, z, TaskCompletionSignal } from "llmist";
+import { createGadget, z } from "llmist";
+import { createCompletionGadget } from "./completion-gadget.js";
 
 /**
  * Schema for a single document in the documentation plan.
@@ -96,31 +97,21 @@ The sections array lists the main headings to include in the document.`,
 /**
  * FinishPlanning gadget - signals that planning phase is complete.
  */
-export const finishPlanning = createGadget({
+export const finishPlanning = createCompletionGadget({
   name: "FinishPlanning",
   description: `Signal that documentation planning is complete.
 Call this after you have created the DocPlan.`,
-  schema: z.object({
-    summary: z.string().describe("Brief summary of the plan"),
-  }),
-  execute: async ({ summary }) => {
-    throw new TaskCompletionSignal(`Planning complete: ${summary}`);
-  },
+  messagePrefix: "Planning complete",
 });
 
 /**
  * FinishDocs gadget - signals that documentation generation is complete.
  */
-export const finishDocs = createGadget({
+export const finishDocs = createCompletionGadget({
   name: "FinishDocs",
   description: `Signal that documentation generation is complete.
 Call this after all planned documents have been written.`,
-  schema: z.object({
-    summary: z.string().describe("Summary of what was generated"),
-  }),
-  execute: async ({ summary }) => {
-    throw new TaskCompletionSignal(`Documentation complete: ${summary}`);
-  },
+  messagePrefix: "Documentation complete",
 });
 
 // Export types for use in other modules

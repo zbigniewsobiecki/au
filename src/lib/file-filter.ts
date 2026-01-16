@@ -1,9 +1,4 @@
-import { createRequire } from "node:module";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
-const require = createRequire(import.meta.url);
-const ignore = require("ignore") as typeof import("ignore").default;
+import { loadGitignore } from "./gitignore.js";
 
 export interface FileFilter {
   accepts(path: string): boolean;
@@ -13,19 +8,11 @@ export interface FileFilter {
  * Creates a filter that respects .gitignore and excludes .au files.
  */
 export async function createFileFilter(rootPath = "."): Promise<FileFilter> {
-  const ig = ignore();
+  // Start with .gitignore patterns
+  const ig = await loadGitignore(rootPath);
 
   // Always ignore .au files (these are documentation, not source)
   ig.add(["*.au", ".au", "**/*.au", "**/.au"]);
-
-  // Try to load .gitignore
-  try {
-    const gitignorePath = join(rootPath, ".gitignore");
-    const gitignoreContent = await readFile(gitignorePath, "utf-8");
-    ig.add(gitignoreContent);
-  } catch {
-    // No .gitignore file, that's fine
-  }
 
   return {
     accepts(path: string): boolean {
