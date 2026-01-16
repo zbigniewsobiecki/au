@@ -1,3 +1,15 @@
+## [1.1.0](https://github.com/zbigniewsobiecki/au/compare/v1.0.1...v1.1.0) (2026-01-16)
+
+### Features
+
+* add CI/CD workflows and npm publishing ([156cc49](https://github.com/zbigniewsobiecki/au/commit/156cc498be9fb3fe8b9070117b301fd75257d5c7))
+* improve update prompts and add hash-based stale mode ([#5](https://github.com/zbigniewsobiecki/au/issues/5)) ([94a0fac](https://github.com/zbigniewsobiecki/au/commit/94a0fac7f49880c08d3af6837967c8c35d1987a1))
+
+### Bug Fixes
+
+* add trailing newline to gitignore ([#1](https://github.com/zbigniewsobiecki/au/issues/1)) ([63ae559](https://github.com/zbigniewsobiecki/au/commit/63ae55958bb333b0104ff7156848b952788bab56))
+* apply npm pkg fix corrections ([#3](https://github.com/zbigniewsobiecki/au/issues/3)) ([e4d4136](https://github.com/zbigniewsobiecki/au/commit/e4d413618b40ae61ca2081d2022e65edacb3e0f8))
+
 ## [1.0.1](https://github.com/zbigniewsobiecki/au/compare/v1.0.0...v1.0.1) (2026-01-16)
 
 ### Bug Fixes
