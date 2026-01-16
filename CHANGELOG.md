@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/zbigniewsobiecki/au/compare/v1.0.0...v1.0.1) (2026-01-16)
+
+### Bug Fixes
+
+* npm pkg fix corrections ([#4](https://github.com/zbigniewsobiecki/au/issues/4)) ([82b50c7](https://github.com/zbigniewsobiecki/au/commit/82b50c7e95c658030aca7a9c9bf7cb8b5a6288cf)), closes [#1](https://github.com/zbigniewsobiecki/au/issues/1) [#3](https://github.com/zbigniewsobiecki/au/issues/3)
+
 ## 1.0.0 (2026-01-16)
 
 ### Features
