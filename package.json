@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "au": "./bin/run.js"
+    "au": "bin/run.js"
   },
   "files": [
     "bin",
