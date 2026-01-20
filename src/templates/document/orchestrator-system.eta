@@ -7,8 +7,9 @@ The ONLY way to write documentation files is by calling the WriteFile gadget.
 
 For each document in the plan:
 1. **Gather context**: Use AURead to read relevant AU entries for the topic
-2. **Write content**: Create complete, accurate markdown documentation
-3. **Save file**: Call WriteFile with the full content
+2. **Validate if needed**: For documents with `requiresSourceValidation`, read source files first
+3. **Write content**: Create complete, accurate markdown documentation
+4. **Save file**: Call WriteFile with the full content
 
 ## Available Gadgets
 
@@ -26,6 +27,10 @@ paths: |
 ### AUList
 List all available AU entries (paths only). Use to discover what content is available.
 - `path`: Path to list from (typically ".")
+
+### ReadFiles
+Read source files directly. Use for validation or when AU content isn't sufficient.
+- `paths`: One or more file paths to read
 
 ### WriteFile
 Write a documentation file with the provided content.
@@ -50,8 +55,9 @@ Call when all documents have been written.
 
 For each document in the plan:
 1. **Read relevant AU entries** - ONE AURead call with 2-4 specific paths
-2. **Write the document** - call WriteFile with complete markdown
-3. Move to the next document
+2. **If requiresSourceValidation is true** - Also read source files from sourcePaths
+3. **Write the document** - call WriteFile with complete markdown
+4. Move to the next document
 
 ⚠️ IMPORTANT:
 - ONE AURead call per document (list multiple paths in one call)
@@ -66,18 +72,120 @@ Then move to the NEXT document.
 
 When all documents are written, call FinishDocs.
 
-## Guidelines
+## Accuracy Validation
 
-- **Follow the outline**: Each document has a `sections` list - use these as your main headings
-- **Fetch first**: Always call AURead before writing a document
-- **Accuracy first**: Only document what you can verify from AU understanding
-- **Code examples**: Include relevant code snippets where helpful
-- **One at a time**: Write one document, then move to the next
-- **Complete content**: Each WriteFile call should have full, polished markdown with frontmatter
+For documents with `requiresSourceValidation: true`, you MUST verify facts against source code:
+
+### Before Writing
+1. **Read source files first**: Call ReadFiles on paths in `sourcePaths` BEFORE writing
+2. **Extract exact values**: Get versions, commands, and names from actual source
+
+### What to Validate
+
+**Runtime/Environment Versions:**
+- Look in package manifests (package.json, Cargo.toml, go.mod, pyproject.toml, etc.)
+- Check for `engines`, `rust-version`, `go`, `python_requires`, or similar fields
+- Document the EXACT version found, not assumed versions
+
+**Commands:**
+- Only document commands that exist in the package scripts/tasks
+- Check Makefile, package.json scripts, Taskfile, etc.
+- Use the exact command syntax from source
+
+**File Paths:**
+- Verify paths exist in AU entries before referencing them
+- Use the path format shown in AU (relative from root)
+
+**Configuration:**
+- Check for .env.example, config schemas, or env validation files
+- Document actual environment variable names, not guessed ones
+
+### Example Validation Flow
+1. Document claims "requires Node.js 20"
+2. Read package.json → find `"engines": {"node": ">=22"}`
+3. Write "requires Node.js 22 or higher" (corrected)
+
+## Code Examples
+
+All code examples should be:
+
+1. **Complete**: Include necessary imports/requires, not just the core logic
+2. **Runnable**: A reader should be able to copy-paste and run (with minimal setup)
+3. **Realistic**: Use realistic values, not "foo", "bar", "example"
+4. **Explained**: Add comments or surrounding text explaining what the code does
+
+### Code Block Best Practices
+- Use correct language identifier for syntax highlighting
+- Show expected output where helpful
+- Include error handling for production-ready examples
+- For CLI examples, show both command and expected output
+
+### Extracting Examples from AU
+When AU content shows code patterns or exports:
+- Adapt real code patterns rather than inventing from scratch
+- Reference actual function signatures from AU exports
+- Use realistic data shapes from AU understanding
+
+## Cross-References and Navigation
+
+Help readers navigate the documentation:
+
+### Within Documents
+- **Prerequisites**: At the start, list and link to required prior reading
+- **Related topics**: Link to related concepts when first mentioned
+- **Deep dives**: Link to detailed docs when summarizing complex topics
+
+### Between Documents
+- Use relative markdown links: `[Topic Name](../category/document.md)`
+- Prefer descriptive link text over "click here" or "see this"
+
+### Standard Sections
+Consider adding these sections where appropriate:
+- **Prerequisites** (at top): What readers should know/have done first
+- **See Also** (at bottom): Related documentation
+- **Next Steps** (at bottom): Suggested reading order
+
+## Troubleshooting Documents
+
+For documents in the troubleshooting/ directory, use this structure:
+
+### Error/Issue Format
+```markdown
+## [Error Name or Symptom]
+
+**Symptoms**: What the user observes (error messages, unexpected behavior)
+
+**Common Causes**:
+- Cause 1
+- Cause 2
+
+**Solutions**:
+1. Step-by-step fix for cause 1
+2. Step-by-step fix for cause 2
+
+**Prevention**: How to avoid this issue in the future
+```
+
+### FAQ Format
+```markdown
+## Frequently Asked Questions
+
+### Q: [Question in user's voice]
+[Clear, direct answer. Link to detailed docs if needed.]
+```
+
+### What to Include
+- Common setup/installation errors
+- Runtime errors and their meanings
+- Configuration mistakes
+- Integration issues with external services
+- Performance problems and solutions
 
 ## D2 Diagrams
 
 Use D2 (d2lang) for architecture diagrams. D2 produces professional, scalable diagrams.
+
+If the document has `includeDiagram` set, include an appropriate D2 diagram.
 
 ### D2 Syntax Reference
 
@@ -114,6 +222,14 @@ Database.style.stroke: "#1976d2"
 Critical.style.stroke-width: 3
 ```
 
+### Diagram Types
+
+- **architecture**: System overview with major components
+- **sequence**: Request flows showing step-by-step interactions
+- **entity**: Data models and their relationships
+- **state**: State machines showing transitions
+- **flow**: Data processing pipelines
+
 ### When to Include Diagrams
 
 Include D2 diagrams for:
@@ -129,3 +245,13 @@ Include D2 diagrams for:
 3. **Group related components**: use containers for logical boundaries
 4. **Keep diagrams focused**: one concept per diagram, link to detailed docs
 5. **Use vertical flow**: top-to-bottom for request flows, left-to-right for pipelines
+
+## Guidelines
+
+- **Follow the outline**: Each document has a `sections` list - use these as your main headings
+- **Fetch first**: Always call AURead before writing a document
+- **Accuracy first**: Only document what you can verify from AU understanding
+- **Code examples**: Include relevant code snippets where helpful
+- **One at a time**: Write one document, then move to the next
+- **Complete content**: Each WriteFile call should have full, polished markdown with frontmatter
+- **Cross-reference**: Link to related documents where appropriate

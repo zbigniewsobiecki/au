@@ -20,12 +20,17 @@ import { runAgentWithEvents } from "../lib/agent-runner.js";
 interface DocPlanStructure {
   structure: Array<{
     directory: string;
+    description: string;
     documents: Array<{
       path: string;
       title: string;
       description: string;
       order: number;
       sections?: string[];
+      requiresSourceValidation?: boolean;
+      sourcePaths?: string[];
+      includeDiagram?: string;
+      coverageTarget?: string;
     }>;
   }>;
 }
@@ -61,16 +66,31 @@ function formatLabel(directory: string): string {
     .join(" ");
 }
 
-const SECTION_DESCRIPTIONS: Record<string, string> = {
+// Fallback descriptions for common categories (used when plan doesn't provide one)
+const FALLBACK_SECTION_DESCRIPTIONS: Record<string, string> = {
   "getting-started": "Install and set up for local development",
   guides: "Learn how to use features effectively",
   architecture: "Understand system design and patterns",
   reference: "API documentation and configuration options",
+  troubleshooting: "Solve common problems and find answers",
+  operations: "Deploy, monitor, and maintain in production",
+  testing: "Run tests, write new tests, and understand test strategy",
+  security: "Security practices and authentication",
+  integrations: "Third-party service integrations",
+  migrations: "Upgrade guides and breaking changes",
+  examples: "Code examples and sample projects",
+  tutorials: "Step-by-step learning paths",
+  concepts: "Conceptual explanations and mental models",
 };
 
-function getSectionDescription(directory: string): string {
+function getSectionDescription(directory: string, planDescription?: string): string {
+  // Prefer plan-provided description
+  if (planDescription) {
+    return planDescription;
+  }
+  // Fall back to hardcoded descriptions
   const key = directory.replace(/\/$/, "");
-  return SECTION_DESCRIPTIONS[key] || `Documentation for ${formatLabel(directory)}`;
+  return FALLBACK_SECTION_DESCRIPTIONS[key] || `Documentation for ${formatLabel(directory)}`;
 }
 
 export default class Document extends Command {
@@ -368,20 +388,33 @@ export default class Document extends Command {
       researchInstruction = "ONE AURead call (with multiple paths) or ReadFiles as needed";
     }
 
+    // Format document info with optional metadata
+    const formatDocInfo = (d: typeof pendingDocs[0]) => {
+      let info = `- ${d.path}: ${d.title}
+  Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`;
+      if (d.requiresSourceValidation) {
+        info += `\n  ⚠️ REQUIRES VALIDATION: Read these files first: ${d.sourcePaths?.join(", ") || "package.json"}`;
+      }
+      if (d.includeDiagram && d.includeDiagram !== "none") {
+        info += `\n  📊 Include ${d.includeDiagram} diagram`;
+      }
+      return info;
+    };
+
     const orchestratorInitialPrompt = `Generate documentation based on this plan.
 
 ## Available AU Entries
 The AUListSummary above shows all paths with understanding. ONLY use paths from that list.
 
 ## Documents to write (${pendingDocs.length} remaining):
-${pendingDocs.map((d) => `- ${d.path}: ${d.title}
-  Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`).join("\n")}
+${pendingDocs.map(formatDocInfo).join("\n")}
 
 ## Workflow (STRICT)
 For EACH document:
 1. ${researchInstruction} - ONLY use paths from AUListSummary above
-2. WriteFile with complete markdown content following the sections outline
-3. Move to next document
+2. If marked "REQUIRES VALIDATION", read those source files FIRST to verify versions/commands
+3. WriteFile with complete markdown content following the sections outline
+4. Move to next document
 
 Do ONE document at a time: Read -> Write -> Next.
 Call FinishDocs when all ${pendingDocs.length} documents are written.`;
@@ -459,10 +492,10 @@ Call FinishDocs when all ${pendingDocs.length} documents are written.`;
       out.info("Generating Starlight index.mdx...");
       const metadata = await readProjectMetadata();
 
-      // Build section info from plan
+      // Build section info from plan (use plan descriptions when available)
       const sections = plan.structure.map((dir) => ({
         label: formatLabel(dir.directory),
-        description: getSectionDescription(dir.directory),
+        description: getSectionDescription(dir.directory, dir.description),
         directory: dir.directory.replace(/\/$/, ""),
         firstDoc: dir.documents[0]?.path.split("/").pop()?.replace(".md", "") || "",
       }));
