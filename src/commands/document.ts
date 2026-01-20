@@ -388,36 +388,46 @@ export default class Document extends Command {
       researchInstruction = "ONE AURead call (with multiple paths) or ReadFiles as needed";
     }
 
-    // Format document info with optional metadata
-    const formatDocInfo = (d: typeof pendingDocs[0]) => {
-      let info = `- ${d.path}: ${d.title}
-  Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`;
+    // Format document info with optional metadata (numbered for clarity)
+    const formatDocInfo = (d: typeof pendingDocs[0], index: number) => {
+      let info = `${index + 1}. **${d.path}**: ${d.title}
+   Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`;
       if (d.requiresSourceValidation) {
-        info += `\n  ⚠️ REQUIRES VALIDATION: Read these files first: ${d.sourcePaths?.join(", ") || "package.json"}`;
+        info += `\n   ⚠️ REQUIRES VALIDATION: Read first: ${d.sourcePaths?.join(", ") || "package.json"}`;
       }
       if (d.includeDiagram && d.includeDiagram !== "none") {
-        info += `\n  📊 Include ${d.includeDiagram} diagram`;
+        info += `\n   📊 Include ${d.includeDiagram} diagram`;
       }
       return info;
     };
 
-    const orchestratorInitialPrompt = `Generate documentation based on this plan.
+    const orchestratorInitialPrompt = `Generate ${pendingDocs.length} documentation files based on this plan.
 
-## Available AU Entries
-The AUListSummary above shows all paths with understanding. ONLY use paths from that list.
+## CRITICAL: One Document Per Turn
+- You may only call WriteFile ONCE per turn
+- After WriteFile, STOP and wait for confirmation
+- Each document must be 80-150+ lines minimum
 
-## Documents to write (${pendingDocs.length} remaining):
-${pendingDocs.map(formatDocInfo).join("\n")}
+## Document Queue (${pendingDocs.length} documents):
+${pendingDocs.map((d, i) => formatDocInfo(d, i)).join("\n\n")}
 
-## Workflow (STRICT)
-For EACH document:
-1. ${researchInstruction} - ONLY use paths from AUListSummary above
-2. If marked "REQUIRES VALIDATION", read those source files FIRST to verify versions/commands
-3. WriteFile with complete markdown content following the sections outline
-4. Move to next document
+## Workflow Per Document
+1. **Read**: ${researchInstruction} (use paths from AUListSummary above)
+2. **Validate**: If marked "REQUIRES VALIDATION", also read those source files
+3. **Write**: Call WriteFile with complete, thorough markdown (80-150+ lines)
+4. **Stop**: Wait for confirmation, then proceed to next document
 
-Do ONE document at a time: Read -> Write -> Next.
-Call FinishDocs when all ${pendingDocs.length} documents are written.`;
+## Quality Requirements
+- Each document: 80-150 lines MINIMUM
+- Include: overview, detailed sections, code examples, cross-references
+- Code examples must be complete with imports
+- Link to related documents in the set
+
+## Start Now
+Begin with document #1: **${pendingDocs[0]?.path}**
+Read the relevant AU content, then write a comprehensive document.
+
+Call FinishDocs only after ALL ${pendingDocs.length} documents are written.`;
 
     // Build gadgets based on mode
     const genGadgets = [writeDoc, ...selectReadGadgets({ auOnly, codeOnly }), finishDocs];
