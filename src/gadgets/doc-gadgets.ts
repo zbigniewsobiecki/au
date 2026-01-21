@@ -357,6 +357,16 @@ Call this after all fixable issues have been addressed.`,
   messagePrefix: "Fixing complete",
 });
 
+/**
+ * FinishFeedback gadget - signals that documentation feedback is complete.
+ */
+export const finishFeedback = createCompletionGadget({
+  name: "FinishFeedback",
+  description: `Signal that documentation feedback is complete.
+Call this after you have reviewed all documents and reported all feedback.`,
+  messagePrefix: "Feedback complete",
+});
+
 // Export types for use in other modules
 export type DocumentOutline = z.infer<typeof documentSchema>;
 export type DirectoryMeta = z.infer<typeof directoryMetaSchema>;

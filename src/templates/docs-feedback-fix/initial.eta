@@ -1,0 +1,57 @@
+Fix the following documentation issues found during feedback review.
+
+## IMPORTANT: One Document Per Turn
+
+Fix ONE document at a time. After calling WriteFile, STOP and wait for the next turn.
+
+Workflow for each document:
+1. ReadDoc - read the current document content
+2. ReadDoc (optional) - read related documents for context
+3. WriteFile - write the improved document
+4. STOP - wait for confirmation
+
+## Documents with Issues
+
+<% if (it.documentsWithIssues && it.documentsWithIssues.length > 0) { %>
+<% it.documentsWithIssues.forEach(function(doc, index) { %>
+### <%= index + 1 %>. <%= doc.path %>
+
+**Issues to fix:**
+<% doc.issues.forEach(function(issue) { %>
+- [<%= issue.severity.toUpperCase() %>] (<%= issue.category %>) <%= issue.description %>
+<% if (issue.suggestion) { %>
+  - *Suggestion*: <%= issue.suggestion %>
+<% } %>
+<% }); %>
+
+<% }); %>
+<% } else { %>
+No documents with issues to fix.
+<% } %>
+
+## Fix Priority
+
+1. **Errors first**: Fix all ERROR severity issues before warnings
+2. **Clarity issues**: Make explanations clearer for new developers
+3. **Missing content**: Add examples, cross-references, prerequisites
+4. **Structural issues**: Fix organization, headings, and flow
+
+## Improvement Focus
+
+Remember: You are improving documentation for NEW DEVELOPERS. Focus on:
+- Making content self-explanatory
+- Adding context before diving into details
+- Including helpful examples
+- Adding cross-references to related docs
+- Stating prerequisites clearly
+- Providing next steps
+
+## Start Fixing
+
+Begin by reading the first document with ReadDoc, then:
+1. Understand the current content
+2. Apply the suggested improvements
+3. Write the improved document with WriteFile
+4. STOP and wait for the next turn
+
+Call FinishFixing when all documents have been improved.
