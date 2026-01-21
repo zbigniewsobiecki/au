@@ -20,12 +20,19 @@ import { runAgentWithEvents } from "../lib/agent-runner.js";
 interface DocPlanStructure {
   structure: Array<{
     directory: string;
+    description: string;
     documents: Array<{
       path: string;
       title: string;
       description: string;
       order: number;
+      type?: string;
       sections?: string[];
+      sourcePaths?: string[];
+      mustCoverPaths?: string[];
+      validationFiles?: string[];
+      includeDiagram?: string;
+      coverageTarget?: string;
     }>;
   }>;
 }
@@ -34,6 +41,176 @@ interface ProjectMetadata {
   name: string;
   description: string;
   repository?: string;
+}
+
+/**
+ * Structure analysis results from AU content.
+ * Used to guide documentation coverage decisions.
+ */
+interface StructureAnalysis {
+  componentCount: number;
+  componentPaths: string[];
+  integrationMentions: string[];
+  processMentions: string[];
+  patternMentions: string[];
+  projectType: "library" | "application" | "monorepo" | "unknown";
+}
+
+/**
+ * Analyzes AU summary content to extract structure information.
+ * This is language-agnostic and works from AU summaries and paths.
+ */
+function analyzeAUStructure(auSummary: string): StructureAnalysis {
+  const result: StructureAnalysis = {
+    componentCount: 0,
+    componentPaths: [],
+    integrationMentions: [],
+    processMentions: [],
+    patternMentions: [],
+    projectType: "unknown",
+  };
+
+  // Parse AU entries from the summary
+  // Format: === path/to/file.au ===
+  const auEntries = auSummary.match(/^=== (.+?) ===/gm) || [];
+  const paths = auEntries.map((e) => e.replace(/^=== | ===$/g, ""));
+
+  // Detect project type from directory structure
+  if (paths.some((p) => p.startsWith("apps/") || p.startsWith("packages/"))) {
+    result.projectType = "monorepo";
+  } else if (paths.some((p) => p.includes("/src/") || p.match(/^src\//))) {
+    result.projectType = "application";
+  } else if (paths.some((p) => p.includes("/lib/") || p.match(/^lib\//))) {
+    result.projectType = "library";
+  }
+
+  // Identify component boundaries (language-agnostic)
+  // Look for common component directory patterns
+  const componentPatterns = [
+    /^apps\/([^/]+)\//,           // monorepo apps
+    /^packages\/([^/]+)\//,        // monorepo packages
+    /^src\/modules\/([^/]+)\//,    // module-based architecture
+    /^src\/components\/([^/]+)\//, // component-based
+    /^src\/services\/([^/]+)\//,   // service-based
+    /^lib\/([^/]+)\//,             // library modules
+    /^internal\/([^/]+)\//,        // Go internal packages
+    /^pkg\/([^/]+)\//,             // Go packages
+    /^cmd\/([^/]+)\//,             // Go commands
+  ];
+
+  const componentSet = new Set<string>();
+  for (const path of paths) {
+    for (const pattern of componentPatterns) {
+      const match = path.match(pattern);
+      if (match && match[1]) {
+        componentSet.add(match[1]);
+        break;
+      }
+    }
+  }
+  result.componentPaths = Array.from(componentSet).sort();
+  result.componentCount = componentSet.size;
+
+  // Extract integration mentions from summaries
+  // Look for common external service patterns
+  const integrationKeywords = [
+    // Databases
+    "database", "postgres", "postgresql", "mysql", "mongodb", "redis", "dynamodb",
+    "prisma", "sequelize", "typeorm", "drizzle",
+    // Auth providers
+    "auth0", "firebase auth", "cognito", "okta", "clerk",
+    // Payment services
+    "stripe", "paypal", "braintree", "adyen",
+    // Cloud services
+    "aws", "s3", "sqs", "sns", "lambda",
+    "azure", "gcp", "google cloud",
+    // Communication
+    "twilio", "sendgrid", "mailgun", "postmark", "resend",
+    // Monitoring
+    "sentry", "datadog", "newrelic", "grafana",
+    // Other integrations
+    "temporal", "kafka", "rabbitmq", "elasticsearch",
+    "openai", "anthropic", "webhook",
+  ];
+
+  const summaryLower = auSummary.toLowerCase();
+  for (const keyword of integrationKeywords) {
+    if (summaryLower.includes(keyword)) {
+      result.integrationMentions.push(keyword);
+    }
+  }
+  // Dedupe and sort
+  result.integrationMentions = [...new Set(result.integrationMentions)].sort();
+
+  // Extract process/flow mentions
+  const processKeywords = [
+    "workflow", "pipeline", "flow", "process", "saga",
+    "job", "queue", "worker", "cron", "scheduler",
+    "migration", "deployment", "build",
+  ];
+
+  for (const keyword of processKeywords) {
+    if (summaryLower.includes(keyword)) {
+      result.processMentions.push(keyword);
+    }
+  }
+  result.processMentions = [...new Set(result.processMentions)].sort();
+
+  // Extract pattern mentions (cross-cutting concerns)
+  const patternKeywords = [
+    "authentication", "authorization", "auth",
+    "validation", "error handling", "exception",
+    "logging", "logger", "telemetry", "observability",
+    "caching", "cache", "middleware",
+    "security", "encryption", "rate limit",
+  ];
+
+  for (const keyword of patternKeywords) {
+    if (summaryLower.includes(keyword)) {
+      result.patternMentions.push(keyword);
+    }
+  }
+  result.patternMentions = [...new Set(result.patternMentions)].sort();
+
+  return result;
+}
+
+/**
+ * Formats the structure analysis as a human-readable string for the planning prompt.
+ */
+function formatStructureAnalysis(analysis: StructureAnalysis): string {
+  const lines: string[] = [];
+
+  lines.push(`**Project Type**: ${analysis.projectType}`);
+  lines.push("");
+
+  lines.push(`**Components Detected**: ${analysis.componentCount}`);
+  if (analysis.componentPaths.length > 0) {
+    lines.push(`  → ${analysis.componentPaths.join(", ")}`);
+    lines.push(`  → Minimum component docs recommended: ${Math.ceil(analysis.componentCount / 3)}`);
+  }
+  lines.push("");
+
+  if (analysis.integrationMentions.length > 0) {
+    lines.push(`**External Integrations**: ${analysis.integrationMentions.length}`);
+    lines.push(`  → ${analysis.integrationMentions.join(", ")}`);
+    lines.push(`  → Minimum integration docs recommended: ${analysis.integrationMentions.length}`);
+    lines.push("");
+  }
+
+  if (analysis.processMentions.length > 0) {
+    lines.push(`**Processes/Flows Detected**: ${analysis.processMentions.length}`);
+    lines.push(`  → ${analysis.processMentions.join(", ")}`);
+    lines.push("");
+  }
+
+  if (analysis.patternMentions.length > 0) {
+    lines.push(`**Cross-Cutting Patterns**: ${analysis.patternMentions.length}`);
+    lines.push(`  → ${analysis.patternMentions.join(", ")}`);
+    lines.push("");
+  }
+
+  return lines.join("\n");
 }
 
 async function readProjectMetadata(): Promise<ProjectMetadata> {
@@ -61,16 +238,31 @@ function formatLabel(directory: string): string {
     .join(" ");
 }
 
-const SECTION_DESCRIPTIONS: Record<string, string> = {
+// Fallback descriptions for common categories (used when plan doesn't provide one)
+const FALLBACK_SECTION_DESCRIPTIONS: Record<string, string> = {
   "getting-started": "Install and set up for local development",
   guides: "Learn how to use features effectively",
   architecture: "Understand system design and patterns",
   reference: "API documentation and configuration options",
+  troubleshooting: "Solve common problems and find answers",
+  operations: "Deploy, monitor, and maintain in production",
+  testing: "Run tests, write new tests, and understand test strategy",
+  security: "Security practices and authentication",
+  integrations: "Third-party service integrations",
+  migrations: "Upgrade guides and breaking changes",
+  examples: "Code examples and sample projects",
+  tutorials: "Step-by-step learning paths",
+  concepts: "Conceptual explanations and mental models",
 };
 
-function getSectionDescription(directory: string): string {
+function getSectionDescription(directory: string, planDescription?: string): string {
+  // Prefer plan-provided description
+  if (planDescription) {
+    return planDescription;
+  }
+  // Fall back to hardcoded descriptions
   const key = directory.replace(/\/$/, "");
-  return SECTION_DESCRIPTIONS[key] || `Documentation for ${formatLabel(directory)}`;
+  return FALLBACK_SECTION_DESCRIPTIONS[key] || `Documentation for ${formatLabel(directory)}`;
 }
 
 export default class Document extends Command {
@@ -190,8 +382,19 @@ export default class Document extends Command {
     if (!documentPlan) {
       out.info("Planning documentation structure...");
 
+      // Analyze AU structure for coverage guidance
+      let structureAnalysis: string | undefined;
+      if (auSummary) {
+        const analysis = analyzeAUStructure(auSummary);
+        structureAnalysis = formatStructureAnalysis(analysis);
+        out.info(`Detected ${analysis.componentCount} components, ${analysis.integrationMentions.length} integrations`);
+      }
+
       const planSystemPrompt = render("document/plan-system", {});
-      const planInitialPrompt = render("document/plan-initial", { auSummary: auSummary || "" });
+      const planInitialPrompt = render("document/plan-initial", {
+        auSummary: auSummary || "",
+        structureAnalysis,
+      });
 
       // Build gadgets based on mode
       const planGadgets = [docPlan, finishPlanning, ...selectReadGadgets({ auOnly, codeOnly })];
@@ -368,23 +571,55 @@ export default class Document extends Command {
       researchInstruction = "ONE AURead call (with multiple paths) or ReadFiles as needed";
     }
 
-    const orchestratorInitialPrompt = `Generate documentation based on this plan.
+    // Format document info with optional metadata (numbered for clarity)
+    const formatDocInfo = (d: typeof pendingDocs[0], index: number) => {
+      const docType = d.type || "reference";
+      let info = `${index + 1}. **${d.path}** (type: ${docType}): ${d.title}
+   Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`;
+      // Show AU paths to cover if specified
+      if (d.mustCoverPaths?.length) {
+        info += `\n   📂 Must cover: ${d.mustCoverPaths.join(", ")}`;
+      }
+      // All docs require validation - show which files to read
+      const filesToRead = d.validationFiles?.length
+        ? d.validationFiles.join(", ")
+        : d.sourcePaths?.length
+          ? d.sourcePaths.join(", ")
+          : "package.json";
+      info += `\n   📖 Read source: ${filesToRead}`;
+      if (d.includeDiagram && d.includeDiagram !== "none") {
+        info += `\n   📊 Include ${d.includeDiagram} diagram`;
+      }
+      return info;
+    };
 
-## Available AU Entries
-The AUListSummary above shows all paths with understanding. ONLY use paths from that list.
+    const orchestratorInitialPrompt = `Generate ${pendingDocs.length} documentation files based on this plan.
 
-## Documents to write (${pendingDocs.length} remaining):
-${pendingDocs.map((d) => `- ${d.path}: ${d.title}
-  Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`).join("\n")}
+## CRITICAL: One Document Per Turn
+- You may only call WriteFile ONCE per turn
+- After WriteFile, STOP and wait for confirmation
+- Each document must be 80-150+ lines minimum
 
-## Workflow (STRICT)
-For EACH document:
-1. ${researchInstruction} - ONLY use paths from AUListSummary above
-2. WriteFile with complete markdown content following the sections outline
-3. Move to next document
+## Document Queue (${pendingDocs.length} documents):
+${pendingDocs.map((d, i) => formatDocInfo(d, i)).join("\n\n")}
 
-Do ONE document at a time: Read -> Write -> Next.
-Call FinishDocs when all ${pendingDocs.length} documents are written.`;
+## Workflow Per Document
+1. **Read**: ${researchInstruction} (use paths from AUListSummary above)
+2. **Validate**: If marked "REQUIRES VALIDATION", also read those source files
+3. **Write**: Call WriteFile with complete, thorough markdown (80-150+ lines)
+4. **Stop**: Wait for confirmation, then proceed to next document
+
+## Quality Requirements
+- Each document: 80-150 lines MINIMUM
+- Include: overview, detailed sections, code examples, cross-references
+- Code examples must be complete with imports
+- Link to related documents in the set
+
+## Start Now
+Begin with document #1: **${pendingDocs[0]?.path}**
+Read the relevant AU content, then write a comprehensive document.
+
+Call FinishDocs only after ALL ${pendingDocs.length} documents are written.`;
 
     // Build gadgets based on mode
     const genGadgets = [writeDoc, ...selectReadGadgets({ auOnly, codeOnly }), finishDocs];
@@ -459,10 +694,10 @@ Call FinishDocs when all ${pendingDocs.length} documents are written.`;
       out.info("Generating Starlight index.mdx...");
       const metadata = await readProjectMetadata();
 
-      // Build section info from plan
+      // Build section info from plan (use plan descriptions when available)
       const sections = plan.structure.map((dir) => ({
         label: formatLabel(dir.directory),
-        description: getSectionDescription(dir.directory),
+        description: getSectionDescription(dir.directory, dir.description),
         directory: dir.directory.replace(/\/$/, ""),
         firstDoc: dir.documents[0]?.path.split("/").pop()?.replace(".md", "") || "",
       }));

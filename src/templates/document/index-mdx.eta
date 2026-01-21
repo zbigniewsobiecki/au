@@ -1,6 +1,6 @@
 ---
-title: <%= it.projectName %> Documentation
-description: <%= it.projectDescription %>
+title: "<%= it.projectName %> Documentation"
+description: "<%= it.projectDescription || it.projectName + ' documentation' %>"
 template: splash
 hero:
   tagline: <%= it.projectDescription || it.projectName + ' documentation' %>

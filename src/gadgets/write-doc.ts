@@ -12,11 +12,20 @@ export function setTargetDir(dir: string) {
 export const writeDoc = createGadget({
   name: "WriteFile",
   maxConcurrent: 1,
-  description: `Write a file to the documentation directory.
+  description: `Write a SINGLE documentation file. You may only call this gadget ONCE per turn.
+
+⚠️ ONE WriteFile PER TURN: You can call AURead, ReadFiles, and other read gadgets freely,
+but only ONE WriteFile call per turn. After WriteFile, STOP and wait for confirmation.
 
 Parameters:
 - filePath: Path within the docs directory (e.g., "guides/auth.md")
-- content: Complete file content including any frontmatter`,
+- content: Complete file content including any frontmatter
+
+QUALITY REQUIREMENTS:
+- Each document should be 80-150 lines minimum
+- Include detailed explanations, not just bullet points
+- Add code examples with imports and realistic values
+- Include cross-references to related documents`,
   examples: [
     {
       comment: "Write a markdown doc with frontmatter",

@@ -9,30 +9,188 @@ Create a documentation plan based on the AU (Agent Understanding) files provided
 
 ## Documentation Categories
 
-Use these standard directories:
+The following are COMMON documentation categories. Use these as inspiration, but feel free to create additional project-specific categories that better fit the codebase you're documenting.
 
-### getting-started/
-- Installation and setup
+### Common Categories (use as starting point):
+
+**getting-started/** - Onboarding and setup
+- Installation and prerequisites
 - Quick start guide
 - Basic configuration
 
-### guides/
-- Feature-specific how-to guides
+**guides/** - Feature walkthroughs and how-tos
+- Feature-specific guides
 - Integration guides
 - Best practices
-- **End-to-end workflows** (user journeys through the system)
+- End-to-end workflows (user journeys)
 
-### reference/
+**architecture/** - System design and patterns
+- System overview
+- Design patterns
+- Component relationships
+- Cross-cutting concerns (auth, validation, error handling, logging)
+- Data flow documentation
+
+**reference/** - API docs, configuration, specifications
 - API documentation
 - Configuration options
 - CLI commands (if applicable)
 
-### architecture/
-- System overview
-- Design patterns
-- Component relationships
-- **Cross-cutting concerns** (auth, validation, error handling, logging, etc.)
-- **Data flow documentation** (how data moves through the system)
+### Additional Categories (include when relevant):
+
+**troubleshooting/** - Error solutions, debugging, FAQ
+- Common installation errors
+- Runtime issues and solutions
+- Configuration troubleshooting
+
+**operations/** - Deployment, monitoring, runbooks
+- Deployment guides
+- Monitoring setup
+- Operational runbooks
+
+**testing/** - Test strategy, running/writing tests
+- Test setup and configuration
+- Writing tests
+- CI/CD integration
+
+**security/** - Security practices, authentication, authorization
+
+**integrations/** - Third-party service integrations
+
+**migrations/** - Upgrade guides, breaking changes
+
+**examples/** - Code examples and sample projects
+
+**tutorials/** - Step-by-step learning paths
+
+**concepts/** - Conceptual explanations and mental models
+
+### Creating Custom Categories
+
+If the project has unique organizational needs, create categories that match its domain:
+- A game engine might need: `rendering/`, `physics/`, `audio/`
+- A data platform might need: `pipelines/`, `connectors/`, `transforms/`
+- A CLI tool might need: `commands/`, `plugins/`, `scripting/`
+- A monorepo might need app-specific sections: `frontend/`, `backend/`, `shared/`
+
+Choose categories that will be intuitive to the project's users.
+
+## MANDATORY: Coverage Analysis Before Planning
+
+Before creating your documentation plan, you MUST perform this analysis to ensure comprehensive coverage.
+
+### Step 1: Component Analysis (Language-Agnostic)
+
+1. **Identify component boundaries** from AU directory structure:
+   - Look for directories that represent distinct functional areas (modules/, packages/, services/, lib/, etc.)
+   - Count major components that have their own directory
+   - Note: A "component" is any cohesive unit of functionality, regardless of language or framework
+
+2. **Coverage Rule for Components**:
+   - For N major components, plan at least **N/3 component-type documents**
+   - Example: 12 modules → at least 4 component docs for key modules
+   - Prioritize: components with external integrations, complex logic, or heavy usage
+
+3. **Component Documentation Requirements**:
+   - Each component doc should have `type: "component"`
+   - Use `mustCoverPaths` to list AU paths this doc must cover
+   - Include: Purpose, Key Files, Public Interface, Dependencies
+
+### Step 2: Integration Analysis (Language-Agnostic)
+
+1. **Find external dependencies** from AU content:
+   - Look for references to external services (databases, APIs, message queues)
+   - Look for client/adapter/connector patterns in any language
+   - Check AU summaries for mentions of third-party services (AWS, Auth0, Stripe, etc.)
+
+2. **Coverage Rule for Integrations**:
+   - Create **ONE integration-type document per significant external dependency**
+   - Example: Database + Auth provider + Payment service → 3 integration docs
+
+3. **Integration Documentation Requirements**:
+   - Each integration doc should have `type: "integration"`
+   - Use `validationFiles` to specify config files for fact-checking
+   - Include: Purpose, Configuration, Key Operations, Error Handling
+
+### Step 3: Process/Flow Analysis (Language-Agnostic)
+
+1. **Identify multi-step processes** from AU content:
+   - Data flows that span multiple components
+   - User journeys or business processes
+   - Async/background job processing
+   - Pipeline processing (build, deploy, data transformation)
+
+2. **Coverage Rule for Processes**:
+   - Create **ONE process-type document per major end-to-end flow**
+   - Example: User registration + Payment processing + Order fulfillment → 3 process docs
+
+3. **Process Documentation Requirements**:
+   - Each process doc should have `type: "process"`
+   - Include `includeDiagram: "sequence"` or `"flow"`
+   - Include: Trigger, Steps, Error Handling, Related Components
+
+### Step 4: Pattern Analysis (Language-Agnostic)
+
+1. **Find cross-cutting concerns** from AU tags and summaries:
+   - Authentication/authorization
+   - Error handling patterns
+   - Logging/observability
+   - Data validation
+   - Caching strategies
+   - Security practices
+
+2. **Coverage Rule for Patterns**:
+   - Document patterns that appear in **3+ components**
+   - Create **ONE pattern-type document per cross-cutting concern**
+
+3. **Pattern Documentation Requirements**:
+   - Each pattern doc should have `type: "pattern"`
+   - Include: Problem, Solution, Implementation Examples, Where Used
+
+### Coverage Summary Checklist
+
+Before calling DocPlan, verify you have:
+- [ ] At least N/3 component docs for N major components
+- [ ] One integration doc per external service
+- [ ] One process doc per major flow
+- [ ] Pattern docs for concerns appearing in 3+ components
+- [ ] Overview doc(s) for system architecture
+- [ ] Reference docs for APIs and configuration
+
+---
+
+## Comprehensive Coverage Requirements
+
+When analyzing the codebase through AU entries, ensure your documentation plan achieves comprehensive coverage:
+
+### 1. Structural Coverage
+- **Identify all major components**: Count distinct modules, packages, or bounded contexts
+- **Plan proportional coverage**: For N major components, plan at least N/3 component documents
+- **No orphan components**: Every significant component should be mentioned in at least one document
+
+### 2. API Surface Coverage
+- **Multiple entry points**: If the codebase exposes multiple APIs (public, admin, internal), document each
+- **Public interfaces**: All public APIs, CLIs, or interfaces need reference documentation
+- **Configuration surfaces**: Document all ways users configure the system
+
+### 3. Integration Coverage
+- **External dependencies**: Document integration with external services, databases, message queues
+- **Extension points**: Document how to extend or customize the system
+
+### 4. User Journey Coverage
+- **Getting started path**: Clear path from zero to running code
+- **Common use cases**: Document the primary workflows users will perform
+- **Advanced scenarios**: Include at least one advanced usage guide
+
+### Source Validation (Always Enabled)
+
+ALL documents are validated against source files during generation. The generator will read package.json and other source files to verify facts before writing.
+
+For documents that need specific files validated, populate `sourcePaths`:
+- Package manifest files (package.json, Cargo.toml, go.mod, requirements.txt, etc.)
+- Configuration schema files or .env.example
+- Entry point files that reveal the actual frameworks used
+- API route definitions
 
 ## Cross-Cutting Concerns
 
@@ -49,38 +207,24 @@ Identify key user journeys or data flows that span multiple components. These de
 
 ## Diagram Strategy
 
-When planning architecture/ documents, identify opportunities for D2 diagrams:
+When planning documents, identify opportunities for D2 diagrams using `includeDiagram`:
 
-### Diagram Types to Consider
+### Diagram Types
 
-1. **System Overview** (architecture/system-overview.md)
-   - All major components at a glance
-   - High-level data flow between them
-
-2. **Request Flow** (architecture/ or guides/)
-   - How a user action flows through the system
-   - Useful for debugging and onboarding
-
-3. **Data Model** (architecture/ or reference/)
-   - Key entities and their relationships
-   - Foreign key connections
-
-4. **Component Dependencies** (architecture/)
-   - Which modules depend on which
-   - Package/import relationships
-
-5. **State Diagrams** (guides/ or architecture/)
-   - For stateful entities (workflows, sessions, orders)
-   - Show transitions and triggers
+- **architecture** - System Overview showing major components
+- **sequence** - Request flows and user journeys
+- **entity** - Data models and relationships
+- **state** - State machines and workflows
+- **flow** - Data pipelines and processing flows
 
 ### Detection Hints
 
 Look for these patterns in AU to identify diagram opportunities:
-- Multiple services/packages → System Overview diagram
-- Event sourcing/CQRS → Event Flow diagram
-- Database schemas → Entity Relationship diagram
-- State machines/workflows → State Diagram
-- External integrations → Integration diagram
+- Multiple services/packages → architecture diagram
+- Event sourcing/CQRS → sequence diagram
+- Database schemas → entity diagram
+- State machines/workflows → state diagram
+- External integrations → architecture diagram
 
 ## Guidelines
 
@@ -89,7 +233,15 @@ Look for these patterns in AU to identify diagram opportunities:
 3. **Map E2E flows**: Identify important user journeys or data flows
 4. **Keep it focused**: Cover important topics without excessive overlap
 5. **Stay grounded**: Only plan docs for things in the AU understanding
+6. **Provide directory descriptions**: For each category used (especially custom ones), include a description for navigation
 
 ## Output
 
-Call **DocPlan** with a flat list of documents. Each document needs: path, title, description, order. Directory is inferred from path prefix.
+Call **DocPlan** with:
+- `documents`: Flat list of documents (path, title, description, order, sections)
+- `directoryDescriptions`: Array of {directory, description} for each category used
+
+Use the optional fields where appropriate:
+- `sourcePaths`: specific files to validate against (in addition to default package.json)
+- `includeDiagram`: type of D2 diagram to include
+- `coverageTarget`: AU path pattern this document covers

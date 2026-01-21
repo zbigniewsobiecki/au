@@ -6,6 +6,51 @@ Below are the AU entries available for this codebase (summaries only - use AURea
 <%= it.auSummary %>
 </au-summary>
 
+<% if (it.structureAnalysis) { %>
+## Pre-Computed Structure Analysis
+
+The following analysis was computed from the AU content. Use these counts to guide your coverage decisions:
+
+<structure-analysis>
+<%= it.structureAnalysis %>
+</structure-analysis>
+<% } %>
+
+## Pre-Planning Analysis
+
+Before creating your documentation plan, analyze the AU summaries and structure analysis above to understand:
+
+### Codebase Characteristics
+1. **Scale**: How many major components/modules exist? (See structure analysis above if available)
+2. **Type**: Is this a library, application, framework, or monorepo?
+3. **Complexity**: Are there workflows, state machines, or complex processes?
+4. **Integrations**: What external services does it connect to?
+
+### Documentation Needs Assessment
+
+Based on the above, determine:
+- How many getting-started documents (usually 1-2)
+- How many guide documents (proportional to features)
+- How many reference documents (proportional to public APIs)
+- How many component documents (use N/3 rule from structure analysis)
+- How many integration documents (one per external service)
+- How many process documents (one per major flow)
+- Whether troubleshooting section is needed (yes if complex setup)
+- Whether operations section is needed (yes if deployable application)
+- Whether testing section is needed (yes if test infrastructure exists)
+- Whether custom categories are needed (for domain-specific organization)
+
+### Coverage Targets
+
+Use these minimum targets based on structure analysis:
+- **Component docs**: At least N/3 where N = major components identified
+- **Integration docs**: One per external service/dependency
+- **Process docs**: One per major multi-step flow
+- **Pattern docs**: One per cross-cutting concern found in 3+ components
+- 100% of public API surfaces documented
+- 80%+ of major components mentioned in at least one document
+- Clear path from "never seen this" to "productive user"
+
 ## Instructions
 
 1. **Analyze the AU summaries** to identify:
@@ -13,13 +58,22 @@ Below are the AU entries available for this codebase (summaries only - use AURea
    - Key features and components
    - Architecture patterns
    - Cross-cutting concerns (auth, validation, error handling, etc.)
+   - External integrations and dependencies
 
-2. **Plan documentation** using standard categories:
+2. **Plan documentation** using standard or custom categories:
    - `getting-started/` - Installation, quick start
    - `guides/` - Feature how-to guides
    - `reference/` - API, config, CLI docs
    - `architecture/` - System design
+   - Add troubleshooting/, operations/, testing/, or custom categories as needed
 
-3. **Call DocPlan** with documents to generate. Each needs: path, title, description, order, sections.
+3. **Specify source files for validation**:
+   - All documents are validated against source files (package.json is always read)
+   - Populate `sourcePaths` with additional files to validate against (e.g., .env.example, config files)
 
-Include a `sections` array for each document listing the main headings to cover (3-6 sections per doc).
+4. **Plan diagrams** where helpful:
+   - Set `includeDiagram` to architecture/sequence/entity/state/flow as appropriate
+
+5. **Call DocPlan** with:
+   - `documents`: array with path, title, description, order, sections (3-6 per doc)
+   - `directoryDescriptions`: array with directory name and description for each category
