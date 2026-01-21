@@ -1,3 +1,11 @@
+## [1.2.0](https://github.com/zbigniewsobiecki/au/compare/v1.1.0...v1.2.0) (2026-01-21)
+
+### Features
+
+* **document:** add document-verify command with fix capability ([#9](https://github.com/zbigniewsobiecki/au/issues/9)) ([ea5ad97](https://github.com/zbigniewsobiecki/au/commit/ea5ad974ad56a8a4b29172874e5d184b708b8b83))
+* **document:** enforce one WriteFile per turn for better quality ([#8](https://github.com/zbigniewsobiecki/au/issues/8)) ([da1d8d3](https://github.com/zbigniewsobiecki/au/commit/da1d8d39a4486725e90f37417111f0478e393986))
+* **document:** improve documentation generation for any repository ([#7](https://github.com/zbigniewsobiecki/au/issues/7)) ([3b41871](https://github.com/zbigniewsobiecki/au/commit/3b4187169b6253e5f6b961ba0247a925fdfda420))
+
 ## [1.1.0](https://github.com/zbigniewsobiecki/au/compare/v1.0.1...v1.1.0) (2026-01-16)
 
 ### Features
