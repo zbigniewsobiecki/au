@@ -26,9 +26,11 @@ interface DocPlanStructure {
       title: string;
       description: string;
       order: number;
+      type?: string;
       sections?: string[];
-      requiresSourceValidation?: boolean;
       sourcePaths?: string[];
+      mustCoverPaths?: string[];
+      validationFiles?: string[];
       includeDiagram?: string;
       coverageTarget?: string;
     }>;
@@ -39,6 +41,176 @@ interface ProjectMetadata {
   name: string;
   description: string;
   repository?: string;
+}
+
+/**
+ * Structure analysis results from AU content.
+ * Used to guide documentation coverage decisions.
+ */
+interface StructureAnalysis {
+  componentCount: number;
+  componentPaths: string[];
+  integrationMentions: string[];
+  processMentions: string[];
+  patternMentions: string[];
+  projectType: "library" | "application" | "monorepo" | "unknown";
+}
+
+/**
+ * Analyzes AU summary content to extract structure information.
+ * This is language-agnostic and works from AU summaries and paths.
+ */
+function analyzeAUStructure(auSummary: string): StructureAnalysis {
+  const result: StructureAnalysis = {
+    componentCount: 0,
+    componentPaths: [],
+    integrationMentions: [],
+    processMentions: [],
+    patternMentions: [],
+    projectType: "unknown",
+  };
+
+  // Parse AU entries from the summary
+  // Format: === path/to/file.au ===
+  const auEntries = auSummary.match(/^=== (.+?) ===/gm) || [];
+  const paths = auEntries.map((e) => e.replace(/^=== | ===$/g, ""));
+
+  // Detect project type from directory structure
+  if (paths.some((p) => p.startsWith("apps/") || p.startsWith("packages/"))) {
+    result.projectType = "monorepo";
+  } else if (paths.some((p) => p.includes("/src/") || p.match(/^src\//))) {
+    result.projectType = "application";
+  } else if (paths.some((p) => p.includes("/lib/") || p.match(/^lib\//))) {
+    result.projectType = "library";
+  }
+
+  // Identify component boundaries (language-agnostic)
+  // Look for common component directory patterns
+  const componentPatterns = [
+    /^apps\/([^/]+)\//,           // monorepo apps
+    /^packages\/([^/]+)\//,        // monorepo packages
+    /^src\/modules\/([^/]+)\//,    // module-based architecture
+    /^src\/components\/([^/]+)\//, // component-based
+    /^src\/services\/([^/]+)\//,   // service-based
+    /^lib\/([^/]+)\//,             // library modules
+    /^internal\/([^/]+)\//,        // Go internal packages
+    /^pkg\/([^/]+)\//,             // Go packages
+    /^cmd\/([^/]+)\//,             // Go commands
+  ];
+
+  const componentSet = new Set<string>();
+  for (const path of paths) {
+    for (const pattern of componentPatterns) {
+      const match = path.match(pattern);
+      if (match && match[1]) {
+        componentSet.add(match[1]);
+        break;
+      }
+    }
+  }
+  result.componentPaths = Array.from(componentSet).sort();
+  result.componentCount = componentSet.size;
+
+  // Extract integration mentions from summaries
+  // Look for common external service patterns
+  const integrationKeywords = [
+    // Databases
+    "database", "postgres", "postgresql", "mysql", "mongodb", "redis", "dynamodb",
+    "prisma", "sequelize", "typeorm", "drizzle",
+    // Auth providers
+    "auth0", "firebase auth", "cognito", "okta", "clerk",
+    // Payment services
+    "stripe", "paypal", "braintree", "adyen",
+    // Cloud services
+    "aws", "s3", "sqs", "sns", "lambda",
+    "azure", "gcp", "google cloud",
+    // Communication
+    "twilio", "sendgrid", "mailgun", "postmark", "resend",
+    // Monitoring
+    "sentry", "datadog", "newrelic", "grafana",
+    // Other integrations
+    "temporal", "kafka", "rabbitmq", "elasticsearch",
+    "openai", "anthropic", "webhook",
+  ];
+
+  const summaryLower = auSummary.toLowerCase();
+  for (const keyword of integrationKeywords) {
+    if (summaryLower.includes(keyword)) {
+      result.integrationMentions.push(keyword);
+    }
+  }
+  // Dedupe and sort
+  result.integrationMentions = [...new Set(result.integrationMentions)].sort();
+
+  // Extract process/flow mentions
+  const processKeywords = [
+    "workflow", "pipeline", "flow", "process", "saga",
+    "job", "queue", "worker", "cron", "scheduler",
+    "migration", "deployment", "build",
+  ];
+
+  for (const keyword of processKeywords) {
+    if (summaryLower.includes(keyword)) {
+      result.processMentions.push(keyword);
+    }
+  }
+  result.processMentions = [...new Set(result.processMentions)].sort();
+
+  // Extract pattern mentions (cross-cutting concerns)
+  const patternKeywords = [
+    "authentication", "authorization", "auth",
+    "validation", "error handling", "exception",
+    "logging", "logger", "telemetry", "observability",
+    "caching", "cache", "middleware",
+    "security", "encryption", "rate limit",
+  ];
+
+  for (const keyword of patternKeywords) {
+    if (summaryLower.includes(keyword)) {
+      result.patternMentions.push(keyword);
+    }
+  }
+  result.patternMentions = [...new Set(result.patternMentions)].sort();
+
+  return result;
+}
+
+/**
+ * Formats the structure analysis as a human-readable string for the planning prompt.
+ */
+function formatStructureAnalysis(analysis: StructureAnalysis): string {
+  const lines: string[] = [];
+
+  lines.push(`**Project Type**: ${analysis.projectType}`);
+  lines.push("");
+
+  lines.push(`**Components Detected**: ${analysis.componentCount}`);
+  if (analysis.componentPaths.length > 0) {
+    lines.push(`  → ${analysis.componentPaths.join(", ")}`);
+    lines.push(`  → Minimum component docs recommended: ${Math.ceil(analysis.componentCount / 3)}`);
+  }
+  lines.push("");
+
+  if (analysis.integrationMentions.length > 0) {
+    lines.push(`**External Integrations**: ${analysis.integrationMentions.length}`);
+    lines.push(`  → ${analysis.integrationMentions.join(", ")}`);
+    lines.push(`  → Minimum integration docs recommended: ${analysis.integrationMentions.length}`);
+    lines.push("");
+  }
+
+  if (analysis.processMentions.length > 0) {
+    lines.push(`**Processes/Flows Detected**: ${analysis.processMentions.length}`);
+    lines.push(`  → ${analysis.processMentions.join(", ")}`);
+    lines.push("");
+  }
+
+  if (analysis.patternMentions.length > 0) {
+    lines.push(`**Cross-Cutting Patterns**: ${analysis.patternMentions.length}`);
+    lines.push(`  → ${analysis.patternMentions.join(", ")}`);
+    lines.push("");
+  }
+
+  return lines.join("\n");
 }
 
 async function readProjectMetadata(): Promise<ProjectMetadata> {
@@ -210,8 +382,19 @@ export default class Document extends Command {
     if (!documentPlan) {
       out.info("Planning documentation structure...");
 
+      // Analyze AU structure for coverage guidance
+      let structureAnalysis: string | undefined;
+      if (auSummary) {
+        const analysis = analyzeAUStructure(auSummary);
+        structureAnalysis = formatStructureAnalysis(analysis);
+        out.info(`Detected ${analysis.componentCount} components, ${analysis.integrationMentions.length} integrations`);
+      }
+
       const planSystemPrompt = render("document/plan-system", {});
-      const planInitialPrompt = render("document/plan-initial", { auSummary: auSummary || "" });
+      const planInitialPrompt = render("document/plan-initial", {
+        auSummary: auSummary || "",
+        structureAnalysis,
+      });
 
       // Build gadgets based on mode
       const planGadgets = [docPlan, finishPlanning, ...selectReadGadgets({ auOnly, codeOnly })];
@@ -390,11 +573,20 @@ export default class Document extends Command {
 
     // Format document info with optional metadata (numbered for clarity)
     const formatDocInfo = (d: typeof pendingDocs[0], index: number) => {
-      let info = `${index + 1}. **${d.path}**: ${d.title}
+      const docType = d.type || "reference";
+      let info = `${index + 1}. **${d.path}** (type: ${docType}): ${d.title}
    Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`;
-      if (d.requiresSourceValidation) {
-        info += `\n   ⚠️ REQUIRES VALIDATION: Read first: ${d.sourcePaths?.join(", ") || "package.json"}`;
+      // Show AU paths to cover if specified
+      if (d.mustCoverPaths?.length) {
+        info += `\n   📂 Must cover: ${d.mustCoverPaths.join(", ")}`;
       }
+      // All docs require validation - show which files to read
+      const filesToRead = d.validationFiles?.length
+        ? d.validationFiles.join(", ")
+        : d.sourcePaths?.length
+          ? d.sourcePaths.join(", ")
+          : "package.json";
+      info += `\n   📖 Read source: ${filesToRead}`;
       if (d.includeDiagram && d.includeDiagram !== "none") {
         info += `\n   📊 Include ${d.includeDiagram} diagram`;
       }

@@ -75,13 +75,97 @@ If the project has unique organizational needs, create categories that match its
 
 Choose categories that will be intuitive to the project's users.
 
+## MANDATORY: Coverage Analysis Before Planning
+
+Before creating your documentation plan, you MUST perform this analysis to ensure comprehensive coverage.
+
+### Step 1: Component Analysis (Language-Agnostic)
+
+1. **Identify component boundaries** from AU directory structure:
+   - Look for directories that represent distinct functional areas (modules/, packages/, services/, lib/, etc.)
+   - Count major components that have their own directory
+   - Note: A "component" is any cohesive unit of functionality, regardless of language or framework
+
+2. **Coverage Rule for Components**:
+   - For N major components, plan at least **N/3 component-type documents**
+   - Example: 12 modules → at least 4 component docs for key modules
+   - Prioritize: components with external integrations, complex logic, or heavy usage
+
+3. **Component Documentation Requirements**:
+   - Each component doc should have `type: "component"`
+   - Use `mustCoverPaths` to list AU paths this doc must cover
+   - Include: Purpose, Key Files, Public Interface, Dependencies
+
+### Step 2: Integration Analysis (Language-Agnostic)
+
+1. **Find external dependencies** from AU content:
+   - Look for references to external services (databases, APIs, message queues)
+   - Look for client/adapter/connector patterns in any language
+   - Check AU summaries for mentions of third-party services (AWS, Auth0, Stripe, etc.)
+
+2. **Coverage Rule for Integrations**:
+   - Create **ONE integration-type document per significant external dependency**
+   - Example: Database + Auth provider + Payment service → 3 integration docs
+
+3. **Integration Documentation Requirements**:
+   - Each integration doc should have `type: "integration"`
+   - Use `validationFiles` to specify config files for fact-checking
+   - Include: Purpose, Configuration, Key Operations, Error Handling
+
+### Step 3: Process/Flow Analysis (Language-Agnostic)
+
+1. **Identify multi-step processes** from AU content:
+   - Data flows that span multiple components
+   - User journeys or business processes
+   - Async/background job processing
+   - Pipeline processing (build, deploy, data transformation)
+
+2. **Coverage Rule for Processes**:
+   - Create **ONE process-type document per major end-to-end flow**
+   - Example: User registration + Payment processing + Order fulfillment → 3 process docs
+
+3. **Process Documentation Requirements**:
+   - Each process doc should have `type: "process"`
+   - Include `includeDiagram: "sequence"` or `"flow"`
+   - Include: Trigger, Steps, Error Handling, Related Components
+
+### Step 4: Pattern Analysis (Language-Agnostic)
+
+1. **Find cross-cutting concerns** from AU tags and summaries:
+   - Authentication/authorization
+   - Error handling patterns
+   - Logging/observability
+   - Data validation
+   - Caching strategies
+   - Security practices
+
+2. **Coverage Rule for Patterns**:
+   - Document patterns that appear in **3+ components**
+   - Create **ONE pattern-type document per cross-cutting concern**
+
+3. **Pattern Documentation Requirements**:
+   - Each pattern doc should have `type: "pattern"`
+   - Include: Problem, Solution, Implementation Examples, Where Used
+
+### Coverage Summary Checklist
+
+Before calling DocPlan, verify you have:
+- [ ] At least N/3 component docs for N major components
+- [ ] One integration doc per external service
+- [ ] One process doc per major flow
+- [ ] Pattern docs for concerns appearing in 3+ components
+- [ ] Overview doc(s) for system architecture
+- [ ] Reference docs for APIs and configuration
+
+---
+
 ## Comprehensive Coverage Requirements
 
 When analyzing the codebase through AU entries, ensure your documentation plan achieves comprehensive coverage:
 
 ### 1. Structural Coverage
 - **Identify all major components**: Count distinct modules, packages, or bounded contexts
-- **Plan proportional coverage**: For N major components, plan at least N/3 guide documents
+- **Plan proportional coverage**: For N major components, plan at least N/3 component documents
 - **No orphan components**: Every significant component should be mentioned in at least one document
 
 ### 2. API Surface Coverage
@@ -98,18 +182,15 @@ When analyzing the codebase through AU entries, ensure your documentation plan a
 - **Common use cases**: Document the primary workflows users will perform
 - **Advanced scenarios**: Include at least one advanced usage guide
 
-### Accuracy-Critical Documents
+### Source Validation (Always Enabled)
 
-Mark these document types with `requiresSourceValidation: true`:
-- Installation/setup documents (verify runtime versions, package manager, commands)
-- Configuration reference (verify environment variables, config files)
-- API reference (verify endpoints, parameters, responses)
-- CLI reference (verify command names and flags)
+ALL documents are validated against source files during generation. The generator will read package.json and other source files to verify facts before writing.
 
-For these documents, also populate `sourcePaths` with relevant files:
+For documents that need specific files validated, populate `sourcePaths`:
 - Package manifest files (package.json, Cargo.toml, go.mod, requirements.txt, etc.)
-- Configuration schema files
-- Entry point files
+- Configuration schema files or .env.example
+- Entry point files that reveal the actual frameworks used
+- API route definitions
 
 ## Cross-Cutting Concerns
 
@@ -161,7 +242,6 @@ Call **DocPlan** with:
 - `directoryDescriptions`: Array of {directory, description} for each category used
 
 Use the optional fields where appropriate:
-- `requiresSourceValidation`: true for accuracy-critical docs
-- `sourcePaths`: files to validate against
+- `sourcePaths`: specific files to validate against (in addition to default package.json)
 - `includeDiagram`: type of D2 diagram to include
 - `coverageTarget`: AU path pattern this document covers

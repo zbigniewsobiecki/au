@@ -1,0 +1,71 @@
+Verify the following documentation for accuracy and completeness.
+
+## Important: On-Demand AU Reading
+
+You have access to AURead and AUList gadgets. Use them to fetch AU content as needed for each document.
+
+DO NOT try to load all AU content upfront - this will overflow the context window.
+
+For documents with mustCoverPaths, use AURead with ONLY those specific paths.
+
+## Documents to Verify
+
+<% if (it.documents && it.documents.length > 0) { %>
+<% it.documents.forEach(function(doc, index) { %>
+### <%= index + 1 %>. <%= doc.path %>
+- **Title**: <%= doc.title %>
+- **Type**: <%= doc.type || 'reference' %>
+<% if (doc.sections && doc.sections.length > 0) { %>
+- **Expected sections**: <%= doc.sections.join(', ') %>
+<% } %>
+<% if (doc.mustCoverPaths && doc.mustCoverPaths.length > 0) { %>
+- **Must cover AU paths**: <%= doc.mustCoverPaths.join(', ') %>
+<% } %>
+<% if (doc.validationFiles && doc.validationFiles.length > 0) { %>
+- **Validation files**: <%= doc.validationFiles.join(', ') %>
+<% } %>
+<% if (doc.sourcePaths && doc.sourcePaths.length > 0) { %>
+- **Source paths**: <%= doc.sourcePaths.join(', ') %>
+<% } %>
+
+<% }); %>
+<% } else { %>
+No documents specified - verify all documents in the target directory.
+<% } %>
+
+## Verification Checklist
+
+For each document:
+
+1. **Read the document** using ReadDoc
+2. **Verify frontmatter** (title, description present)
+3. **Check sections** (expected sections exist)
+4. **Verify facts**:
+   - Read package.json or relevant config files
+   - Check framework names match actual dependencies
+   - Verify npm scripts exist
+   - Confirm file paths are valid
+5. **Check AU coverage** (if mustCoverPaths specified):
+   - Read the AU paths
+   - Verify the document discusses those paths
+6. **Report issues** using ReportIssue for each problem found
+
+## Source Validation Files
+
+Always check these files when verifying facts:
+- `package.json` - for dependencies, scripts, versions
+<% if (it.commonValidationFiles && it.commonValidationFiles.length > 0) { %>
+<% it.commonValidationFiles.forEach(function(file) { %>
+- `<%= file %>`
+<% }); %>
+<% } %>
+
+## Start Verification
+
+Begin by reading the first document with ReadDoc, then:
+1. Read the relevant AU content with AURead
+2. Read source files with ReadFiles to verify facts
+3. Report any issues found with ReportIssue
+4. Move to the next document
+
+Call FinishVerification when all documents have been checked.
