@@ -1,3 +1,9 @@
+## [1.4.1](https://github.com/zbigniewsobiecki/au/compare/v1.4.0...v1.4.1) (2026-01-22)
+
+### Bug Fixes
+
+* **sysml:** correct connection syntax and add deduplication ([ea16be9](https://github.com/zbigniewsobiecki/au/commit/ea16be9889b3babd906f1e9e8e5bd821ac28f002))
+
 ## [1.4.0](https://github.com/zbigniewsobiecki/au/compare/v1.3.0...v1.4.0) (2026-01-22)
 
 ### Features
