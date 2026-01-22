@@ -1,0 +1,40 @@
+<% if (!it.sysmlOnly && !it.codeOnly) { %>
+Before answering, you must explore the codebase using ReadFiles or RipGrep. The SysML model provided gives you semantic understanding, but you need to read actual source code to give a thorough, grounded answer.
+
+<% } %>
+Question: <%= it.question %>
+<% if (!it.sysmlOnly && !it.codeOnly) { %>
+
+For implementation questions, you must first discover existing patterns:
+1. Use SysMLQuery to find relevant definitions and their relationships
+2. Use SysMLRead to understand the architecture from the model
+3. Search for similar existing implementations in source code
+4. Search for error handling patterns (how are errors caught and logged?)
+5. Search for configuration patterns (how do services get their config?)
+
+Only propose an implementation that mirrors these patterns exactly. Show code examples from the codebase that your proposal follows.
+
+IMPORTANT - Use a two-phase approach:
+
+PHASE 1 (first turn) - Understand via SysML:
+- Use SysMLQuery to find relevant definitions, relationships, and packages
+- Use SysMLRead on relevant files to understand architecture, patterns, and design
+- The SysML model gives you the semantic map - use it to understand the system
+
+PHASE 2 (second turn) - Verify via source code:
+- ReadFiles for implementation details of the most relevant files
+- RipGrep for specific patterns (error handling, logging, config)
+
+Batch calls within each phase - don't make sequential single tool calls.
+<% } else if (it.sysmlOnly) { %>
+
+Use the SysML model tools to answer this question:
+1. Start with SysMLQuery to find relevant definitions
+2. Use SysMLRead to get detailed information from specific packages
+3. Map the question to the appropriate package:
+   - Architecture/structure → structure/
+   - Data models → data/
+   - Workflows/behavior → behavior/
+   - Requirements → context/
+   - Tests → verification/
+<% } %>

@@ -1,0 +1,106 @@
+Fix the following SysML model validation issues.
+
+## IMPORTANT: One Fix Per Turn
+
+Fix ONE issue at a time. After calling SysMLWrite, STOP and wait for the next turn.
+
+Workflow for each fix:
+1. SysMLRead - read the current file content
+2. SysMLQuery/ReadFiles - understand context if needed
+3. SysMLWrite - apply the fix (search/replace preferred)
+4. STOP - wait for confirmation
+
+## Base Path
+
+All paths are relative to: **<%= it.basePath %>**
+
+## Validation Issues
+
+<% const result = it.result; %>
+
+<% if (result.manifestErrors && result.manifestErrors.length > 0) { %>
+### Manifest Errors
+
+<% result.manifestErrors.forEach(function(error) { %>
+- <%= error %>
+<% }); %>
+
+<% } %>
+
+<% if (result.syntaxErrors && result.syntaxErrors.length > 0) { %>
+### Syntax Errors (<%= result.syntaxErrors.length %> files)
+
+<% result.syntaxErrors.forEach(function(syntaxError) { %>
+#### File: <%= syntaxError.file %>
+<% syntaxError.errors.forEach(function(error) { %>
+- <%= error %>
+<% }); %>
+
+<% }); %>
+<% } %>
+
+<% if (result.missingReferences && result.missingReferences.length > 0) { %>
+### Missing References (<%= result.missingReferences.length %>)
+
+<% result.missingReferences.forEach(function(ref) { %>
+- **<%= ref.file %>**:<%= ref.line %> - <%= ref.type %> '<%= ref.reference %>'
+<% if (ref.context) { %>  Context: `<%= ref.context %>`<% } %>
+<% }); %>
+
+<% } %>
+
+<% if (result.countMismatches && result.countMismatches.length > 0) { %>
+### Count Mismatches (<%= result.countMismatches.length %>)
+
+<% result.countMismatches.forEach(function(mismatch) { %>
+- **<%= mismatch.cycle %>**: expected <%= mismatch.expected %> <%= mismatch.item %>, found <%= mismatch.actual %>
+<% }); %>
+
+<% } %>
+
+<% if (result.orphanedFiles && result.orphanedFiles.length > 0) { %>
+### Orphaned Files (<%= result.orphanedFiles.length %>)
+
+Files in .sysml/ not listed in manifest expectedOutputs:
+<% result.orphanedFiles.forEach(function(file) { %>
+- <%= file %>
+<% }); %>
+
+<% } %>
+
+<% if (result.coverageIssues && result.coverageIssues.length > 0) { %>
+### Coverage Issues (<%= result.coverageIssues.length %>)
+
+<% result.coverageIssues.forEach(function(issue) { %>
+- **<%= issue.cycle %>**: <%= issue.type %> - <%= issue.path %><% if (issue.detail) { %> (<%= issue.detail %>)<% } %>
+<% }); %>
+
+<% } %>
+
+<% const missingOutputs = (result.expectedOutputs || []).filter(function(o) { return !o.exists; }); %>
+<% if (missingOutputs.length > 0) { %>
+### Missing Expected Outputs (<%= missingOutputs.length %>)
+
+Files declared in manifest but don't exist:
+<% missingOutputs.forEach(function(output) { %>
+- <%= output.path %>
+<% }); %>
+
+<% } %>
+
+## Fix Priority
+
+1. **Syntax errors first**: These prevent the model from being parsed
+2. **Missing expected outputs**: These are files that should exist
+3. **Missing references**: These indicate broken dependencies
+4. **Count mismatches**: These indicate incomplete coverage
+5. **Orphaned files**: These need to be added to manifest or removed
+6. **Coverage issues**: These indicate configuration problems
+
+## Start Fixing
+
+Begin with the highest priority issue. Read the relevant file with SysMLRead, then apply the fix with SysMLWrite.
+
+After each fix, STOP and wait for the next turn.
+
+When all issues are resolved (or no more can be fixed), call FinishSysmlFix with a summary.

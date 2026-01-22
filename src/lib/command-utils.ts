@@ -5,8 +5,9 @@ import { stat, readFile } from "node:fs/promises";
 import { Output } from "./output.js";
 import { AU_SEPARATOR } from "./constants.js";
 import {
-  auRead,
-  auList,
+  sysmlRead,
+  sysmlList,
+  sysmlQuery,
   readFiles,
   readDirs,
   ripGrep,
@@ -35,14 +36,16 @@ export function withWorkingDirectory(
 
 /**
  * Selects the appropriate read gadgets based on the mode.
- * - auOnly: Only AU reading gadgets
+ * - sysmlOnly/auOnly: Only SysML reading gadgets (auOnly is deprecated alias)
  * - codeOnly: Only source code reading gadgets
- * - default: Both AU and source code gadgets
+ * - default: Both SysML and source code gadgets
  */
-export function selectReadGadgets(mode: { auOnly?: boolean; codeOnly?: boolean }): AbstractGadget[] {
-  if (mode.auOnly) return [auRead, auList];
+export function selectReadGadgets(mode: { sysmlOnly?: boolean; auOnly?: boolean; codeOnly?: boolean }): AbstractGadget[] {
+  // auOnly is deprecated alias for sysmlOnly
+  const modelOnly = mode.sysmlOnly || mode.auOnly;
+  if (modelOnly) return [sysmlList, sysmlRead, sysmlQuery];
   if (mode.codeOnly) return [readFiles, readDirs, ripGrep];
-  return [auRead, auList, readFiles, readDirs, ripGrep];
+  return [sysmlList, sysmlRead, sysmlQuery, readFiles, readDirs, ripGrep];
 }
 
 /**
