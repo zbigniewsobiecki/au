@@ -1,0 +1,40 @@
+## Validation Errors to Fix
+
+The following issues were found. Fix them using AUUpdate:
+<% if (it.uncoveredDirs && it.uncoveredDirs.length > 0) { %>
+
+### Missing Directory AU Files
+<% it.uncoveredDirs.forEach(function(dir) { %>
+- <%= dir %>/ - needs .au file with layer, summary, responsibility, and contents
+<% }) %>
+<% } %>
+<% if (it.uncoveredFiles && it.uncoveredFiles.length > 0) { %>
+
+### Missing File AU Files
+<% it.uncoveredFiles.slice(0, 20).forEach(function(file) { %>
+- <%= file %> - needs .au file
+<% }) %>
+<% if (it.uncoveredFiles.length > 20) { %>
+(+<%= it.uncoveredFiles.length - 20 %> more files)
+<% } %>
+<% } %>
+<% if (it.staleRefs && it.staleRefs.length > 0) { %>
+
+### Stale References (Fix Required)
+<% it.staleRefs.forEach(function(issue) { %>
+- `<%= issue.auFile %>`: `<%= issue.ref %>` not found
+<% }) %>
+
+**IMPORTANT**: Check that paths are correct. Common issues:
+- `packages/` is a top-level directory, NOT inside `apps/`
+- Use `.ts` extension for TypeScript files, not `.js`
+<% } %>
+<% if (it.incompleteFiles && it.incompleteFiles.length > 0) { %>
+
+### Incomplete AU Files
+<% it.incompleteFiles.forEach(function(issue) { %>
+- <%= issue.path %>: <%= issue.issues.join(", ") %>
+<% }) %>
+<% } %>
+
+Fix these issues, then call FileViewerNextFileSet(paths="") to complete.

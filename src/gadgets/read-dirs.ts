@@ -8,7 +8,7 @@ import { parsePathList } from "../lib/command-utils.js";
 export const readDirs = createGadget({
   name: "ReadDirs",
   description: `List directories recursively with file types and sizes.
-Respects gitignore. Returns a compact listing with D=directory, F=file indicators.
+Respects gitignore. Uses indentation for nesting, directories end with /.
 
 Example:
   paths="src
@@ -23,11 +23,25 @@ apps/backend"
       .max(10)
       .default(2)
       .describe("Maximum recursion depth"),
+    includeGitIgnored: z
+      .boolean()
+      .default(false)
+      .describe("Include files that match .gitignore patterns"),
   }),
-  execute: async ({ paths, depth }) => {
+  execute: async ({ paths, depth, includeGitIgnored }) => {
     const filter = await createFileFilter();
     const results: string[] = [];
     const pathList = parsePathList(paths);
+
+    const formatSize = (bytes: number): string => {
+      if (bytes >= 1024 * 1024) {
+        return `${(bytes / (1024 * 1024)).toFixed(1)}mb`;
+      }
+      if (bytes >= 1024) {
+        return `${(bytes / 1024).toFixed(1)}kb`;
+      }
+      return String(bytes);
+    };
 
     const listDir = async (
       dirPath: string,
@@ -46,15 +60,16 @@ apps/backend"
           // Skip .au files
           if (isAuFile(item)) continue;
 
-          // Skip gitignored items
-          if (!filter.accepts(relativePath)) continue;
+          // Skip gitignored items (unless includeGitIgnored is true)
+          if (!includeGitIgnored && !filter.accepts(relativePath)) continue;
 
           try {
             const stats = await stat(fullPath);
-            const type = stats.isDirectory() ? "D" : "F";
-            const size = stats.isDirectory() ? "" : ` ${stats.size}b`;
+            const indent = "  ".repeat(currentDepth - 1);
+            const name = stats.isDirectory() ? `${item}/` : item;
+            const sizeStr = stats.isDirectory() ? "" : ` ${formatSize(stats.size)}`;
 
-            entries.push(`${type}|${relativePath}${size}`);
+            entries.push(`${indent}${name}${sizeStr}`);
 
             if (stats.isDirectory() && currentDepth < depth) {
               const subEntries = await listDir(
@@ -77,8 +92,7 @@ apps/backend"
 
     for (const dirPath of pathList) {
       const normalizedPath = dirPath === "." ? "" : dirPath;
-      results.push(`# Listing: ${dirPath}`);
-      results.push("#T|Path|Size");
+      results.push(`# ${dirPath}`);
       const entries = await listDir(
         dirPath === "." ? "." : dirPath,
         1,
