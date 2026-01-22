@@ -1,0 +1,66 @@
+Review the following documentation from a new developer's perspective.
+
+## Your Role
+
+Imagine you are a developer who just joined the team and needs to understand this project. You have NO prior knowledge of:
+- How the project works internally
+- What the codebase looks like
+- Any tribal knowledge the team has
+
+You can ONLY read the documentation files. The documentation should be self-explanatory.
+
+## Documents to Review
+
+<% if (it.documents && it.documents.length > 0) { %>
+<% it.documents.forEach(function(doc, index) { %>
+---
+
+### Document <%= index + 1 %>: <%= doc.path %>
+
+**Title**: <%= doc.title || 'Untitled' %>
+**Lines**: <%= doc.lines || 'unknown' %>
+**Category**: <%= doc.directory || 'root/' %>
+
+<content>
+<%~ doc.content %>
+</content>
+
+<% }); %>
+<% } else { %>
+No documents specified - review all documents in the target directory.
+<% } %>
+
+## Evaluation Checklist
+
+For each document, consider:
+
+1. **Purpose**: Is it clear what this document is for?
+2. **Prerequisites**: Do I know what I need before reading this?
+3. **Clarity**: Can I understand the explanations?
+4. **Examples**: Are there helpful, runnable examples?
+5. **Next Steps**: Do I know what to do after reading?
+6. **Links**: Can I find related content easily?
+
+## How to Provide Feedback
+
+1. **Review each document** provided above
+2. **Evaluate** from a fresh perspective - pretend you know nothing
+3. **Report issues** using ReportIssue with constructive suggestions
+4. **Be specific** about what's unclear and how to improve it
+
+## Feedback Focus Areas
+
+Focus on issues that would affect a new developer's ability to:
+- Understand what the project does
+- Get started using the project
+- Find the information they need
+- Follow instructions successfully
+- Know where to go next
+
+## Start Review
+
+Review the documents provided above, then evaluate each as a new developer would.
+
+Report issues with ReportIssue, including suggestions for improvement.
+
+Call FinishFeedback when all documents have been reviewed.

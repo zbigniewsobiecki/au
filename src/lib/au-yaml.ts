@@ -77,6 +77,26 @@ function maybeParseJsonString(value: unknown): unknown {
 }
 
 /**
+ * Normalize contents array entries by stripping trailing slashes from names.
+ * Handles both string entries and {name, summary} object entries.
+ */
+function normalizeContents(contents: unknown[]): unknown[] {
+  return contents.map((item) => {
+    if (typeof item === "string") {
+      return item.replace(/\/$/, "");
+    }
+    if (item && typeof item === "object" && "name" in item) {
+      const obj = item as Record<string, unknown>;
+      return {
+        ...obj,
+        name: String(obj.name).replace(/\/$/, ""),
+      };
+    }
+    return item;
+  });
+}
+
+/**
  * Set value at path, creating intermediate objects/arrays as needed.
  * Returns new object (immutable operation).
  *
@@ -88,7 +108,21 @@ export function setByPath(
   value: unknown
 ): AuDocument {
   // Auto-parse JSON strings (LLMs sometimes stringify objects)
-  const parsedValue = maybeParseJsonString(value);
+  let parsedValue = maybeParseJsonString(value);
+
+  // Normalize contents entries (strip trailing slashes from names)
+  // LLMs sometimes add trailing slashes to directory names in contents arrays
+  if (parsedValue && typeof parsedValue === "object") {
+    if (Array.isArray(parsedValue) && (path === "contents" || path.endsWith(".contents"))) {
+      parsedValue = normalizeContents(parsedValue);
+    } else if (!Array.isArray(parsedValue) && "contents" in parsedValue) {
+      const obj = parsedValue as Record<string, unknown>;
+      if (Array.isArray(obj.contents)) {
+        obj.contents = normalizeContents(obj.contents);
+      }
+    }
+  }
+
   const segments = parsePath(path);
 
   // Protect meta path

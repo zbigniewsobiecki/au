@@ -12,7 +12,8 @@ export async function createFileFilter(rootPath = "."): Promise<FileFilter> {
   const ig = await loadGitignore(rootPath);
 
   // Always ignore .au files (these are documentation, not source)
-  ig.add(["*.au", ".au", "**/*.au", "**/.au"]);
+  // Also ignore .git directory (implicitly ignored by git itself)
+  ig.add(["*.au", ".au", "**/*.au", "**/.au", ".git", ".git/**"]);
 
   return {
     accepts(path: string): boolean {
