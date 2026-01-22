@@ -1,3 +1,13 @@
+## [1.4.0](https://github.com/zbigniewsobiecki/au/compare/v1.3.0...v1.4.0) (2026-01-22)
+
+### Features
+
+* **sysml:** add search/replace mode to SysMLWrite gadget ([1dbe804](https://github.com/zbigniewsobiecki/au/commit/1dbe8042344bab8a71849b52d326eef0d4c2bc4c))
+
+### Bug Fixes
+
+* **sysml:** add output truncation and suppress parser warnings ([70ccd16](https://github.com/zbigniewsobiecki/au/commit/70ccd164146b9e8affc63b4bc59e62ab40d8178d))
+
 ## [1.3.0](https://github.com/zbigniewsobiecki/au/compare/v1.2.0...v1.3.0) (2026-01-22)
 
 ### Features
