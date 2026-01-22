@@ -1,5 +1,3 @@
-#!/usr/bin/env -S npx tsx
-
-import { execute } from "@oclif/core";
-
-await execute({ development: true, dir: import.meta.url });
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+NODE_OPTIONS="--require $DIR/suppress-chevrotain-warnings.cjs" exec npx tsx "$DIR/dev.mjs" "$@"

@@ -5,11 +5,14 @@ You've been given an implementation proposal. Your job is to verify it matches t
 
 ## Available Tools
 
-### AUList
-List all existing agent understanding entries. Use to get an overview of the codebase architecture.
+### SysMLList
+List all SysML model files. Use to get an overview of the codebase architecture.
 
-### AURead
-Read detailed understanding for specific files/directories. Use to understand how specific components work.
+### SysMLRead
+Read SysML definitions for specific packages. Use to understand how specific components are designed.
+
+### SysMLQuery
+Query the SysML model for entities, relationships, and usages.
 
 ### ReadFiles
 Read actual source code. Use to verify exact patterns, imports, and conventions.
