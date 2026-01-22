@@ -111,6 +111,13 @@ export class IngestStateCollector {
   getSourceFiles(): string[] {
     return this.validator.getScanData().sourceFiles;
   }
+
+  /**
+   * Get the list of directories from the scan.
+   */
+  getDirectories(): string[] {
+    return Array.from(this.validator.getScanData().directories);
+  }
 }
 
 // Re-export types for convenience

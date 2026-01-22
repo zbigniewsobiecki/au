@@ -31,14 +31,23 @@ describe("createFileFilter", () => {
     });
 
     it("accepts directories when no gitignore exists", async () => {
-      // Without gitignore, no directories are rejected (except those containing .au)
+      // Without gitignore, no directories are rejected (except .au and .git)
       vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
       const filter = await createFileFilter(".");
 
       // These are accepted because there's no gitignore
       expect(filter.accepts("node_modules/package/index.js")).toBe(true);
-      expect(filter.accepts(".git/config")).toBe(true);
       expect(filter.accepts("dist/index.js")).toBe(true);
+    });
+
+    it("rejects .git directory even without gitignore", async () => {
+      // .git is always ignored (git implicitly excludes its own directory)
+      vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+      const filter = await createFileFilter(".");
+
+      expect(filter.accepts(".git")).toBe(false);
+      expect(filter.accepts(".git/config")).toBe(false);
+      expect(filter.accepts(".git/hooks/pre-commit")).toBe(false);
     });
 
     it("rejects directories specified in gitignore", async () => {

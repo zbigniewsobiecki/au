@@ -1,0 +1,109 @@
+## Iteration <%= it.iteration %>/<%= it.maxIterations %>
+
+### Repo Map (Complete Filesystem Layout)
+```
+<%= it.repoMap %>
+```
+<% if (!it.isFirstTurn) { %>
+
+### Current AU Knowledge
+<% if (it.currentAU) { %>
+<%= it.currentAU %>
+<% } else { %>
+*No AU files exist yet.*
+<% } %>
+<% } %>
+
+### File Viewer
+<% if (it.fileViewerContents) { %>
+<%= it.fileViewerContents %>
+<% } else { %>
+*File viewer is empty.*
+<% } %>
+<% if (it.referencingContext && it.referencingContext.length > 0) { %>
+
+### Referencing Files Context
+
+These documented files reference files you are about to document:
+
+<% it.referencingContext.forEach(function(ref) { %>
+**<%= ref.path %>** [<%= ref.layer %>]
+<%= ref.summary.substring(0, 150) %><%= ref.summary.length > 150 ? '...' : '' %>
+<% ref.referencesInBatch.forEach(function(r) { %>
+  - References `<%= r.targetFile %>`: symbols=[<%= r.symbols.join(', ') %>], kind=<%= r.kind %>
+<% }) %>
+
+<% }) %>
+<% } %>
+<% if (it.previousTurnBrief && it.previousTurnBrief.length > 0) { %>
+
+### Previous Turn Summary
+
+Files documented last turn (for context continuity):
+<% it.previousTurnBrief.forEach(function(f) { %>
+- **<%= f.path %>** [<%= f.layer %>]: <%= f.summary.substring(0, 80) %><%= f.summary.length > 80 ? '...' : '' %>
+<% }) %>
+<% } %>
+
+---
+<% if (it.isFirstTurn) { %>
+
+### Instructions
+
+**This is the first turn - focus ONLY on file selection.**
+
+Examine the repo map and select the best initial files to analyze. Look for:
+1. **Entry points**: index.ts, main.ts, app.ts, server.ts, cli.ts
+2. **Package entry**: Check package.json "main" or "exports" fields
+3. **Core modules**: Files that are likely imported by many others
+
+Select 3-8 files that will help understand the codebase structure and main flows.
+Call FileViewerNextFileSet with your selected files.
+<% } else { %>
+
+### Status
+- Items documented: <%= it.documentedCount %>/<%= it.totalCount %>
+- Pending: <%= it.pendingCount %> items
+<% if (it.validationFixMessage) { %>
+
+<%= it.validationFixMessage %>
+<% } else { %>
+<% if (it.frontierFiles && it.frontierFiles.length > 0) { %>
+
+### Recommended Next Files
+
+**Dependencies of documented files** (high priority - you've seen these referenced):
+<% it.frontierFiles.slice(0, 10).forEach(function(f) { %>
+- <%= f %>
+<% }) %>
+<% if (it.frontierFiles.length > 10) { %>
+(+<%= it.frontierFiles.length - 10 %> more)
+<% } %>
+
+<% } %>
+<% if (it.pendingFiles && it.pendingFiles.length > 0) { %>
+**Other pending files**:
+<% it.pendingFiles.slice(0, 15).forEach(function(f) { %>
+- <%= f %>
+<% }) %>
+<% if (it.pendingFiles.length > 15) { %>
+(+<%= it.pendingFiles.length - 15 %> more)
+<% } %>
+<% } %>
+<% if (it.pendingDirectories && it.pendingDirectories.length > 0) { %>
+
+**Directories needing AU**:
+<% it.pendingDirectories.slice(0, 10).forEach(function(d) { %>
+- <%= d %>/
+<% }) %>
+<% if (it.pendingDirectories.length > 10) { %>
+(+<%= it.pendingDirectories.length - 10 %> more)
+<% } %>
+<% } %>
+<% } %>
+
+### Instructions
+1. Document ALL files shown in File Viewer using AUUpdate
+2. Select next files with FileViewerNextFileSet
+3. When done with all files, call FileViewerNextFileSet(paths="")
+<% } %>

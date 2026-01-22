@@ -10,3 +10,4 @@ export { gitDiff } from "./git-diff.js";
 export { docPlan, finishPlanning, finishDocs, readDoc, reportIssue, finishVerification, finishFixing, finishFeedback, setVerifyTargetDir } from "./doc-gadgets.js";
 export type { DocumentOutline, DirectoryStructure, DocPlanStructure } from "./doc-gadgets.js";
 export { writeDoc, setTargetDir } from "./write-doc.js";
+export { fileViewerNextFileSet } from "./file-viewer-next.js";
