@@ -168,7 +168,12 @@ ManifestWrite(manifest={
     "cycle1": {
       "name": "Discovery & Context",
       "files": ["README.md", "package.json", ...],
-      "expectedOutputs": ["context/boundaries.sysml", "context/requirements.sysml"]
+      "expectedOutputs": ["context/boundaries.sysml", "context/requirements.sysml"],
+      "entityTracking": {
+        "requirements": { "lastId": 0 },
+        "security": { "lastId": 0 },
+        "nfr": { "lastId": 0 }
+      }
     },
     "cycle2": {
       "name": "Structure & Modules",
@@ -179,12 +184,18 @@ ManifestWrite(manifest={
       "name": "Data & Types",
       "files": ["<path to schema files>"],
       "counts": { "models": <count>, "enums": <count> },
-      "expectedOutputs": ["data/entities.sysml", "data/enums.sysml"]
+      "expectedOutputs": ["data/entities.sysml", "data/enums.sysml"],
+      "entityTracking": {
+        "entities": { "lastId": 0 }
+      }
     },
     "cycle4": {
       "name": "Behavior & Logic",
       "counts": { "services": <count from directory assignments> },
-      "expectedOutputs": ["behavior/operations.sysml"]
+      "expectedOutputs": ["behavior/operations.sysml"],
+      "entityTracking": {
+        "operations": { "lastId": 0 }
+      }
     },
     "cycle5": {
       "name": "Verification & Quality",

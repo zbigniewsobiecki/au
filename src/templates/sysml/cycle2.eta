@@ -95,7 +95,8 @@ Before finishing, verify your module count is close to these targets.
        }
 
        // Module connections
-       connect apiModule.authPort to authModule.authInterface;
+       // IMPORTANT: 'connection' keyword is REQUIRED - bare 'connect' is invalid!
+       connection apiToAuth connect apiModule.authPort to authModule.authInterface;
    }
    ```
 

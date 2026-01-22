@@ -10,7 +10,7 @@ import { createGadget, z } from "llmist";
 import { writeFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as Diff from "diff";
-import { validateSysml } from "../lib/sysml/validator.js";
+import { validateSysml, checkDuplicatesInFile, formatSemanticIssues } from "../lib/sysml/validator.js";
 import {
   findMatch,
   findAllMatches,
@@ -255,6 +255,13 @@ export const sysmlWrite = createGadget({
       }
     }
 
+    // Check for semantic issues (duplicates)
+    const semanticIssues = checkDuplicatesInFile(newContent);
+    let semanticWarnings = "";
+    if (semanticIssues.length > 0) {
+      semanticWarnings = `\n⚠ Semantic warnings:\n${formatSemanticIssues(semanticIssues, path)}`;
+    }
+
     // Create directory if needed
     const dir = dirname(fullPath);
     if (dir && dir !== ".") {
@@ -293,7 +300,7 @@ export const sysmlWrite = createGadget({
     if (isSearchReplace) {
       const statusLine = `path=${fullPath} status=success strategy=${strategy}`;
       const validLine = validate ? "\n✓ Valid SysML" : "";
-      return `${statusLine}\n\n${diffOutput}${validLine}`;
+      return `${statusLine}\n\n${diffOutput}${validLine}${semanticWarnings}`;
     }
 
     // DEBUG: Check why output is so large
@@ -328,11 +335,11 @@ export const sysmlWrite = createGadget({
         diffLines: diffLines ? diffLines.slice(0, 50) : null, // Only first 50 lines
       };
       if (diffLines && diffLines.length > 50) {
-        return JSON.stringify(truncatedResult) + `\n[TRUNCATED: ${diffLines.length - 50} more diff lines]`;
+        return JSON.stringify(truncatedResult) + `\n[TRUNCATED: ${diffLines.length - 50} more diff lines]${semanticWarnings}`;
       }
     }
 
-    return jsonResult;
+    return jsonResult + semanticWarnings;
   },
 });
 

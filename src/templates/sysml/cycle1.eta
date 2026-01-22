@@ -101,6 +101,20 @@
    }
    ```
 
+### ID Sequencing Convention
+
+**CRITICAL**: Before assigning any ID, use `SysMLRead` to check existing files and find the highest ID in use.
+
+| Category | Format | Example |
+|----------|--------|---------|
+| Functional Requirements | FR-001, FR-002... | FR-001, FR-002, FR-003 |
+| Security Requirements | SR-001, SR-002... | SR-001, SR-002 |
+| Non-Functional Requirements | NFR-001, NFR-002... | NFR-001, NFR-002 |
+
+- IDs must be sequential with no gaps
+- Always continue from the highest existing ID
+- Never reuse or reassign IDs
+
 ### What to Look For
 
 - **Project purpose**: What problem does this solve?

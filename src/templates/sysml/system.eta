@@ -94,8 +94,8 @@ package MyPackage {
         attribute testFile : String;
     }
 
-    // Connections
-    connect partA.port1 to partB.port2;
+    // Connections (REQUIRED: 'connection' keyword - bare 'connect' is invalid!)
+    connection portLink connect partA.port1 to partB.port2;
 
     // Alias
     alias ShortName for VeryLongPackageName::SomeName;
@@ -189,6 +189,26 @@ The model is organized as:
 5. **Validate before writing**: The SysMLWrite gadget validates syntax by default
 6. **Use search/replace for edits**: When editing existing files, use search/replace mode instead of rewriting the entire file
 7. **Read before editing**: Always use SysMLRead to get current content and line numbers before making edits
+
+## Deduplication Rules
+
+Before creating any SysML element:
+
+1. **Check before creating**: Use `SysMLRead` to verify if an element already exists
+2. **Update don't recreate**: If a duplicate is found, use search/replace to update it instead of recreating
+3. **Single location per entity**: Never define the same entity in multiple files
+
+**Common duplicates to avoid:**
+- Same requirement with different IDs (e.g., FR-001 and FR001)
+- Same entity appearing in both `entities.sysml` AND `dtos.sysml`
+- Same attribute defined twice within one `analysis def` or `item def`
+- Same external dependency (e.g., PostgreSQL) defined multiple times in `boundaries.sysml`
+- Same enum value or state defined multiple times
+
+**When you detect a duplicate:**
+1. Keep the first/canonical definition
+2. Remove or merge the duplicate
+3. Update any references to point to the canonical version
 
 ## Identifier Naming
 

@@ -345,6 +345,173 @@ function validateSysmlBasic(content: string): ValidationResult {
 }
 
 /**
+ * Semantic issue detected by duplicate checking.
+ */
+export interface SemanticIssue {
+  line: number;
+  column: number;
+  message: string;
+  severity: "warning" | "info";
+  type: "duplicate-item" | "duplicate-enum" | "duplicate-attribute" | "duplicate-requirement";
+  name: string;
+  firstOccurrence?: { line: number; column: number };
+}
+
+/**
+ * Check for duplicate definitions within a SysML file.
+ * Returns warnings for any duplicates found.
+ */
+export function checkDuplicatesInFile(content: string): SemanticIssue[] {
+  const issues: SemanticIssue[] = [];
+  const lines = content.split("\n");
+
+  // Track definitions by type
+  const itemDefs = new Map<string, { line: number; column: number }>();
+  const enumDefs = new Map<string, { line: number; column: number }>();
+  const requirementDefs = new Map<string, { line: number; column: number }>();
+
+  // Track attributes within blocks
+  let currentBlockStart = -1;
+  let currentBlockName = "";
+  let currentBlockAttrs = new Map<string, { line: number; column: number }>();
+
+  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+    const line = lines[lineNum];
+    const trimmed = line.trim();
+
+    // Skip empty lines and comments
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
+      continue;
+    }
+
+    // Detect item definitions: "item def Name" or "part def Name"
+    const itemMatch = trimmed.match(/^(item|part|action|state|analysis)\s+def\s+(\w+)/);
+    if (itemMatch) {
+      const name = itemMatch[2];
+      const column = line.indexOf(name) + 1;
+
+      if (itemDefs.has(name)) {
+        const first = itemDefs.get(name)!;
+        issues.push({
+          line: lineNum + 1,
+          column,
+          message: `Duplicate ${itemMatch[1]} definition: '${name}' (first defined at line ${first.line})`,
+          severity: "warning",
+          type: "duplicate-item",
+          name,
+          firstOccurrence: first,
+        });
+      } else {
+        itemDefs.set(name, { line: lineNum + 1, column });
+      }
+
+      // Start tracking attributes for this block
+      currentBlockStart = lineNum + 1;
+      currentBlockName = name;
+      currentBlockAttrs = new Map();
+    }
+
+    // Detect enum definitions: "enum def Name"
+    const enumMatch = trimmed.match(/^enum\s+def\s+(\w+)/);
+    if (enumMatch) {
+      const name = enumMatch[1];
+      const column = line.indexOf(name) + 1;
+
+      if (enumDefs.has(name)) {
+        const first = enumDefs.get(name)!;
+        issues.push({
+          line: lineNum + 1,
+          column,
+          message: `Duplicate enum definition: '${name}' (first defined at line ${first.line})`,
+          severity: "warning",
+          type: "duplicate-enum",
+          name,
+          firstOccurrence: first,
+        });
+      } else {
+        enumDefs.set(name, { line: lineNum + 1, column });
+      }
+    }
+
+    // Detect requirement definitions: "requirement def Name"
+    const reqMatch = trimmed.match(/^requirement\s+def\s+(\w+)/);
+    if (reqMatch) {
+      const name = reqMatch[1];
+      const column = line.indexOf(name) + 1;
+
+      if (requirementDefs.has(name)) {
+        const first = requirementDefs.get(name)!;
+        issues.push({
+          line: lineNum + 1,
+          column,
+          message: `Duplicate requirement definition: '${name}' (first defined at line ${first.line})`,
+          severity: "warning",
+          type: "duplicate-requirement",
+          name,
+          firstOccurrence: first,
+        });
+      } else {
+        requirementDefs.set(name, { line: lineNum + 1, column });
+      }
+    }
+
+    // Detect attributes within a block: "attribute name : Type"
+    const attrMatch = trimmed.match(/^attribute\s+(\w+)\s*:/);
+    if (attrMatch && currentBlockStart > 0) {
+      const name = attrMatch[1];
+      const column = line.indexOf(name) + 1;
+
+      if (currentBlockAttrs.has(name)) {
+        const first = currentBlockAttrs.get(name)!;
+        issues.push({
+          line: lineNum + 1,
+          column,
+          message: `Duplicate attribute '${name}' in '${currentBlockName}' (first defined at line ${first.line})`,
+          severity: "warning",
+          type: "duplicate-attribute",
+          name,
+          firstOccurrence: first,
+        });
+      } else {
+        currentBlockAttrs.set(name, { line: lineNum + 1, column });
+      }
+    }
+
+    // Reset block tracking on closing brace at start of line (end of definition)
+    if (trimmed === "}") {
+      // Only reset if we're likely at the end of a major block
+      // This is a heuristic - we check if there's no indentation
+      if (!line.startsWith(" ") && !line.startsWith("\t")) {
+        currentBlockStart = -1;
+        currentBlockName = "";
+        currentBlockAttrs = new Map();
+      }
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * Format semantic issues for display.
+ */
+export function formatSemanticIssues(issues: SemanticIssue[], filePath?: string): string {
+  if (issues.length === 0) {
+    return "";
+  }
+
+  const lines: string[] = [];
+  const prefix = filePath ? `${filePath}:` : "";
+
+  for (const issue of issues) {
+    const severity = issue.severity === "warning" ? "WARN" : "INFO";
+    lines.push(`${prefix}${issue.line}:${issue.column}: [${severity}] ${issue.message}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
  * Format validation issues for display.
  */
 export function formatValidationIssues(result: ValidationResult, filePath?: string): string {

@@ -42,7 +42,7 @@
     "eta": "^4.5.0",
     "fast-glob": "^3.3.3",
     "ignore": "^6.0.2",
-    "llmist": "^15.10.0",
+    "llmist": "^15.12.0",
     "micromatch": "^4.0.8",
     "sysml-parser": "github:zbigniewsobiecki/sysml-v2",
     "yaml": "^2.8.2"
