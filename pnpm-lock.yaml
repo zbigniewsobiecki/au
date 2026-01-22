@@ -27,14 +27,14 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
       llmist:
-        specifier: ^15.10.0
-        version: 15.10.0(ws@8.19.0)
+        specifier: ^15.12.0
+        version: 15.12.0(ws@8.19.0)
       micromatch:
         specifier: ^4.0.8
         version: 4.0.8
       sysml-parser:
         specifier: github:zbigniewsobiecki/sysml-v2
-        version: https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/936033bddbc61ceafa75f84f800e3f0292a860c1
+        version: https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/81a83cd40d88566e3db50f78af6c7057ec460b1f
       yaml:
         specifier: ^2.8.2
         version: 2.8.2
@@ -1334,8 +1334,8 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
-  llmist@15.10.0:
-    resolution: {integrity: sha512-IR814NOYqA3GdxmThPJvRt/izd0/lk2r1R03BXsBSYoWoPmpoyTZBbzjWKNvXtpuSGDdRTZUcE7l54Pd6zAJfA==}
+  llmist@15.12.0:
+    resolution: {integrity: sha512-5X5gzDN/pZ67Qw60FhiMQ+JQdgWEmkqO5m2WUWcrCLTl0/vmdv9C5l7i5m7oII/odjSi67NaqTxu8ozccNLEZQ==}
     engines: {node: '>=22.0.0'}
 
   load-json-file@4.0.0:
@@ -1931,9 +1931,9 @@ packages:
     resolution: {integrity: sha512-zFObLMyZeEwzAoKCyu1B91U79K2t7ApXuQfo8OuxwXLDgcKxuwM+YvcbIhm6QWqz7mHUH1TVytR1PwVVjEuMig==}
     engines: {node: '>=14.18'}
 
-  sysml-parser@https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/936033bddbc61ceafa75f84f800e3f0292a860c1:
-    resolution: {tarball: https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/936033bddbc61ceafa75f84f800e3f0292a860c1}
-    version: 0.1.1
+  sysml-parser@https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/81a83cd40d88566e3db50f78af6c7057ec460b1f:
+    resolution: {tarball: https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/81a83cd40d88566e3db50f78af6c7057ec460b1f}
+    version: 0.1.2
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -3489,7 +3489,7 @@ snapshots:
 
   lines-and-columns@1.2.4: {}
 
-  llmist@15.10.0(ws@8.19.0):
+  llmist@15.12.0(ws@8.19.0):
     dependencies:
       '@anthropic-ai/sdk': 0.69.0(zod@4.3.5)
       '@google/genai': 1.35.0
@@ -4043,7 +4043,7 @@ snapshots:
       has-flag: 4.0.0
       supports-color: 7.2.0
 
-  sysml-parser@https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/936033bddbc61ceafa75f84f800e3f0292a860c1:
+  sysml-parser@https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/81a83cd40d88566e3db50f78af6c7057ec460b1f:
     dependencies:
       chalk: 5.6.2
       commander: 12.1.0

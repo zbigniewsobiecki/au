@@ -9,6 +9,17 @@ import { dirname, join } from "node:path";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
 /**
+ * Entity ID tracking for sequential ID assignment.
+ */
+export interface EntityTracking {
+  requirements?: { lastId: number };
+  entities?: { lastId: number };
+  operations?: { lastId: number };
+  security?: { lastId: number };
+  nfr?: { lastId: number };
+}
+
+/**
  * Manifest structure for Cycle 0 discovery.
  */
 export interface ManifestCycle {
@@ -21,6 +32,8 @@ export interface ManifestCycle {
     targetFiles: string[];    // All files matching patterns
     totalCount: number;
   };
+  // Entity ID tracking for sequential assignment
+  entityTracking?: EntityTracking;
 }
 
 export interface ManifestProject {
@@ -115,6 +128,13 @@ ManifestWrite(manifest={
           targetFiles: z.array(z.string()).describe("All files matching patterns for this cycle"),
           totalCount: z.number().describe("Total number of target files"),
         }).optional().describe("Coverage tracking for comprehensive file reading"),
+        entityTracking: z.object({
+          requirements: z.object({ lastId: z.number() }).optional(),
+          entities: z.object({ lastId: z.number() }).optional(),
+          operations: z.object({ lastId: z.number() }).optional(),
+          security: z.object({ lastId: z.number() }).optional(),
+          nfr: z.object({ lastId: z.number() }).optional(),
+        }).optional().describe("Track last assigned IDs for sequential numbering"),
       })).describe("Cycle configurations keyed by cycle number"),
       statistics: z.object({
         totalFiles: z.number().optional(),

@@ -185,6 +185,19 @@ If Protobuf files are present:
    }
    ```
 
+### ID Sequencing Convention
+
+**CRITICAL**: Before assigning any ID, use `SysMLRead` to check existing files and find the highest ID in use.
+
+| Category | Format | Example |
+|----------|--------|---------|
+| Entity constraints | EC-001, EC-002... | EC-001, EC-002 |
+| Data types | DT-001, DT-002... | DT-001, DT-002 |
+
+- IDs must be sequential with no gaps
+- Always continue from the highest existing ID
+- Never reuse or reassign IDs
+
 ### Type Sources by Language
 
 | Language | Type Sources |

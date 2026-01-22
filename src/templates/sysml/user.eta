@@ -70,6 +70,21 @@
 <% } %>
 <% } %>
 
+<% if (it.createdEntities && it.createdEntities.length > 0) { %>
+### Already Created (Do NOT Recreate)
+
+The following entities have already been created in this cycle. **Do NOT recreate them:**
+
+<% for (const e of it.createdEntities.slice(-50)) { %>
+- `<%= e.type %>` **<%= e.name %>** in `<%= e.file %>`
+<% } %>
+<% if (it.createdEntities.length > 50) { %>
+*(... and <%= it.createdEntities.length - 50 %> more entities)*
+<% } %>
+
+**Important**: If you need to modify an existing entity, use `SysMLRead` to get the current content, then use search/replace mode with `SysMLWrite`.
+<% } %>
+
 ## File Viewer
 
 <% if (it.fileViewerContents) { %>

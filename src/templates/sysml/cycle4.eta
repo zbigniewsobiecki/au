@@ -69,9 +69,9 @@ Before finishing, verify your counts are close to these targets.
    }
    ```
 
-   **behavior/operations.sysml** - Add operations:
+   **behavior/operations.sysml** - Add operations (use `SystemBehavior` namespace):
    ```sysml
-   package SystemOperations {
+   package SystemBehavior {
        import SysMLPrimitives::*;
        import DataModel::*;
 
@@ -236,6 +236,20 @@ Before finishing, verify your counts are close to these targets.
        }
    }
    ```
+
+### ID Sequencing Convention
+
+**CRITICAL**: Before assigning any ID, use `SysMLRead` to check existing files and find the highest ID in use.
+
+| Category | Format | Example |
+|----------|--------|---------|
+| Operations | OP-001, OP-002... | OP-001, OP-002 |
+| State machines | SM-001, SM-002... | SM-001, SM-002 |
+| Events | EV-001, EV-002... | EV-001, EV-002 |
+
+- IDs must be sequential with no gaps
+- Always continue from the highest existing ID
+- Never reuse or reassign IDs
 
 ### Behavior Sources by Framework
 

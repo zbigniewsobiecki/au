@@ -87,6 +87,15 @@ interface CycleState {
 }
 
 /**
+ * Entity created during SysML generation.
+ */
+interface CreatedEntity {
+  type: string;   // e.g., "item def", "enum def", "requirement def", "action def"
+  name: string;   // e.g., "User", "OrderStatus", "FR001"
+  file: string;   // e.g., "data/entities.sysml"
+}
+
+/**
  * State for iterative multi-turn cycle processing.
  * Uses seed+explore model: LLM discovers files rather than pre-computed list.
  */
@@ -95,7 +104,40 @@ interface CycleIterationState {
   currentBatch: string[];        // Files in current FileViewer
   turnCount: number;
   maxTurns: number;              // Safety limit
+  createdEntities: CreatedEntity[];  // Entities created so far (to prevent duplicates)
   // NOTE: pendingFiles removed - LLM now discovers files via exploration
+}
+
+/**
+ * Parse SysML content to extract entity definitions.
+ */
+function extractEntitiesFromSysml(content: string, file: string): CreatedEntity[] {
+  const entities: CreatedEntity[] = [];
+  const lines = content.split("\n");
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Match item/part/action/state/analysis definitions
+    const itemMatch = trimmed.match(/^(item|part|action|state|analysis)\s+def\s+(\w+)/);
+    if (itemMatch) {
+      entities.push({ type: `${itemMatch[1]} def`, name: itemMatch[2], file });
+    }
+
+    // Match enum definitions
+    const enumMatch = trimmed.match(/^enum\s+def\s+(\w+)/);
+    if (enumMatch) {
+      entities.push({ type: "enum def", name: enumMatch[1], file });
+    }
+
+    // Match requirement definitions
+    const reqMatch = trimmed.match(/^requirement\s+def\s+(\w+)/);
+    if (reqMatch) {
+      entities.push({ type: "requirement def", name: reqMatch[1], file });
+    }
+  }
+
+  return entities;
 }
 
 /**
@@ -828,6 +870,7 @@ export default class SysmlIngest extends Command {
       currentBatch: seedFiles,  // May be empty - that's OK
       turnCount: 0,
       maxTurns: 100,  // Safety limit
+      createdEntities: [],  // Track what we've created to avoid duplicates
     };
 
     // Read stable content once (for caching)
@@ -897,6 +940,7 @@ export default class SysmlIngest extends Command {
         manifestHints,  // NEW: directories & counts to guide exploration
         readCount: iterState.readFiles.size,
         previousTurnSummary: previousTurnSummary.length > 0 ? previousTurnSummary : undefined,
+        createdEntities: iterState.createdEntities.length > 0 ? iterState.createdEntities : undefined,
         isIterative: true,
         isLastCycle: cycle === TOTAL_CYCLES,
         batchSize,
@@ -1166,6 +1210,13 @@ export default class SysmlIngest extends Command {
               // Fallback for legacy format
               const pathMatch = result.result.match(/Wrote (.+?) \[/);
               writtenPath = pathMatch ? pathMatch[1] : result.result;
+            }
+
+            // Extract entities from written content for cross-turn tracking
+            const params = result.parameters as { path?: string; content?: string };
+            if (params?.content && params?.path) {
+              const newEntities = extractEntitiesFromSysml(params.content, params.path);
+              iterState.createdEntities.push(...newEntities);
             }
 
             summary.push(`Wrote ${writtenPath}`);
