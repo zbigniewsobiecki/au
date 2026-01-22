@@ -1,3 +1,10 @@
+## [1.3.0](https://github.com/zbigniewsobiecki/au/compare/v1.2.0...v1.3.0) (2026-01-22)
+
+### Features
+
+* **docs-feedback:** add command with inline content and AU-backed fixes ([940d9b7](https://github.com/zbigniewsobiecki/au/commit/940d9b76e1e7784606f97c3019a23e9bf54186b8))
+* **ingest2:** add iterative file viewer command for documentation ([#11](https://github.com/zbigniewsobiecki/au/issues/11)) ([e809557](https://github.com/zbigniewsobiecki/au/commit/e809557fe430057331546be99e8925aeda52b4ad))
+
 ## [1.2.0](https://github.com/zbigniewsobiecki/au/compare/v1.1.0...v1.2.0) (2026-01-21)
 
 ### Features
