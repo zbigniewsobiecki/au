@@ -1,0 +1,148 @@
+<% /* User message template for SysML reverse engineering - structured for cache efficiency */ %>
+<% /* Order: most stable → most dynamic for optimal prompt caching */ %>
+
+<% if (it.repoMap) { %>
+## Repository Structure
+
+```
+<%= it.repoMap %>
+```
+<% } %>
+
+<% if (it.existingModel) { %>
+## Existing SysML Model
+
+<%= it.existingModel %>
+<% } %>
+
+## Cycle <%= it.cycle %> Task
+
+<%= it.cyclePrompt %>
+
+<% if (it.previousFindings) { %>
+## Previous Cycle Findings
+
+<%= it.previousFindings %>
+<% } %>
+
+<% if (it.isIterative) { %>
+## Cycle Progress
+
+- Files analyzed so far: **<%= it.readCount %>**
+<% if (it.manifestHints?.expectedFileCount) { %>
+- Expected files for this cycle: ~**<%= it.manifestHints.expectedFileCount %>**
+- Coverage: ~<%= it.readCount > 0 ? Math.round((it.readCount / it.manifestHints.expectedFileCount) * 100) : 0 %>%
+<% } %>
+
+<% if (it.manifestHints) { %>
+## Manifest Hints
+
+<% if (it.manifestHints.directories && it.manifestHints.directories.length > 0) { %>
+### Relevant Directories
+<% for (const dir of it.manifestHints.directories) { %>
+- `<%= dir %>`
+<% } %>
+<% } %>
+
+<% if (it.manifestHints.filePatterns && it.manifestHints.filePatterns.length > 0) { %>
+### File Patterns to Search
+<% for (const pattern of it.manifestHints.filePatterns.slice(0, 10)) { %>
+- `<%= pattern %>`
+<% } %>
+<% if (it.manifestHints.filePatterns.length > 10) { %>
+*(+<%= it.manifestHints.filePatterns.length - 10 %> more patterns)*
+<% } %>
+<% } %>
+
+<% if (it.manifestHints.counts) { %>
+### Target Counts
+<% for (const [key, value] of Object.entries(it.manifestHints.counts)) { %>
+- **<%= value %>** <%= key %>
+<% } %>
+<% } %>
+<% } %>
+
+<% if (it.previousTurnSummary && it.previousTurnSummary.length > 0) { %>
+### Previous Turn
+
+<% for (const item of it.previousTurnSummary) { %>
+- <%= item %>
+<% } %>
+<% } %>
+
+## File Viewer
+
+<% if (it.fileViewerContents) { %>
+<%= it.fileViewerContents %>
+<% } else { %>
+*Empty - use FileDiscover or ReadFiles to find relevant files*
+<% } %>
+
+<% if (it.manifestHints?.directories && it.manifestHints.directories.length > 0) { %>
+## Exploration Guide
+
+Explore the following directories for this cycle:
+<% for (const dir of it.manifestHints.directories) { %>
+- `<%= dir %>`
+<% } %>
+
+Use `FileDiscover` to find specific file types, or `ReadFiles` to read directly.
+<% } %>
+
+## Instructions
+
+1. **Explore** using `FileDiscover` or `ReadFiles` to find relevant files
+2. **Analyze** files in the File Viewer above
+3. **Write SysML** using `SysMLWrite` for discovered elements
+4. **Request more files** using `FileViewerNextFileSet(paths="file1\nfile2\n...")`
+5. Select up to <%= it.batchSize || 8 %> files per batch for thorough analysis
+6. When done with this cycle, call `FileViewerNextFileSet(paths="")`
+
+<% if (it.manifestHints?.expectedFileCount && it.manifestHints.expectedFileCount > 5) { %>
+## CRITICAL: Coverage Requirements
+
+**DO NOT finish this cycle early!**
+
+- Expected files: ~<%= it.manifestHints.expectedFileCount %>
+- Current: <%= it.readCount %> files analyzed
+<% const coveragePct = it.readCount > 0 ? Math.round((it.readCount / it.manifestHints.expectedFileCount) * 100) : 0; %>
+<% if (coveragePct < 50) { %>
+- Coverage: **<%= coveragePct %>%** ← TOO LOW, keep exploring!
+
+You MUST analyze significantly more files before finishing. Use FileDiscover to find files matching the patterns above, then request them with FileViewerNextFileSet.
+<% } else if (coveragePct < 80) { %>
+- Coverage: **<%= coveragePct %>%** ← Continue exploring to improve coverage
+
+Continue analyzing more files. You're making progress but should aim for higher coverage.
+<% } else { %>
+- Coverage: **<%= coveragePct %>%** ← Good coverage achieved
+
+You may finish when you've extracted all relevant SysML elements.
+<% } %>
+<% } %>
+
+**IMPORTANT**:
+- Explore ALL directories listed in Manifest Hints
+- Use FileDiscover to find files matching patterns (e.g., `*.service.ts`)
+- Track what you've already analyzed to avoid redundant work
+- Only signal completion by calling `FileViewerNextFileSet(paths="")` when you have thoroughly explored this cycle's scope
+<% if (it.manifestHints?.counts) { %>
+- Verify you've captured elements matching the target counts (<% for (const [key, value] of Object.entries(it.manifestHints.counts)) { %><%= value %> <%= key %><% if (!Object.entries(it.manifestHints.counts).slice(-1).includes([key, value])) { %>, <% } %><% } %>)
+<% } %>
+
+<% } else { %>
+## File Contents
+
+<%= it.fileContents %>
+
+## Instructions
+
+1. Analyze the files and structure shown above
+2. Generate SysML v2 content for this cycle's focus area
+3. Use SysMLWrite to save each package to the appropriate location
+4. Ensure cross-references to other packages are correct
+<% } %>
+
+<% if (it.isLastCycle) { %>
+**This is the final cycle.** After completing the analysis, ensure all packages are properly connected and the model is complete.
+<% } %>

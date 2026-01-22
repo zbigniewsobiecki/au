@@ -1,0 +1,37 @@
+
+---
+## Turn <%= it.iteration %>/<%= it.maxIterations %> Progress
+
+- Files analyzed: **<%= it.readCount %>**
+- Expected files: ~**<%= it.expectedCount %>**
+<% const coveragePercent = it.expectedCount > 0 ? Math.round((it.readCount / it.expectedCount) * 100) : 100; %>
+- Coverage: **<%= coveragePercent %>%**
+<% if (coveragePercent < 50) { %>
+⚠️ **COVERAGE TOO LOW** - You MUST continue exploring!
+<% } else if (coveragePercent < 80) { %>
+📊 Coverage acceptable but continue to improve
+<% } %>
+
+<% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
+### Unread Files (first 15)
+<% for (const file of it.unreadFiles.slice(0, 15)) { %>
+- `<%= file %>`
+<% } %>
+<% if (it.unreadFiles.length > 15) { %>
+*(+<%= it.unreadFiles.length - 15 %> more)*
+<% } %>
+<% } %>
+
+## Required Actions
+
+<% if (coveragePercent < 80) { %>
+1. Use `FileDiscover` or `ReadFiles` to find more files
+2. Analyze and write SysML for discovered elements
+3. Request next batch with `FileViewerNextFileSet(paths="...")`
+
+**DO NOT call `FileViewerNextFileSet(paths="")` until coverage >= 80%**
+<% } else { %>
+Coverage is good. You may finish if you've extracted all relevant SysML elements.
+<% } %>
+
+**REQUIRED**: At least 2 SysMLWrite calls per response when there are files to analyze.

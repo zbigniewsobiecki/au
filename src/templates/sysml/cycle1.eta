@@ -1,0 +1,140 @@
+## Task: Discovery & Context
+
+**Goal**: Understand what kind of system this is and its boundaries
+
+### Project Metadata (Pre-discovered)
+
+<% if (it.metadata) { %>
+**Name**: <%= it.metadata.name %>
+**Type**: <%= it.metadata.projectType %>
+**Language**: <%= it.metadata.primaryLanguage %>
+**Framework**: <%= it.metadata.framework || "none" %>
+**Architecture**: <%= it.metadata.architectureStyle %>
+**Runtime**: <%= it.metadata.runtime || "unknown" %>
+
+**Entry Points**:
+<% for (const ep of it.metadata.entryPoints || []) { %>
+- <%= ep %>
+<% } %>
+
+**External Dependencies**:
+<% for (const dep of it.metadata.externalDependencies || []) { %>
+- <%= dep.name %> (<%= dep.type %>): <%= dep.purpose %>
+<% } %>
+
+**Ports**:
+<% for (const [port, enabled] of Object.entries(it.metadata.ports || {})) { %>
+<% if (enabled) { %>- <%= port %><% } %>
+<% } %>
+<% } else { %>
+*No metadata available - run ProjectMetaDiscover first*
+<% } %>
+
+### Files to Analyze
+
+<% if (it.files && it.files.length > 0) { %>
+<% for (const file of it.files) { %>
+- `<%= file %>`
+<% } %>
+<% } else { %>
+*Use FileDiscover to find relevant files*
+<% } %>
+
+### Your Tasks
+
+1. **Read key files**:
+   - README* for project description and purpose
+   - Package manifest for dependencies
+   - docker-compose* / Dockerfile* for external services
+   - Config files for environment variables
+
+2. **Extract requirements**:
+   - Functional requirements from documentation
+   - Non-functional requirements (performance, security, etc.)
+
+3. **Generate SysML**:
+
+   **context/boundaries.sysml** - Update with discovered external systems:
+   ```sysml
+   package SystemContext {
+       import SysMLPrimitives::*;
+
+       doc /**System: {name} - {description} */
+
+       // External dependencies
+       part def ExternalDependency {
+           @external;
+           attribute name : String;
+           attribute purpose : String;
+       }
+
+       // Discovered external systems
+       part database : ExternalDependency {
+           :>> name = "{discovered}";
+           :>> purpose = "Data persistence";
+       }
+
+       // System boundary
+       part def System {
+           // Discovered ports
+           port httpApi [0..1];
+           port grpcApi [0..1];
+           port cliInterface [0..1];
+       }
+
+       part system : System;
+   }
+   ```
+
+   **context/requirements.sysml** - Add discovered requirements:
+   ```sysml
+   package SystemRequirements {
+       import SysMLPrimitives::*;
+
+       doc /**Requirements extracted from {sources} */
+
+       requirement def FR001 : DiscoveredRequirement {
+           :>> id = "FR-001";
+           :>> source = "README.md";
+           doc /**{requirement text} */
+       }
+   }
+   ```
+
+### What to Look For
+
+- **Project purpose**: What problem does this solve?
+- **External systems**: Databases, caches, message queues, APIs
+- **Configuration surface**: Environment variables, config files
+- **Entry points**: How is the system started/invoked?
+- **Documented requirements**: README, docs/, CONTRIBUTING
+
+### Deliverables
+
+Write ONLY these files:
+- `context/boundaries.sysml` - System context and external dependencies
+- `context/requirements.sysml` - Discovered requirements
+
+**IMPORTANT**: Do NOT write to any other directories (structure/, data/, behavior/, verification/, analysis/).
+This cycle focuses ONLY on context and requirements. Data models, behavior, etc. will be handled in later cycles.
+
+### Success Criteria
+
+- [ ] SystemContext package has all external dependencies
+- [ ] System boundary has correct ports (http, grpc, cli, etc.)
+- [ ] Requirements package has at least basic functional requirements
+- [ ] Documentation comments explain the system purpose
+- [ ] Output is limited to `context/` directory only
+
+<% if (it.isIterative) { %>
+### File Selection Priority for Discovery
+
+When selecting next files with `FileViewerNextFileSet`, prioritize:
+1. README files (`README.md`, `README.*`)
+2. Package manifests (`package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`)
+3. Docker files (`Dockerfile`, `docker-compose.yml`)
+4. Config files (`.env.example`, `config/*`)
+5. Documentation (`docs/*`, `CONTRIBUTING.md`)
+
+Select 3-8 files per turn. Process ALL <%= it.totalCount %> files before completing.
+<% } %>

@@ -1,0 +1,239 @@
+## Task: Repository Analysis (Cycle 0)
+
+**Goal**: Discover repository structure and create a manifest for subsequent cycles
+
+### Project Context
+
+<% if (it.metadata) { %>
+**Discovered Project**: <%= it.metadata.name %>
+**Language**: <%= it.metadata.primaryLanguage %>
+**Framework**: <%= it.metadata.framework || "none" %>
+**Architecture**: <%= it.metadata.architectureStyle %>
+<% } %>
+
+### Overview
+
+Your task is to thoroughly explore the repository and create a **manifest** (version 2) that tells subsequent cycles exactly which directories and files to process and what counts to expect. This is CRITICAL for accurate extraction.
+
+**Key principle**: You MUST SEE directories before assigning them to cycles. Use `EnumerateDirectories` to get exact counts.
+
+The manifest ensures:
+- Subsequent cycles process the RIGHT files (not random samples)
+- Cycles have EXACT counts for validation (e.g., "extract all 49 modules")
+- No entities are missed due to pattern limitations
+
+---
+
+### Phase 1: Structure Discovery
+
+**Use these gadgets:**
+- `ReadDirs(paths=".", depth=100)` - See the full directory tree
+- `ProjectMetaRead()` - Get basic project metadata
+
+**Identify:**
+- Is this a monorepo? Single app? Library?
+- What are the main directories? (apps/, packages/, src/, lib/)
+- What frameworks are used?
+
+**Record:**
+- `project.architectureStyle`: "monorepo", "single-app", "library", "microservices"
+
+---
+
+### Phase 2: Directory Enumeration (CRITICAL)
+
+**You MUST enumerate directories to see what actually exists. Do NOT estimate.**
+
+**Step 2.1: Find module directories**
+```
+EnumerateDirectories(path="apps/backend/src/modules", depth=1)
+```
+
+Or for other architectures:
+```
+EnumerateDirectories(path="src/features", depth=1)
+EnumerateDirectories(path="packages", depth=1)
+```
+
+**Step 2.2: Find other source directories**
+```
+EnumerateDirectories(path="apps/backend/src/common", depth=1)
+EnumerateDirectories(path="apps/backend/src/api", depth=2)
+EnumerateDirectories(path="apps/frontend/src", depth=2)
+```
+
+**Record the EXACT count of directories found.**
+
+---
+
+### Phase 3: Directory Assignment (CRITICAL)
+
+**For EACH directory from Phase 2, decide:**
+1. Which cycles should process this directory?
+2. What file patterns within it are relevant for each cycle?
+
+**Assignment table format:**
+
+| Directory | Cycle 2 (Structure) | Cycle 4 (Behavior) | Cycle 5 (Tests) |
+|-----------|--------------------|--------------------|-----------------|
+| modules/accounts | index.ts | *.service.ts | __tests__/*.spec.ts |
+| modules/auth0 | index.ts | *.service.ts | __tests__/*.spec.ts |
+| modules/billing | index.ts | *.service.ts | __tests__/*.spec.ts |
+| ... | ... | ... | ... |
+
+**Pattern guidelines per cycle:**
+- **cycle2** (Structure): `index.ts`, `*.module.ts` - module entry points
+- **cycle4** (Behavior): `*.service.ts`, `*.controller.ts`, `*.handler.ts` - business logic
+- **cycle5** (Tests): `__tests__/**/*.spec.ts`, `*.test.ts` - test files
+
+**Record ALL assignments in the manifest `directories` field.**
+
+---
+
+### Phase 4: Schema Discovery
+
+**This phase determines Cycle 3 accuracy.**
+
+**Step 4.1: Find ALL schema files**
+```
+FileDiscoverCustom(patterns="**/*.prisma,**/*.graphql,**/*.gql,**/*.proto,**/*.sql")
+```
+
+**Step 4.2: Get EXACT counts from each schema file**
+
+For Prisma schemas:
+```
+CountPatterns(file="path/to/schema.prisma", patterns=["^model ", "^enum "])
+```
+
+For GraphQL schemas:
+```
+CountPatterns(file="path/to/schema.graphql", patterns=["^type ", "^enum ", "^input "])
+```
+
+**IMPORTANT**: These counts become EXTRACTION TARGETS for Cycle 3.
+
+---
+
+### Phase 5: Context Discovery
+
+**Gather files for Cycle 1:**
+```
+FileDiscoverCustom(patterns="README.md,README*.md,package.json,**/package.json,docker-compose*.yml,Dockerfile*,.env.example,docs/**/*.md")
+```
+
+---
+
+### Phase 6: Write the Manifest (Version 2)
+
+**Use the ManifestWrite gadget with the complete manifest:**
+
+**IMPORTANT**:
+- Use version: 2 for directory-based assignment
+- Use "cycle1", "cycle2", etc. as keys (NOT "1", "2", etc.)
+- Include `directories` field with per-directory assignments
+
+```
+ManifestWrite(manifest={
+  "version": 2,
+  "discoveredAt": "<ISO timestamp>",
+  "project": {
+    "name": "<project name from metadata>",
+    "primaryLanguage": "<language>",
+    "framework": "<framework or null>",
+    "architectureStyle": "<monorepo|single-app|library|microservices>"
+  },
+  "directories": [
+    {
+      "path": "apps/backend/src/modules/accounts",
+      "purpose": "Account management module",
+      "cycles": {
+        "cycle2": { "patterns": ["index.ts"], "reason": "Module structure" },
+        "cycle4": { "patterns": ["*.service.ts", "*.controller.ts"], "reason": "Business logic" },
+        "cycle5": { "patterns": ["__tests__/**/*.spec.ts"], "reason": "Test coverage" }
+      }
+    },
+    {
+      "path": "apps/backend/src/modules/auth0",
+      "purpose": "Auth0 integration module",
+      "cycles": {
+        "cycle2": { "patterns": ["index.ts"], "reason": "Module structure" },
+        "cycle4": { "patterns": ["*.service.ts"], "reason": "Business logic" },
+        "cycle5": { "patterns": ["__tests__/**/*.spec.ts"], "reason": "Test coverage" }
+      }
+    }
+    // ... ALL directories enumerated in Phase 2
+  ],
+  "cycles": {
+    "cycle1": {
+      "name": "Discovery & Context",
+      "files": ["README.md", "package.json", ...],
+      "expectedOutputs": ["context/boundaries.sysml", "context/requirements.sysml"]
+    },
+    "cycle2": {
+      "name": "Structure & Modules",
+      "counts": { "modules": <exact count from EnumerateDirectories> },
+      "expectedOutputs": ["structure/modules.sysml"]
+    },
+    "cycle3": {
+      "name": "Data & Types",
+      "files": ["<path to schema files>"],
+      "counts": { "models": <count>, "enums": <count> },
+      "expectedOutputs": ["data/entities.sysml", "data/enums.sysml"]
+    },
+    "cycle4": {
+      "name": "Behavior & Logic",
+      "counts": { "services": <count from directory assignments> },
+      "expectedOutputs": ["behavior/operations.sysml"]
+    },
+    "cycle5": {
+      "name": "Verification & Quality",
+      "counts": { "testFiles": <count from directory assignments> },
+      "expectedOutputs": ["verification/tests.sysml"]
+    },
+    "cycle6": {
+      "name": "Analysis & Properties",
+      "files": ["<config, middleware, auth files>"],
+      "expectedOutputs": ["analysis/performance.sysml", "analysis/security.sysml"]
+    }
+  },
+  "statistics": {
+    "totalFiles": <total from readDirs>,
+    "relevantFiles": <sum of files across cycles>
+  }
+})
+```
+
+---
+
+### Success Criteria
+
+Before writing the manifest, verify:
+
+- [ ] **Phase 1**: Project architecture identified (monorepo, single-app, etc.)
+- [ ] **Phase 2**: ALL source directories enumerated with `EnumerateDirectories`
+  - EXACT count of module directories (e.g., 49 not "~50")
+- [ ] **Phase 3**: EVERY directory assigned to appropriate cycles
+- [ ] **Phase 4**: ALL schema files found and counted with `CountPatterns`
+  - For Prisma: exact model and enum counts
+  - For GraphQL: exact type, enum, and input counts
+- [ ] **Phase 5**: Context files gathered for Cycle 1
+- [ ] **Phase 6**: Manifest v2 written with ALL directory assignments
+
+**CRITICAL**:
+- Do NOT guess counts. Use `EnumerateDirectories` and `CountPatterns` to get exact numbers.
+- Do NOT skip directories. EVERY directory from Phase 2 must be assigned.
+- These assignments will determine which files subsequent cycles process.
+
+---
+
+### Output
+
+Your only output is the manifest written via `ManifestWrite`.
+No SysML files are written in Cycle 0 - those come in Cycles 1-6.
+
+After writing the manifest, respond with a summary of what you discovered:
+- Project type and architecture
+- Directory counts per area (e.g., 49 modules)
+- Schema counts (models, enums)
+- Test file counts

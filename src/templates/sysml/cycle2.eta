@@ -1,0 +1,180 @@
+## Task: Structure & Modules
+
+**Goal**: Map the codebase structure into SysML parts
+
+### Project Context
+
+<% if (it.metadata) { %>
+**Language**: <%= it.metadata.primaryLanguage %>
+**Architecture Style**: <%= it.metadata.architectureStyle %>
+**Framework**: <%= it.metadata.framework || "none" %>
+<% } %>
+
+<% if (it.targetCounts) { %>
+### EXTRACTION TARGETS (from Cycle 0 Manifest)
+
+**IMPORTANT**: You should extract approximately:
+
+<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
+- **<%= value %>** <%= key %>
+<% } %>
+
+Before finishing, verify your module count is close to these targets.
+<% } %>
+
+### Files to Analyze
+
+<% if (it.files && it.files.length > 0) { %>
+<% for (const file of it.files) { %>
+- `<%= file %>`
+<% } %>
+<% } else { %>
+*Use FileDiscover to find relevant files*
+<% } %>
+
+### Your Tasks
+
+1. **Analyze directory structure**:
+   - Top-level directories and their purpose
+   - Module boundaries and organization
+   - Package/namespace hierarchy
+
+2. **Identify architectural patterns**:
+   - Layered (presentation/service/data)
+   - Hexagonal (ports/adapters/domain)
+   - Modular (feature-based organization)
+   - Microservice boundaries
+
+3. **Map module dependencies**:
+   - Which modules depend on which
+   - Entry points and routing
+   - Dependency injection wiring
+
+4. **Generate SysML**:
+
+   **structure/_index.sysml** - Update architecture overview:
+   ```sysml
+   package SystemArchitecture {
+       import SysMLPrimitives::*;
+       import SystemContext::*;
+
+       doc /**Architecture: {style} */
+
+       attribute architectureStyle : String = "{layered|hexagonal|modular}";
+
+       // Module definition template
+       part def Module {
+           attribute path : FilePath;
+           attribute responsibility : String;
+           attribute layer : String [0..1];
+       }
+
+       // Interface definition
+       interface def ModuleInterface {
+           attribute name : String;
+           attribute methods : String [0..*];
+       }
+   }
+   ```
+
+   **structure/modules.sysml** - Add discovered modules:
+   ```sysml
+   package SystemModules {
+       import SysMLPrimitives::*;
+       import SystemArchitecture::*;
+
+       doc /**System module decomposition */
+
+       // Example module
+       part authModule : Module {
+           :>> path = "src/auth";
+           :>> responsibility = "Authentication and authorization";
+           :>> layer = "service";
+
+           port authInterface : AuthInterface;
+       }
+
+       // Module connections
+       connect apiModule.authPort to authModule.authInterface;
+   }
+   ```
+
+   **structure/interfaces.sysml** - Define module interfaces:
+   ```sysml
+   package SystemInterfaces {
+       import SysMLPrimitives::*;
+
+       doc /**Module interface definitions */
+
+       interface def AuthInterface {
+           in login(credentials: Credentials);
+           out token: AuthToken;
+       }
+   }
+   ```
+
+### Patterns to Detect
+
+**Layered Architecture**:
+- `controllers/` or `routes/` → Presentation layer
+- `services/` or `usecases/` → Business layer
+- `repositories/` or `models/` → Data layer
+- `utils/` or `lib/` → Shared utilities
+
+**Hexagonal Architecture**:
+- `domain/` → Core business logic
+- `ports/` → Interface definitions
+- `adapters/` → External implementations
+- `application/` → Use cases
+
+**Modular/Feature-based**:
+- `features/` or `modules/` → Feature folders
+- Each folder has own routes, services, models
+
+### What to Look For
+
+- **Module boundaries**: Clear separation of concerns
+- **Public interfaces**: What each module exports
+- **Internal details**: What is hidden within modules
+- **Cross-cutting concerns**: Logging, auth, error handling
+
+### Deliverables
+
+Write ONLY these files:
+- `structure/_index.sysml` - Architecture overview and module definitions
+- `structure/modules.sysml` - Detailed module decomposition
+- `structure/interfaces.sysml` - Module interface definitions
+- `structure/connections.sysml` - Inter-module wiring (optional)
+
+**IMPORTANT**: Do NOT write to context/, data/, behavior/, verification/, or analysis/ directories.
+This cycle focuses ONLY on architectural structure. Data models, behaviors, etc. will be handled in later cycles.
+
+### Success Criteria
+
+<% if (it.targetCounts) { %>
+**Target Counts**:
+<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
+- [ ] Extracted approximately **<%= value %>** <%= key %>
+<% } %>
+<% } %>
+
+- [ ] All major directories mapped to modules
+- [ ] Architecture style correctly identified
+- [ ] Module interfaces defined
+- [ ] Inter-module connections documented
+- [ ] Layer assignments are consistent
+- [ ] Output is limited to `structure/` directory only
+
+<% if (it.isIterative) { %>
+### File Selection Priority for Structure Analysis
+
+When selecting next files with `FileViewerNextFileSet`, prioritize:
+1. Module entry points (`index.ts`, `index.js`, `mod.rs`, `__init__.py`)
+2. Module files (`*.module.ts`, `*.module.js`)
+3. Main/App files (`main.ts`, `app.ts`, `server.ts`)
+4. Service definitions (`*.service.ts`, `*.service.js`)
+5. Type definitions (`*.types.ts`, `*.interface.ts`)
+6. Controllers (`*.controller.ts`, `*.handler.ts`)
+
+Select 3-8 files per turn. Process ALL <%= it.totalCount %> files before completing.
+<% } %>

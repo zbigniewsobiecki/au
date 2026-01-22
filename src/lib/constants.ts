@@ -1,4 +1,11 @@
 /**
+ * Description for the 'reason' parameter required on all SysML gadgets.
+ * The LLM must explain why it's calling the gadget and what it expects.
+ */
+export const GADGET_REASON_DESCRIPTION =
+  "Explain why you're calling this gadget and what you expect from it";
+
+/**
  * Gadget names used throughout the application.
  */
 export const GadgetName = {
@@ -9,6 +16,20 @@ export const GadgetName = {
   AUList: "AUList",
   RipGrep: "RipGrep",
   Finish: "Finish",
+  // SysML gadgets
+  SysMLWrite: "SysMLWrite",
+  SysMLRead: "SysMLRead",
+  SysMLList: "SysMLList",
+  ProjectMetaRead: "ProjectMetaRead",
+  ProjectMetaDiscover: "ProjectMetaDiscover",
+  ProjectMetaUpdate: "ProjectMetaUpdate",
+  FileDiscover: "FileDiscover",
+  FileDiscoverCustom: "FileDiscoverCustom",
+  CycleInfo: "CycleInfo",
+  // Manifest gadgets (Cycle 0)
+  ManifestWrite: "ManifestWrite",
+  ManifestRead: "ManifestRead",
+  CountPatterns: "CountPatterns",
 } as const;
 
 export type GadgetNameType = (typeof GadgetName)[keyof typeof GadgetName];

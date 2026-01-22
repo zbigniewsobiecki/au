@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createFileFilter } from "../lib/file-filter.js";
 import { isAuFile } from "../lib/au-paths.js";
 import { parsePathList } from "../lib/command-utils.js";
+import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
 export const readFiles = createGadget({
   name: "ReadFiles",
@@ -14,9 +15,10 @@ Example:
 src/lib/utils.ts
 src/config.ts"`,
   schema: z.object({
+    reason: z.string().describe(GADGET_REASON_DESCRIPTION),
     paths: z.string().describe("File paths to read, one per line"),
   }),
-  execute: async ({ paths }) => {
+  execute: async ({ reason: _reason, paths }) => {
     const filter = await createFileFilter();
     const results: string[] = [];
     const pathList = parsePathList(paths);

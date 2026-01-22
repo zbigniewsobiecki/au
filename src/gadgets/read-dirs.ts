@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createFileFilter } from "../lib/file-filter.js";
 import { isAuFile } from "../lib/au-paths.js";
 import { parsePathList } from "../lib/command-utils.js";
+import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
 export const readDirs = createGadget({
   name: "ReadDirs",
@@ -15,6 +16,7 @@ Example:
 apps/backend"
   depth=3`,
   schema: z.object({
+    reason: z.string().describe(GADGET_REASON_DESCRIPTION),
     paths: z.string().describe("Directory paths to list, one per line"),
     depth: z
       .number()
@@ -28,7 +30,7 @@ apps/backend"
       .default(false)
       .describe("Include files that match .gitignore patterns"),
   }),
-  execute: async ({ paths, depth, includeGitIgnored }) => {
+  execute: async ({ reason: _reason, paths, depth, includeGitIgnored }) => {
     const filter = await createFileFilter();
     const results: string[] = [];
     const pathList = parsePathList(paths);

@@ -1,0 +1,236 @@
+## Task: Verification & Quality
+
+**Goal**: Map tests to requirements and operations
+
+### Project Context
+
+<% if (it.metadata) { %>
+**Language**: <%= it.metadata.primaryLanguage %>
+**Framework**: <%= it.metadata.framework || "none" %>
+<% } %>
+
+<% if (it.targetCounts) { %>
+### EXTRACTION TARGETS (from Cycle 0 Manifest)
+
+**IMPORTANT**: You should extract approximately:
+
+<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
+- **<%= value %>** <%= key %>
+<% } %>
+
+Before finishing, verify your counts are close to these targets.
+<% } %>
+
+### Files to Analyze
+
+<% if (it.files && it.files.length > 0) { %>
+<% for (const file of it.files) { %>
+- `<%= file %>`
+<% } %>
+<% } else { %>
+*Use FileDiscover to find relevant files*
+<% } %>
+
+### Your Tasks
+
+1. **Find test files**:
+   - Unit tests
+   - Integration tests
+   - End-to-end tests
+   - Performance tests
+
+2. **Map tests to operations**:
+   - Which operation does each test verify?
+   - What scenarios are covered?
+
+3. **Identify coverage gaps**:
+   - Operations without tests
+   - Edge cases not tested
+
+4. **Document CI/CD verification**:
+   - Pipeline stages
+   - Quality gates
+
+5. **Generate SysML**:
+
+   **verification/_index.sysml** - Update overview:
+   ```sysml
+   package Verification {
+       import SysMLPrimitives::*;
+       import SystemRequirements::*;
+       import SystemBehavior::*;
+
+       doc /**Verification and test coverage */
+
+       // Test category enumeration
+       enum def TestCategory {
+           Unit;
+           Integration;
+           E2E;
+           Performance;
+           Security;
+           Smoke;
+           Regression;
+       }
+
+       // Test case definition
+       verification def TestCase {
+           attribute testFile : FilePath;
+           attribute testName : String;
+           attribute category : TestCategory;
+           attribute description : String;
+       }
+   }
+   ```
+
+   **verification/test-mapping.sysml** - Add test mappings:
+   ```sysml
+   package TestMappings {
+       import SysMLPrimitives::*;
+       import Verification::*;
+       import SystemRequirements::*;
+       import SystemBehavior::SystemOperations::*;
+
+       doc /**Test to requirement/operation mappings */
+
+       // Unit tests for authentication
+       package AuthTests {
+           doc /**Authentication service tests */
+
+           verification registerUserHappyPath : TestCase {
+               :>> testFile = "tests/auth.test.ts";
+               :>> testName = "should register new user successfully";
+               :>> category = Unit;
+               doc /**Verifies user registration works with valid input */
+           }
+
+           verification registerUserDuplicateEmail : TestCase {
+               :>> testFile = "tests/auth.test.ts";
+               :>> testName = "should reject duplicate email";
+               :>> category = Unit;
+               doc /**Verifies duplicate email prevention */
+           }
+
+           verification loginSuccessful : TestCase {
+               :>> testFile = "tests/auth.test.ts";
+               :>> testName = "should login with valid credentials";
+               :>> category = Unit;
+           }
+       }
+
+       // Integration tests
+       package IntegrationTests {
+           doc /**Integration test suite */
+
+           verification apiAuthFlow : TestCase {
+               :>> testFile = "tests/integration/auth.integration.test.ts";
+               :>> testName = "complete auth flow";
+               :>> category = Integration;
+               doc /**Tests full registration → login → refresh flow */
+           }
+       }
+
+       // E2E tests
+       package E2ETests {
+           doc /**End-to-end test suite */
+
+           verification userJourney : TestCase {
+               :>> testFile = "tests/e2e/user-journey.spec.ts";
+               :>> testName = "user can register and make purchase";
+               :>> category = E2E;
+               doc /**Full user journey from registration to purchase */
+           }
+       }
+   }
+   ```
+
+   **verification/coverage.sysml** - Add coverage analysis:
+   ```sysml
+   package CoverageAnalysis {
+       import SysMLPrimitives::*;
+       import Verification::*;
+
+       doc /**Test coverage analysis */
+
+       analysis def TestCoverageReport {
+           subject testSuite : TestMappings;
+
+           results {
+               // Operations coverage
+               attribute testedOperations : Integer = {discovered};
+               attribute totalOperations : Integer = {discovered};
+               attribute operationCoveragePercent : Real;
+
+               // Requirements coverage
+               attribute verifiedRequirements : Integer = {discovered};
+               attribute totalRequirements : Integer = {discovered};
+               attribute requirementCoveragePercent : Real;
+
+               // Test categories breakdown
+               attribute unitTestCount : Integer = {discovered};
+               attribute integrationTestCount : Integer = {discovered};
+               attribute e2eTestCount : Integer = {discovered};
+           }
+       }
+
+       // Coverage gaps
+       package CoverageGaps {
+           doc /**Identified gaps in test coverage */
+
+           // List operations without tests
+           // List requirements without verification
+       }
+   }
+   ```
+
+### Test Patterns by Framework
+
+| Framework | Test Files |
+|-----------|-----------|
+| Jest | `*.test.ts`, `*.spec.ts`, `__tests__/` |
+| Vitest | `*.test.ts`, `*.spec.ts` |
+| Pytest | `test_*.py`, `*_test.py` |
+| Go | `*_test.go` |
+| Rust | `#[test]` in source, `tests/` directory |
+| JUnit | `*Test.java`, `*Tests.java` |
+
+### What to Look For
+
+- **Test organization**: How tests are structured
+- **Mocking patterns**: What is mocked vs real
+- **Setup/teardown**: Test fixtures and data
+- **Assertions**: What exactly is being verified
+- **Coverage reports**: If present, use them
+
+### Deliverables
+
+Write ONLY these files:
+- `verification/_index.sysml` - Verification overview and test definitions
+- `verification/test-mapping.sysml` - Tests mapped to requirements/operations
+- `verification/coverage.sysml` - Coverage analysis and gap identification
+
+**IMPORTANT**: Do NOT write to context/, structure/, data/, behavior/, or analysis/ directories.
+This cycle focuses ONLY on verification and test mapping. Analysis will be handled in the final cycle.
+
+### Success Criteria
+
+- [ ] All test files discovered and categorized
+- [ ] Tests mapped to operations they verify
+- [ ] Tests linked to requirements where possible
+- [ ] Coverage gaps identified
+- [ ] CI/CD verification documented
+- [ ] Output is limited to `verification/` directory only
+
+<% if (it.isIterative) { %>
+### File Selection Priority for Verification Analysis
+
+When selecting next files with `FileViewerNextFileSet`, prioritize:
+1. Test files (`*.test.ts`, `*.spec.ts`, `test_*.py`, `*_test.go`)
+2. E2E test files (`*.e2e-spec.ts`, `*.e2e.ts`, `e2e/*.ts`)
+3. Integration tests (`*.integration.ts`, `integration/*.ts`)
+4. Test fixtures (`fixtures/*`, `__fixtures__/*`)
+5. CI/CD config (`.github/workflows/*`, `Jenkinsfile`, `.gitlab-ci.yml`)
+6. Test utilities (`test-utils.ts`, `helpers/*.ts`)
+
+Select 3-8 files per turn. Process ALL <%= it.totalCount %> files before completing.
+<% } %>
