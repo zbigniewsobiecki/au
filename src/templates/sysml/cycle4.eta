@@ -1,0 +1,291 @@
+## Task: Behavior & Logic
+
+**Goal**: Capture how the system processes requests and manages state
+
+### Project Context
+
+<% if (it.metadata) { %>
+**Language**: <%= it.metadata.primaryLanguage %>
+**Framework**: <%= it.metadata.framework || "none" %>
+**Ports**: <%= Object.entries(it.metadata.ports || {}).filter(([,v]) => v).map(([k]) => k).join(", ") || "none" %>
+<% } %>
+
+<% if (it.targetCounts) { %>
+### EXTRACTION TARGETS (from Cycle 0 Manifest)
+
+**IMPORTANT**: You should extract approximately:
+
+<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
+- **<%= value %>** <%= key %>
+<% } %>
+
+Before finishing, verify your counts are close to these targets.
+<% } %>
+
+### Files to Analyze
+
+<% if (it.files && it.files.length > 0) { %>
+<% for (const file of it.files) { %>
+- `<%= file %>`
+<% } %>
+<% } else { %>
+*Use FileDiscover to find relevant files*
+<% } %>
+
+### Your Tasks
+
+1. **Find behavior sources**:
+   - Controllers/handlers
+   - Service methods
+   - Use cases
+   - Event handlers
+   - CLI commands
+
+2. **Map operations**:
+   - Input/output for each operation
+   - Steps in the flow
+   - Side effects
+
+3. **Identify state machines**:
+   - Entity lifecycle states
+   - Workflow states
+   - Session states
+
+4. **Document event flows**:
+   - Events emitted
+   - Events handled
+   - Pub/sub patterns
+
+5. **Generate SysML**:
+
+   **behavior/_index.sysml** - Update overview:
+   ```sysml
+   package SystemBehavior {
+       import SysMLPrimitives::*;
+       import DataModel::*;
+       import SystemArchitecture::*;
+
+       doc /**System behavioral model */
+   }
+   ```
+
+   **behavior/operations.sysml** - Add operations:
+   ```sysml
+   package SystemOperations {
+       import SysMLPrimitives::*;
+       import DataModel::*;
+
+       doc /**System operations/actions */
+
+       // User registration operation
+       action def RegisterUser {
+           doc /**Register a new user account */
+
+           in request : CreateUserRequest;
+           out response : UserResponse;
+           out error : ErrorResponse [0..1];
+
+           action validateInput {
+               doc /**Validate email format and password strength */
+           }
+
+           action checkExistingEmail {
+               doc /**Verify email is not already registered */
+           }
+
+           action hashPassword {
+               doc /**Securely hash the password */
+           }
+
+           action createUser {
+               doc /**Persist user to database */
+           }
+
+           action generateTokens {
+               doc /**Generate JWT access and refresh tokens */
+           }
+
+           // Flow
+           flow request to validateInput.input;
+           flow validateInput.output to checkExistingEmail.input;
+           flow checkExistingEmail.output to hashPassword.input;
+           flow hashPassword.output to createUser.input;
+           flow createUser.output to generateTokens.input;
+           flow generateTokens.output to response;
+
+           // Sequencing
+           succession validateInput then checkExistingEmail;
+           succession checkExistingEmail then hashPassword;
+           succession hashPassword then createUser;
+           succession createUser then generateTokens;
+       }
+
+       // Authentication operation
+       action def Login {
+           doc /**Authenticate user and issue tokens */
+
+           in credentials : LoginRequest;
+           out tokens : TokenResponse;
+           out error : ErrorResponse [0..1];
+
+           action verifyCredentials;
+           action checkAccountStatus;
+           action issueTokens;
+
+           succession verifyCredentials then checkAccountStatus;
+           succession checkAccountStatus then issueTokens;
+       }
+   }
+   ```
+
+   **behavior/states.sysml** - Add state machines:
+   ```sysml
+   package EntityStateMachines {
+       import SysMLPrimitives::*;
+       import DataModel::*;
+
+       doc /**Entity state machines */
+
+       // Order lifecycle
+       state def OrderLifecycle {
+           doc /**Order processing state machine */
+
+           statePending {
+               doc /**Order created, awaiting processing */
+           }
+
+           state Processing {
+               doc /**Order is being prepared */
+           }
+
+           state Shipped {
+               doc /**Order has been shipped */
+           }
+
+           state Delivered {
+               doc /**Order delivered to customer */
+           }
+
+           state Cancelled {
+               doc /**Order was cancelled */
+           }
+
+           // Transitions
+           transition pendingToProcessing
+               from Pending to Processing
+               on ProcessOrder;
+
+           transition processingToShipped
+               from Processing to Shipped
+               on ShipOrder;
+
+           transition shippedToDelivered
+               from Shipped to Delivered
+               on ConfirmDelivery;
+
+           transition pendingToCancelled
+               from Pending to Cancelled
+               on CancelOrder;
+
+           transition processingToCancelled
+               from Processing to Cancelled
+               on CancelOrder;
+       }
+
+       // User session state
+       state def SessionState {
+           stateAnonymous;
+           state Authenticated;
+           state Expired;
+
+           transition login from Anonymous to Authenticated on LoginSuccess;
+           transition logout from Authenticated to Anonymous on Logout;
+           transition expire from Authenticated to Expired on TokenExpired;
+           transition refresh from Expired to Authenticated on TokenRefreshed;
+       }
+   }
+   ```
+
+   **behavior/handlers.sysml** - Add event handlers:
+   ```sysml
+   package EventHandlers {
+       import SysMLPrimitives::*;
+       import DataModel::*;
+
+       doc /**Event handlers */
+
+       action def OnUserCreated {
+           doc /**Handle user creation event */
+
+           in event : UserCreatedEvent;
+
+           action sendWelcomeEmail;
+           action initializeUserSettings;
+           action notifyAnalytics;
+
+           // These can run in parallel
+       }
+
+       action def OnOrderShipped {
+           doc /**Handle order shipped event */
+
+           in event : OrderShippedEvent;
+
+           action sendShippingNotification;
+           action updateInventory;
+       }
+   }
+   ```
+
+### Behavior Sources by Framework
+
+| Framework | Behavior Sources |
+|-----------|-----------------|
+| Express/Fastify | Route handlers, middleware |
+| NestJS | Controllers, services, guards |
+| FastAPI | Route functions, dependencies |
+| Django | Views, signals |
+| Spring | Controllers, services |
+| Gin/Echo | Handlers, middleware |
+
+### What to Look For
+
+- **Happy path**: Normal operation flow
+- **Error handling**: How errors are caught and handled
+- **Side effects**: External calls (email, payment, etc.)
+- **Transactions**: Database transaction boundaries
+- **Middleware**: Pre/post processing
+
+### Deliverables
+
+Write ONLY these files:
+- `behavior/_index.sysml` - Behavior overview
+- `behavior/operations.sysml` - System operations/actions with flows
+- `behavior/states.sysml` - Entity state machines
+- `behavior/handlers.sysml` - Event handlers (optional, if event-driven)
+
+**IMPORTANT**: Do NOT write to context/, structure/, data/, verification/, or analysis/ directories.
+This cycle focuses ONLY on behavioral modeling. Verification and analysis will be handled in later cycles.
+
+### Success Criteria
+
+- [ ] All major operations captured
+- [ ] Operation flows documented with steps
+- [ ] Entity state machines identified
+- [ ] Event handlers documented (if applicable)
+- [ ] Side effects marked clearly
+- [ ] Output is limited to `behavior/` directory only
+
+<% if (it.isIterative) { %>
+### File Selection Priority for Behavior Analysis
+
+When selecting next files with `FileViewerNextFileSet`, prioritize:
+1. Service files (`*.service.ts`, `*.service.js`)
+2. Controller files (`*.controller.ts`, `*.handler.ts`)
+3. Route files (`*.routes.ts`, `routes/*.ts`)
+4. Use case files (`*.usecase.ts`, `usecases/*.ts`)
+5. Event handlers (`*.handler.ts`, `handlers/*.ts`)
+6. Middleware files (`*.middleware.ts`, `middleware/*.ts`)
+
+Select 3-8 files per turn. Process ALL <%= it.totalCount %> files before completing.
+<% } %>

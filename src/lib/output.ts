@@ -91,6 +91,11 @@ export class Output {
 
       // Show detailed params for file/dir operations
       if (params) {
+        // Always show reason first if present
+        if (typeof params.reason === "string" && params.reason.trim()) {
+          console.log(chalk.cyan(`   ${params.reason}`));
+        }
+
         if (name === GadgetName.ReadFiles && typeof params.paths === "string") {
           const paths = (params.paths as string).split("\n").filter(p => p.trim());
           const preview = paths.slice(0, 3).join(", ");
@@ -121,8 +126,9 @@ export class Output {
         } else if (name === GadgetName.Finish && params.summary) {
           console.log(chalk.dim(`   ${params.summary}`));
         } else {
-          // Generic param display for other gadgets
-          const paramStr = this.truncateParams(params);
+          // Generic param display for other gadgets (excluding reason which is shown above)
+          const { reason: _reason, ...otherParams } = params;
+          const paramStr = this.truncateParams(otherParams);
           if (paramStr !== "{}") {
             console.log(chalk.dim("   " + paramStr));
           }

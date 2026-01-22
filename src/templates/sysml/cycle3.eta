@@ -1,0 +1,258 @@
+## Task: Data & Types
+
+**Goal**: Extract all data structures and their constraints
+
+### Project Context
+
+<% if (it.metadata) { %>
+**Language**: <%= it.metadata.primaryLanguage %>
+**Framework**: <%= it.metadata.framework || "none" %>
+<% } %>
+
+<% if (it.targetCounts) { %>
+### EXTRACTION TARGETS (from Cycle 0 Manifest)
+
+**CRITICAL**: You MUST extract exactly the following counts. These were determined by analyzing the actual schema files:
+
+<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
+- **<%= value %>** <%= key %>
+<% } %>
+
+Before finishing, **verify your counts match these targets**. If you extracted fewer items than expected, you missed some - go back and find them.
+<% } %>
+
+### PRIORITY: Schema File Extraction
+
+**CRITICAL**: If schema files (`.prisma`, `.graphql`, `.proto`, `.sql`) are present, they are the **source of truth** for the data model and MUST be fully processed:
+
+#### Prisma Schema (`.prisma`)
+If a Prisma schema is present:
+1. **Extract ALL models** - every `model` block becomes an `item def`
+2. **Extract ALL enums** - every `enum` block becomes an `enum def`
+3. **Capture relationships** - `@relation` annotations define associations
+4. **Note constraints** - `@unique`, `@@unique`, `@@index` become SysML constraints
+5. **Map field types** - `String`, `Int`, `DateTime`, etc. to SysML types
+
+**IMPORTANT**: A typical Prisma schema has 30+ models and 20+ enums. Process the ENTIRE schema - do NOT stop early. Every model and enum MUST appear in the output.
+
+#### GraphQL Schema (`.graphql`, `.gql`)
+If a GraphQL schema is present:
+1. Extract ALL `type` definitions as `item def`
+2. Extract ALL `enum` definitions as `enum def`
+3. Extract ALL `input` definitions as request DTOs
+4. Capture relationships from field types
+
+#### Protobuf (`.proto`)
+If Protobuf files are present:
+1. Extract ALL `message` definitions as `item def`
+2. Extract ALL `enum` definitions as `enum def`
+3. Capture nested types and relationships
+
+### Files to Analyze
+
+<% if (it.files && it.files.length > 0) { %>
+<% for (const file of it.files) { %>
+- `<%= file %>`
+<% } %>
+<% } else { %>
+*Use FileDiscover to find relevant files*
+<% } %>
+
+### Your Tasks
+
+1. **Find type definitions**:
+   - TypeScript: `.d.ts`, `types.ts`, `interfaces/`
+   - Python: Type hints, `@dataclass`, Pydantic models
+   - Go: Struct definitions
+   - Rust: Struct, enum definitions
+   - GraphQL/Protobuf schemas
+
+2. **Extract domain entities**:
+   - Database models/entities
+   - Core business objects
+   - Value objects
+
+3. **Extract DTOs**:
+   - API request/response shapes
+   - Input/output validation schemas
+
+4. **Find enumerations**:
+   - Status types
+   - Category/type enums
+
+5. **Discover constraints**:
+   - Validation rules
+   - Business invariants
+
+6. **Generate SysML**:
+
+   **data/_index.sysml** - Update overview:
+   ```sysml
+   package DataModel {
+       import SysMLPrimitives::*;
+
+       doc /**Data structures discovered from {sources} */
+   }
+   ```
+
+   **data/entities.sysml** - Add domain entities:
+   ```sysml
+   package DomainEntities {
+       import SysMLPrimitives::*;
+
+       doc /**Core domain entities */
+
+       item def User {
+           attribute id : Identifier;
+           attribute email : String;
+           attribute name : String;
+           attribute createdAt : DateTime;
+           attribute status : UserStatus;
+
+           constraint emailNotEmpty {
+               doc /**Email must not be empty */
+           }
+       }
+
+       // Relationships between entities
+       association def UserOrders {
+           end user : User [1];
+           end orders : Order [0..*];
+       }
+   }
+   ```
+
+   **data/dtos.sysml** - Add DTOs:
+   ```sysml
+   package DataTransferObjects {
+       import SysMLPrimitives::*;
+       import DomainEntities::*;
+
+       doc /**API request/response structures */
+
+       item def CreateUserRequest {
+           @required;
+           attribute email : String;
+           attribute name : String;
+           attribute password : String;
+       }
+
+       item def UserResponse {
+           attribute id : Identifier;
+           attribute email : String;
+           attribute name : String;
+       }
+   }
+   ```
+
+   **data/enums.sysml** - Add enumerations:
+   ```sysml
+   package DomainEnums {
+       import SysMLPrimitives::*;
+
+       doc /**Domain enumerations */
+
+       enum def UserStatus {
+           Active;
+           Inactive;
+           Suspended;
+           Deleted;
+       }
+
+       enum def OrderStatus {
+           Pending;
+           Processing;
+           Shipped;
+           Delivered;
+           Cancelled;
+       }
+   }
+   ```
+
+   **data/events.sysml** - Add domain events (if event-driven):
+   ```sysml
+   package DomainEvents {
+       import SysMLPrimitives::*;
+       import DomainEntities::*;
+
+       doc /**Domain events */
+
+       event def UserCreated {
+           attribute timestamp : DateTime;
+           attribute userId : Identifier;
+           attribute email : String;
+       }
+   }
+   ```
+
+### Type Sources by Language
+
+| Language | Type Sources |
+|----------|--------------|
+| TypeScript | `.d.ts`, `types.ts`, interfaces, type aliases |
+| Python | Type hints, `@dataclass`, Pydantic, SQLAlchemy models |
+| Go | Struct definitions, interface definitions |
+| Rust | Struct, enum, trait definitions |
+| Java | Class definitions, records |
+| C# | Class, record, struct definitions |
+
+### What to Look For
+
+- **Required fields**: Which fields are mandatory
+- **Optional fields**: Which can be null/undefined
+- **Validation rules**: Email format, string length, ranges
+- **Relationships**: One-to-many, many-to-many
+- **Computed fields**: Derived from other fields
+
+### Deliverables
+
+Write ONLY these files:
+- `data/_index.sysml` - Data model overview
+- `data/entities.sysml` - Domain entities (from Prisma models, GraphQL types, etc.)
+- `data/enums.sysml` - Enumerations (from Prisma enums, GraphQL enums, etc.)
+- `data/dtos.sysml` - Data transfer objects (optional, for API request/response shapes)
+- `data/events.sysml` - Domain events (optional, if event-driven)
+
+**IMPORTANT**: Do NOT write to context/, structure/, behavior/, verification/, or analysis/ directories.
+This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. will be handled in later cycles.
+
+### Success Criteria
+
+<% if (it.targetCounts) { %>
+**MANDATORY COUNT VERIFICATION**:
+<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
+- [ ] Extracted exactly **<%= value %>** <%= key %>
+<% } %>
+<% } %>
+
+- [ ] **ALL schema entities captured** (if Prisma: every `model`; if GraphQL: every `type`)
+- [ ] **ALL schema enums captured** (if Prisma: every `enum`; if GraphQL: every `enum`)
+- [ ] All domain entities captured
+- [ ] All DTOs (request/response) captured
+- [ ] All enumerations captured
+- [ ] Relationships between entities documented (Prisma `@relation`, GraphQL field references)
+- [ ] Validation constraints extracted (`@unique`, `@@unique`, `@@index`)
+- [ ] Events captured (if event-driven architecture)
+- [ ] Output is limited to `data/` directory only
+
+<% if (it.targetCounts) { %>
+**CRITICAL**: Before finishing, count your `item def` and `enum def` declarations. They MUST match the target counts above. If they don't, you have missed entities - go back and extract them.
+<% } else { %>
+**Verification**: Count your output entities/enums and compare to the schema file. They should match.
+<% } %>
+
+<% if (it.isIterative) { %>
+### File Selection Priority for Data Extraction
+
+When selecting next files with `FileViewerNextFileSet`, prioritize:
+1. Schema files (`*.prisma`, `*.graphql`, `*.proto`, `*.sql`)
+2. Type definition files (`*.types.ts`, `*.d.ts`, `types/*.ts`)
+3. Model files (`*.model.ts`, `models/*.ts`)
+4. Entity files (`*.entity.ts`, `entities/*.ts`)
+5. DTO files (`*.dto.ts`, `dtos/*.ts`)
+6. Interface files (`*.interface.ts`, `interfaces/*.ts`)
+
+**IMPORTANT**: Schema files contain the source of truth for data models. Always process them first and completely.
+
+Select 3-8 files per turn. Process ALL <%= it.totalCount %> files before completing.
+<% } %>

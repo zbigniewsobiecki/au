@@ -1,0 +1,312 @@
+## Task: Analysis & Properties
+
+**Goal**: Define non-functional characteristics and analysis cases
+
+### Project Context
+
+<% if (it.metadata) { %>
+**Language**: <%= it.metadata.primaryLanguage %>
+**Framework**: <%= it.metadata.framework || "none" %>
+**Architecture**: <%= it.metadata.architectureStyle %>
+<% } %>
+
+### Files to Analyze
+
+<% if (it.files && it.files.length > 0) { %>
+<% for (const file of it.files) { %>
+- `<%= file %>`
+<% } %>
+<% } else { %>
+*Use FileDiscover to find relevant files*
+<% } %>
+
+### Your Tasks
+
+1. **Analyze performance patterns**:
+   - Caching (Redis, in-memory)
+   - Rate limiting
+   - Async processing
+   - Connection pooling
+
+2. **Analyze reliability patterns**:
+   - Retry logic
+   - Circuit breakers
+   - Graceful degradation
+   - Health checks
+
+3. **Analyze security controls**:
+   - Authentication method
+   - Authorization model
+   - Input validation
+   - Encryption
+
+4. **Analyze observability**:
+   - Logging
+   - Metrics
+   - Tracing
+   - Alerting
+
+5. **Generate SysML**:
+
+   **analysis/_index.sysml** - Update overview:
+   ```sysml
+   package Analysis {
+       import SysMLPrimitives::*;
+       import SystemArchitecture::*;
+
+       doc /**System analysis and quality attributes */
+   }
+   ```
+
+   **analysis/performance.sysml** - Add performance analysis:
+   ```sysml
+   package PerformanceAnalysis {
+       import SysMLPrimitives::*;
+       import SystemArchitecture::*;
+
+       doc /**Performance characteristics */
+
+       analysis def PerformanceProfile {
+           subject system : System;
+
+           // Discovered patterns
+           attribute hasCaching : Boolean = {true|false};
+           attribute cacheProvider : String = "{redis|memcached|in-memory|none}";
+
+           attribute hasRateLimiting : Boolean = {true|false};
+           attribute rateLimitStrategy : String = "{token-bucket|sliding-window|fixed-window|none}";
+
+           attribute hasAsyncProcessing : Boolean = {true|false};
+           attribute asyncMechanism : String = "{queue|worker|event-loop|none}";
+
+           attribute hasConnectionPooling : Boolean = {true|false};
+           attribute pooledConnections : String [0..*];
+
+           attribute hasCompression : Boolean = {true|false};
+           attribute hasCDN : Boolean = {true|false};
+
+           results {
+               attribute estimatedLatencyMs : Real;
+               attribute estimatedThroughput : Real;
+               attribute scalabilityNotes : String;
+           }
+       }
+
+       // Caching analysis
+       analysis def CachingAnalysis {
+           attribute cacheLocations : String [0..*];
+           attribute cacheStrategies : String [0..*];
+           attribute ttlPatterns : String [0..*];
+
+           results {
+               attribute cacheHitRatioEstimate : Real;
+           }
+       }
+   }
+   ```
+
+   **analysis/reliability.sysml** - Add reliability analysis:
+   ```sysml
+   package ReliabilityAnalysis {
+       import SysMLPrimitives::*;
+
+       doc /**Reliability patterns */
+
+       analysis def ReliabilityProfile {
+           // Retry patterns
+           attribute hasRetries : Boolean = {true|false};
+           attribute retryStrategy : String = "{exponential-backoff|fixed|none}";
+           attribute maxRetries : Integer [0..1];
+
+           // Circuit breaker
+           attribute hasCircuitBreaker : Boolean = {true|false};
+           attribute circuitBreakerThreshold : Integer [0..1];
+
+           // Graceful degradation
+           attribute hasGracefulDegradation : Boolean = {true|false};
+           attribute fallbackStrategies : String [0..*];
+
+           // Health checks
+           attribute hasHealthChecks : Boolean = {true|false};
+           attribute healthEndpoints : String [0..*];
+
+           // Timeouts
+           attribute hasTimeouts : Boolean = {true|false};
+           attribute defaultTimeoutMs : Integer [0..1];
+
+           results {
+               attribute failureHandling : String;
+               attribute recoveryStrategy : String;
+               attribute estimatedAvailability : String;
+           }
+       }
+
+       // Error handling analysis
+       analysis def ErrorHandlingAnalysis {
+           attribute errorBoundaries : String [0..*];
+           attribute globalErrorHandler : Boolean = {true|false};
+           attribute errorLogging : Boolean = {true|false};
+           attribute errorReporting : String [0..1];
+
+           results {
+               attribute errorRecoveryNotes : String;
+           }
+       }
+   }
+   ```
+
+   **analysis/security.sysml** - Add security analysis:
+   ```sysml
+   package SecurityAnalysis {
+       import SysMLPrimitives::*;
+
+       doc /**Security posture */
+
+       analysis def SecurityProfile {
+           // Authentication
+           attribute authenticationMethod : String = "{jwt|session|oauth|api-key|none}";
+           attribute authProvider : String [0..1];
+           attribute mfaSupported : Boolean = {true|false};
+
+           // Authorization
+           attribute authorizationModel : String = "{rbac|abac|acl|none}";
+           attribute permissionGranularity : String = "{coarse|fine|none}";
+
+           // Input validation
+           attribute hasInputValidation : Boolean = {true|false};
+           attribute validationLibrary : String [0..1];
+           attribute sanitizesOutput : Boolean = {true|false};
+
+           // Encryption
+           attribute hasEncryptionAtRest : Boolean = {true|false};
+           attribute hasEncryptionInTransit : Boolean = {true|false};
+           attribute encryptionAlgorithms : String [0..*];
+
+           // Secrets management
+           attribute secretsManagement : String = "{env|vault|aws-secrets|none}";
+
+           // Rate limiting (security aspect)
+           attribute hasSecurityRateLimiting : Boolean = {true|false};
+           attribute bruteForceProtection : Boolean = {true|false};
+
+           // CORS
+           attribute hasCORS : Boolean = {true|false};
+           attribute corsPolicy : String [0..1];
+
+           results {
+               attribute securityPosture : String;
+               attribute identifiedRisks : String [0..*];
+               attribute recommendations : String [0..*];
+           }
+       }
+
+       // Threat analysis
+       package ThreatAnalysis {
+           doc /**Common threats and mitigations */
+
+           constraint def SQLInjectionMitigation {
+               doc /**Use parameterized queries */
+           }
+
+           constraint def XSSMitigation {
+               doc /**Sanitize user input, use CSP */
+           }
+
+           constraint def CSRFMitigation {
+               doc /**Use CSRF tokens */
+           }
+       }
+   }
+   ```
+
+   **analysis/observability.sysml** - Add observability analysis:
+   ```sysml
+   package ObservabilityAnalysis {
+       import SysMLPrimitives::*;
+
+       doc /**Observability and monitoring */
+
+       analysis def ObservabilityProfile {
+           // Logging
+           attribute hasStructuredLogging : Boolean = {true|false};
+           attribute loggingLibrary : String [0..1];
+           attribute logLevels : String [0..*];
+           attribute logDestinations : String [0..*];
+
+           // Metrics
+           attribute hasMetrics : Boolean = {true|false};
+           attribute metricsLibrary : String [0..1];
+           attribute metricsExporter : String [0..1];
+           attribute customMetrics : String [0..*];
+
+           // Tracing
+           attribute hasDistributedTracing : Boolean = {true|false};
+           attribute tracingLibrary : String [0..1];
+           attribute tracingBackend : String [0..1];
+
+           // Alerting
+           attribute hasAlerting : Boolean = {true|false};
+           attribute alertingPlatform : String [0..1];
+
+           results {
+               attribute observabilityMaturity : String;
+               attribute monitoringGaps : String [0..*];
+           }
+       }
+   }
+   ```
+
+### Pattern Detection Guide
+
+| Pattern | Look For |
+|---------|----------|
+| Caching | Redis client, `cache`, `ttl`, `@Cacheable` |
+| Rate Limiting | `rateLimit`, `throttle`, `limiter` |
+| Retry | `retry`, `backoff`, `attempt`, `maxRetries` |
+| Circuit Breaker | `circuitBreaker`, `opossum`, `resilience` |
+| Auth | `passport`, `jwt`, `oauth`, `auth`, `bearer` |
+| Validation | `zod`, `joi`, `yup`, `class-validator` |
+| Logging | `winston`, `pino`, `bunyan`, `logger` |
+| Metrics | `prometheus`, `statsd`, `metrics`, `gauge` |
+| Tracing | `opentelemetry`, `jaeger`, `zipkin`, `trace` |
+
+### What to Look For
+
+- **Configuration files**: Often reveal infrastructure choices
+- **Middleware stack**: Shows cross-cutting concerns
+- **Environment variables**: Security and config patterns
+- **Dependencies**: Libraries reveal patterns used
+
+### Deliverables
+
+Write ONLY these files:
+- `analysis/_index.sysml` - Analysis overview
+- `analysis/performance.sysml` - Performance characteristics and patterns
+- `analysis/reliability.sysml` - Reliability patterns and error handling
+- `analysis/security.sysml` - Security controls and posture
+- `analysis/observability.sysml` - Logging, metrics, tracing setup
+
+This is the final cycle. You may also update the master `_model.sysml` index if needed.
+
+### Success Criteria
+
+- [ ] Performance patterns documented
+- [ ] Reliability patterns identified
+- [ ] Security controls analyzed
+- [ ] Observability setup documented
+- [ ] Recommendations provided for gaps
+- [ ] Output is limited to `analysis/` directory (and optionally `_model.sysml`)
+
+<% if (it.isIterative) { %>
+### File Selection Priority for Analysis
+
+When selecting next files with `FileViewerNextFileSet`, prioritize:
+1. Config files (`config.ts`, `*.config.ts`, `*.config.js`)
+2. Middleware stack (`middleware/*.ts`, `*.middleware.ts`)
+3. Auth/Security (`auth/*.ts`, `guards/*.ts`, `*.guard.ts`)
+4. Logging/Monitoring (`logger.ts`, `metrics.ts`, `tracing.ts`)
+5. Error handling (`*.filter.ts`, `error-handler.ts`)
+6. Infrastructure (`docker-compose.yml`, `*.yaml`, `*.yml`)
+
+Select 3-8 files per turn. Process ALL <%= it.totalCount %> files before completing.
+<% } %>
