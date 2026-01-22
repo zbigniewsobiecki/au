@@ -34,7 +34,7 @@ importers:
         version: 4.0.8
       sysml-parser:
         specifier: github:zbigniewsobiecki/sysml-v2
-        version: https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/4041f235dd013f9cd1c58e49570a33d448a9c6f0
+        version: https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/936033bddbc61ceafa75f84f800e3f0292a860c1
       yaml:
         specifier: ^2.8.2
         version: 2.8.2
@@ -1931,8 +1931,8 @@ packages:
     resolution: {integrity: sha512-zFObLMyZeEwzAoKCyu1B91U79K2t7ApXuQfo8OuxwXLDgcKxuwM+YvcbIhm6QWqz7mHUH1TVytR1PwVVjEuMig==}
     engines: {node: '>=14.18'}
 
-  sysml-parser@https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/4041f235dd013f9cd1c58e49570a33d448a9c6f0:
-    resolution: {tarball: https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/4041f235dd013f9cd1c58e49570a33d448a9c6f0}
+  sysml-parser@https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/936033bddbc61ceafa75f84f800e3f0292a860c1:
+    resolution: {tarball: https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/936033bddbc61ceafa75f84f800e3f0292a860c1}
     version: 0.1.1
     engines: {node: '>=18.0.0'}
     hasBin: true
@@ -4043,12 +4043,13 @@ snapshots:
       has-flag: 4.0.0
       supports-color: 7.2.0
 
-  sysml-parser@https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/4041f235dd013f9cd1c58e49570a33d448a9c6f0:
+  sysml-parser@https://codeload.github.com/zbigniewsobiecki/sysml-v2/tar.gz/936033bddbc61ceafa75f84f800e3f0292a860c1:
     dependencies:
       chalk: 5.6.2
       commander: 12.1.0
       glob: 10.5.0
       langium: 3.5.0
+      vscode-languageserver-types: 3.17.5
 
   tagged-tag@1.0.0: {}
 

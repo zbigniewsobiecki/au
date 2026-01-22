@@ -19,14 +19,34 @@ export interface ValidationResult {
 }
 
 /**
+ * Suppress Chevrotain parser warnings during execution.
+ * These "Ambiguous Alternatives Detected" warnings are internal parser details.
+ */
+function suppressParserWarnings<T>(fn: () => T): T {
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    const msg = args[0];
+    if (typeof msg === "string" && msg.includes("Ambiguous Alternatives Detected")) {
+      return; // Suppress Chevrotain grammar warnings
+    }
+    originalWarn.apply(console, args);
+  };
+  try {
+    return fn();
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
+/**
  * Validate SysML v2 content using sysml-parser.
  * Falls back to basic validation if sysml-parser fails.
  */
 export async function validateSysml(content: string): Promise<ValidationResult> {
   try {
-    const result: SysmlParserResult = await validateDocument(content);
+    const result: SysmlParserResult = await suppressParserWarnings(() => validateDocument(content));
 
-    const issues: ValidationIssue[] = result.diagnostics.map((d) => ({
+    const issues: ValidationIssue[] = (await result).diagnostics.map((d) => ({
       line: (d.range?.start?.line ?? 0) + 1, // 0-indexed to 1-indexed
       column: (d.range?.start?.character ?? 0) + 1,
       message: d.message,
@@ -34,7 +54,7 @@ export async function validateSysml(content: string): Promise<ValidationResult> 
     }));
 
     return {
-      valid: result.isValid,
+      valid: (await result).isValid,
       issues,
     };
   } catch (error) {

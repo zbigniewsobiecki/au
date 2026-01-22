@@ -296,7 +296,43 @@ export const sysmlWrite = createGadget({
       return `${statusLine}\n\n${diffOutput}${validLine}`;
     }
 
-    return JSON.stringify(result);
+    // DEBUG: Check why output is so large
+    const jsonResult = JSON.stringify(result);
+    const resultBytes = Buffer.byteLength(jsonResult, "utf-8");
+    const resultLines = diffLines?.length ?? 0;
+
+    if (resultBytes > 100000) {
+      // Log debug info
+      console.error(`[SysMLWrite DEBUG] Large output detected:`);
+      console.error(`  path: ${fullPath}`);
+      console.error(`  marker: ${marker}`);
+      console.error(`  oldBytes: ${oldBytes}, newBytes: ${newBytes}`);
+      console.error(`  diffLines count: ${resultLines}`);
+      console.error(`  total JSON bytes: ${resultBytes}`);
+
+      if (diffLines && diffLines.length > 0) {
+        const addCount = diffLines.filter(l => l.type === "add").length;
+        const delCount = diffLines.filter(l => l.type === "del").length;
+        const ctxCount = diffLines.filter(l => l.type === "ctx").length;
+        console.error(`  diffLines breakdown: ${addCount} adds, ${delCount} dels, ${ctxCount} ctx`);
+        console.error(`  first 3 diffLines: ${JSON.stringify(diffLines.slice(0, 3))}`);
+        console.error(`  last 3 diffLines: ${JSON.stringify(diffLines.slice(-3))}`);
+      }
+
+      // Return truncated result for now
+      const truncatedResult: SysMLWriteResult = {
+        path: fullPath,
+        marker,
+        oldBytes,
+        newBytes,
+        diffLines: diffLines ? diffLines.slice(0, 50) : null, // Only first 50 lines
+      };
+      if (diffLines && diffLines.length > 50) {
+        return JSON.stringify(truncatedResult) + `\n[TRUNCATED: ${diffLines.length - 50} more diff lines]`;
+      }
+    }
+
+    return jsonResult;
   },
 });
 
