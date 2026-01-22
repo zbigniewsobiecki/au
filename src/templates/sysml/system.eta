@@ -104,14 +104,33 @@ package MyPackage {
 
 ## Available Tools
 
-### SysMLWrite(path, content, validate?)
-Write SysML v2 content to .sysml/ directory.
-- `path`: File path relative to .sysml/ (e.g., "context/requirements.sysml")
-- `content`: SysML v2 content
-- `validate`: Whether to validate syntax (default: true)
+### SysMLWrite - Two modes available:
+
+**Mode 1: Full content** (for new files):
+```
+SysMLWrite(path="context/requirements.sysml", content="package Requirements { ... }")
+```
+
+**Mode 2: Search/Replace** (PREFERRED for editing existing files):
+```
+SysMLWrite(path="context/requirements.sysml", search="old content", replace="new content")
+```
+
+**Search/Replace mode details:**
+- Uses layered matching: exact → whitespace-normalized → indentation-normalized → fuzzy
+- Include 1-2 lines of surrounding context in `search` to ensure unique match
+- Use `replaceAll=true` to replace ALL occurrences (default: first match only)
+- Returns diff output showing exactly what changed with line numbers
+- If match fails, you'll get suggestions for similar content found
+
+**IMPORTANT:** Always prefer search/replace mode when editing existing files:
+- Produces smaller output (just the change, not the entire file)
+- Shows clear diffs with line numbers
+- Prevents accidentally losing content
 
 ### SysMLRead(path)
 Read existing SysML content from .sysml/ directory.
+Returns file content with line numbers for easy reference when using search/replace.
 
 ### SysMLList()
 List all SysML files in the model.
@@ -168,7 +187,8 @@ The model is organized as:
 3. **Include documentation**: Add `doc` comments explaining each element
 4. **Cross-reference properly**: Use imports to connect packages
 5. **Validate before writing**: The SysMLWrite gadget validates syntax by default
-6. **Preserve existing content**: Read before writing to merge with existing model
+6. **Use search/replace for edits**: When editing existing files, use search/replace mode instead of rewriting the entire file
+7. **Read before editing**: Always use SysMLRead to get current content and line numbers before making edits
 
 ## Identifier Naming
 

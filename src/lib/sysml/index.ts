@@ -56,3 +56,16 @@ export {
   type ValidationIssue,
   type ValidationResult,
 } from "./validator.js";
+
+// Matcher (for search/replace operations)
+export {
+  findMatch,
+  findAllMatches,
+  applyReplacement,
+  formatContext,
+  formatDiff,
+  type MatchStrategy,
+  type MatchResult,
+  type MatchFailure,
+  type MatchSuggestion,
+} from "./matcher.js";
