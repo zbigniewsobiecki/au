@@ -3,8 +3,9 @@ import { AgentBuilder, LLMist } from "llmist";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
-  auRead,
-  auList,
+  sysmlRead,
+  sysmlList,
+  sysmlQuery,
   readFiles,
   readDirs,
   ripGrep,
@@ -53,7 +54,7 @@ interface VerificationOutput {
 }
 
 export default class DocumentVerify extends Command {
-  static description = "Verify generated documentation against AU understanding and source code";
+  static description = "Verify generated documentation against SysML model and source code";
 
   static examples = [
     "<%= config.bin %> document-verify --target ./docs",
@@ -229,8 +230,9 @@ export default class DocumentVerify extends Command {
         readDoc,
         reportIssue,
         finishVerification,
-        auRead,
-        auList,
+        sysmlRead,
+        sysmlList,
+        sysmlQuery,
         readFiles,
         readDirs,
         ripGrep,
@@ -351,8 +353,9 @@ export default class DocumentVerify extends Command {
           writeDoc,
           finishFixing,
           readDoc,
-          auRead,
-          auList,
+          sysmlRead,
+          sysmlList,
+          sysmlQuery,
           readFiles,
           readDirs,
           ripGrep,

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
-import { execute } from "@oclif/core";
-
-await execute({ dir: import.meta.url });
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+NODE_OPTIONS="--require $DIR/suppress-chevrotain-warnings.cjs" exec node "$DIR/run.mjs" "$@"

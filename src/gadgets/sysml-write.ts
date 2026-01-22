@@ -381,14 +381,52 @@ Returns the file content with line numbers for easy reference when using search/
   },
 });
 
+/**
+ * Extract a summary from SysML file content.
+ * Looks for the first doc comment (/** ... *\/) or the package description.
+ */
+function extractFileSummary(content: string): string | null {
+  // Try to find a doc comment at the start
+  const docMatch = content.match(/^\s*\/\*\*\s*([\s\S]*?)\s*\*\//);
+  if (docMatch) {
+    const docText = docMatch[1]
+      .replace(/^\s*\*\s?/gm, "")
+      .trim()
+      .split("\n")[0]; // First line only
+    if (docText.length > 0) {
+      return docText.length > 80 ? docText.slice(0, 77) + "..." : docText;
+    }
+  }
+
+  // Try to find package name and description from package declaration
+  const pkgMatch = content.match(/package\s+(\w+)\s*\{/);
+  if (pkgMatch) {
+    // Look for a doc comment right before the package
+    const beforePkg = content.slice(0, content.indexOf(pkgMatch[0]));
+    const lastDocMatch = beforePkg.match(/\/\*\*\s*([\s\S]*?)\s*\*\/\s*$/);
+    if (lastDocMatch) {
+      const docText = lastDocMatch[1]
+        .replace(/^\s*\*\s?/gm, "")
+        .trim()
+        .split("\n")[0];
+      if (docText.length > 0) {
+        return docText.length > 80 ? docText.slice(0, 77) + "..." : docText;
+      }
+    }
+    return `Package: ${pkgMatch[1]}`;
+  }
+
+  return null;
+}
+
 export const sysmlList = createGadget({
   name: "SysMLList",
-  description: `List all SysML files in the .sysml/ directory.
+  description: `List all SysML files in the .sysml/ directory with summaries.
 
 **Usage:**
 SysMLList()
 
-Returns a list of all .sysml files with their sizes.`,
+Returns a list of all .sysml files with their sizes and brief descriptions extracted from doc comments.`,
   schema: z.object({
     reason: z.string().describe(GADGET_REASON_DESCRIPTION),
   }),
@@ -396,7 +434,7 @@ Returns a list of all .sysml files with their sizes.`,
     const { readdir } = await import("node:fs/promises");
     const { join } = await import("node:path");
 
-    const files: { path: string; bytes: number }[] = [];
+    const files: { path: string; bytes: number; summary?: string }[] = [];
 
     async function scanDir(dir: string, prefix: string = ""): Promise<void> {
       try {
@@ -409,9 +447,19 @@ Returns a list of all .sysml files with their sizes.`,
             await scanDir(fullPath, relativePath);
           } else if (entry.name.endsWith(".sysml")) {
             const statResult = await stat(fullPath);
+            let summary: string | undefined;
+
+            try {
+              const content = await readFile(fullPath, "utf-8");
+              summary = extractFileSummary(content) ?? undefined;
+            } catch {
+              // Couldn't read file for summary
+            }
+
             files.push({
               path: relativePath,
               bytes: statResult.size,
+              summary,
             });
           }
         }
@@ -429,7 +477,10 @@ Returns a list of all .sysml files with their sizes.`,
     // Sort by path
     files.sort((a, b) => a.path.localeCompare(b.path));
 
-    const lines = files.map((f) => `${f.path} (${f.bytes} bytes)`);
+    const lines = files.map((f) => {
+      const base = `${f.path} (${f.bytes} bytes)`;
+      return f.summary ? `${base}\n  → ${f.summary}` : base;
+    });
     const totalBytes = files.reduce((sum, f) => sum + f.bytes, 0);
 
     return `SysML Model Files:\n${lines.join("\n")}\n\nTotal: ${files.length} files, ${totalBytes} bytes`;

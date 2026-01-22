@@ -1,0 +1,753 @@
+/**
+ * SysML Model Validator
+ * Validates the SysML model structure and coverage.
+ */
+
+import { readFile, readdir, stat, access } from "node:fs/promises";
+import { join } from "node:path";
+import { validateSysml, type ValidationResult } from "./sysml/validator.js";
+import { loadManifest, type Manifest } from "../gadgets/manifest-write.js";
+import fg from "fast-glob";
+
+const SYSML_DIR = ".sysml";
+const MANIFEST_PATH = ".sysml/_manifest.json";
+
+/** Known system files that are always expected */
+const SYSTEM_FILES = new Set([
+  "_manifest.json",
+  "_model.sysml",
+  "_project.sysml",
+  "_stdlib.sysml",
+]);
+
+/**
+ * Count SysML element definitions in content.
+ */
+interface ElementCounts {
+  itemDefs: number;
+  partDefs: number;
+  enumDefs: number;
+  actionDefs: number;
+  requirementDefs: number;
+  parts: { name: string; layer?: string }[];
+}
+
+function countElements(content: string): ElementCounts {
+  const counts: ElementCounts = {
+    itemDefs: 0,
+    partDefs: 0,
+    enumDefs: 0,
+    actionDefs: 0,
+    requirementDefs: 0,
+    parts: [],
+  };
+
+  const lines = content.split("\n");
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip comments
+    if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
+      continue;
+    }
+
+    // item def Name
+    if (/^\s*item\s+def\s+\w+/.test(trimmed)) {
+      counts.itemDefs++;
+    }
+
+    // part def Name (not part Name : Type)
+    if (/^\s*part\s+def\s+\w+/.test(trimmed)) {
+      counts.partDefs++;
+    }
+
+    // enum def Name
+    if (/^\s*enum\s+def\s+\w+/.test(trimmed)) {
+      counts.enumDefs++;
+    }
+
+    // action def Name
+    if (/^\s*action\s+def\s+\w+/.test(trimmed)) {
+      counts.actionDefs++;
+    }
+
+    // requirement def Name or requirement Name
+    if (/^\s*requirement\s+(def\s+)?\w+/.test(trimmed)) {
+      counts.requirementDefs++;
+    }
+
+    // part Name : Type { with layer attribute
+    const partMatch = trimmed.match(/^\s*part\s+(\w+)\s*:\s*\w+/);
+    if (partMatch) {
+      const partName = partMatch[1];
+      // Look for layer in the following lines (simplified - check same line and content)
+      let layer: string | undefined;
+
+      // Check if layer is on the same line (inline redefinition)
+      const layerMatch = content.match(
+        new RegExp(`part\\s+${partName}[^}]*:>>\\s*layer\\s*=\\s*"([^"]+)"`, "s")
+      );
+      if (layerMatch) {
+        layer = layerMatch[1];
+      }
+
+      counts.parts.push({ name: partName, layer });
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * Count parts by layer attribute in a SysML file.
+ */
+function countPartsByLayer(content: string): { services: number; controllers: number; modules: number } {
+  const counts = { services: 0, controllers: 0, modules: 0 };
+
+  // Match part definitions with their full block content
+  // This regex finds: part name : Module { ... }
+  const partBlockRegex = /part\s+(\w+)\s*:\s*Module\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/gs;
+
+  let match;
+  while ((match = partBlockRegex.exec(content)) !== null) {
+    const blockContent = match[2];
+    counts.modules++;
+
+    // Check for layer attribute within the block
+    const layerMatch = blockContent.match(/:>>\s*layer\s*=\s*"([^"]+)"/);
+    if (layerMatch) {
+      const layer = layerMatch[1];
+      if (layer === "service") {
+        counts.services++;
+      } else if (layer === "presentation") {
+        counts.controllers++;
+      }
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * Extract all package and definition names from SysML content.
+ */
+function extractDefinedNames(content: string): Set<string> {
+  const names = new Set<string>();
+
+  // Package definitions
+  const packageMatches = content.matchAll(/(?:standard\s+library\s+)?package\s+(\w+)/g);
+  for (const match of packageMatches) {
+    names.add(match[1]);
+  }
+
+  // Datatype definitions (primitives): "datatype Name" or "datatype Name :> Base"
+  const datatypeMatches = content.matchAll(/datatype\s+(\w+)/g);
+  for (const match of datatypeMatches) {
+    names.add(match[1]);
+  }
+
+  // Various def types
+  const defMatches = content.matchAll(
+    /(?:item|part|enum|action|state|requirement|interface|port|attribute|analysis|verification|metadata|constraint)\s+def\s+(\w+)/g
+  );
+  for (const match of defMatches) {
+    names.add(match[1]);
+  }
+
+  return names;
+}
+
+/**
+ * Extract import references from SysML content.
+ */
+function extractImports(content: string): { line: number; packageName: string; fullImport: string }[] {
+  const imports: { line: number; packageName: string; fullImport: string }[] = [];
+  const lines = content.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match = line.match(/^\s*import\s+(\w+)(::[^;]+)?;?/);
+    if (match) {
+      imports.push({
+        line: i + 1,
+        packageName: match[1],
+        fullImport: match[0].trim(),
+      });
+    }
+  }
+
+  return imports;
+}
+
+/**
+ * Extract specialization references (:> BaseType) from SysML content.
+ */
+function extractSpecializations(
+  content: string
+): { line: number; baseType: string; context: string }[] {
+  const specializations: { line: number; baseType: string; context: string }[] = [];
+  const lines = content.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Match :> TypeName (but not :>> which is redefinition)
+    const matches = line.matchAll(/:>\s+(\w+)(?!\s*>)/g);
+    for (const match of matches) {
+      specializations.push({
+        line: i + 1,
+        baseType: match[1],
+        context: line.trim().slice(0, 60),
+      });
+    }
+  }
+
+  return specializations;
+}
+
+export interface ExpectedOutputCheck {
+  path: string;
+  exists: boolean;
+}
+
+export interface SyntaxError {
+  file: string;
+  errors: string[];
+}
+
+export interface CountMismatch {
+  cycle: string;
+  item: string;
+  expected: number;
+  actual: number;
+}
+
+export interface ReferenceMissing {
+  file: string;
+  line: number;
+  type: "import" | "specialization" | "part-reference";
+  reference: string;
+  context?: string;
+}
+
+export interface CoverageIssue {
+  cycle: string;
+  type: "missing-file" | "missing-directory" | "pattern-no-match";
+  path: string;
+  detail?: string;
+}
+
+export interface SysMLValidationResult {
+  manifestExists: boolean;
+  manifestErrors: string[];
+  expectedOutputs: ExpectedOutputCheck[];
+  syntaxErrors: SyntaxError[];
+  countMismatches: CountMismatch[];
+  orphanedFiles: string[];
+  missingReferences: ReferenceMissing[];
+  coverageIssues: CoverageIssue[];
+  validFileCount: number;
+  totalFileCount: number;
+}
+
+/**
+ * Scan the .sysml directory for all .sysml files.
+ */
+async function scanSysmlFiles(basePath: string): Promise<string[]> {
+  const sysmlDir = join(basePath, SYSML_DIR);
+  const files: string[] = [];
+
+  async function scanDir(dir: string, prefix: string = ""): Promise<void> {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const fullPath = join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          await scanDir(fullPath, relativePath);
+        } else if (entry.name.endsWith(".sysml")) {
+          files.push(relativePath);
+        }
+      }
+    } catch {
+      // Directory doesn't exist
+    }
+  }
+
+  await scanDir(sysmlDir);
+  return files;
+}
+
+/**
+ * Check if a file exists.
+ */
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get all expected output files from manifest.
+ */
+function getExpectedOutputs(manifest: Manifest): string[] {
+  const outputs: string[] = [];
+  for (const cycle of Object.values(manifest.cycles)) {
+    if (cycle.expectedOutputs) {
+      outputs.push(...cycle.expectedOutputs);
+    }
+  }
+  return outputs;
+}
+
+/**
+ * Get all files referenced in directory patterns for a given cycle.
+ */
+async function getFilesFromDirectoryPatterns(
+  basePath: string,
+  manifest: Manifest,
+  cycleKey: string
+): Promise<string[]> {
+  if (!manifest.directories) return [];
+
+  const files: string[] = [];
+
+  for (const dir of manifest.directories) {
+    const cycleConfig = dir.cycles[cycleKey];
+    if (!cycleConfig) continue;
+
+    for (const pattern of cycleConfig.patterns) {
+      const globPattern = join(basePath, dir.path, pattern);
+      const matches = await fg(globPattern, { onlyFiles: true });
+      files.push(...matches);
+    }
+  }
+
+  return files;
+}
+
+export class SysMLModelValidator {
+  /**
+   * Validate the SysML model at the given path.
+   */
+  async validate(basePath: string = "."): Promise<SysMLValidationResult> {
+    const result: SysMLValidationResult = {
+      manifestExists: false,
+      manifestErrors: [],
+      expectedOutputs: [],
+      syntaxErrors: [],
+      countMismatches: [],
+      orphanedFiles: [],
+      missingReferences: [],
+      coverageIssues: [],
+      validFileCount: 0,
+      totalFileCount: 0,
+    };
+
+    // Check if .sysml directory exists
+    const sysmlDir = join(basePath, SYSML_DIR);
+    if (!(await fileExists(sysmlDir))) {
+      result.manifestErrors.push("No .sysml directory found. Run 'au sysml-ingest' first.");
+      return result;
+    }
+
+    // Check manifest exists
+    const manifestPath = join(basePath, MANIFEST_PATH);
+    result.manifestExists = await fileExists(manifestPath);
+
+    if (!result.manifestExists) {
+      result.manifestErrors.push("Manifest not found at .sysml/_manifest.json");
+      return result;
+    }
+
+    // Load and validate manifest
+    let manifest: Manifest;
+    try {
+      const content = await readFile(manifestPath, "utf-8");
+      manifest = JSON.parse(content);
+    } catch (error) {
+      result.manifestErrors.push(
+        `Failed to parse manifest: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return result;
+    }
+
+    // Validate manifest structure
+    if (!manifest.version) {
+      result.manifestErrors.push("Manifest missing version field");
+    }
+    if (!manifest.project) {
+      result.manifestErrors.push("Manifest missing project field");
+    }
+    if (!manifest.cycles) {
+      result.manifestErrors.push("Manifest missing cycles field");
+    }
+
+    // Check expected outputs exist
+    const expectedOutputs = getExpectedOutputs(manifest);
+    for (const output of expectedOutputs) {
+      const fullPath = join(basePath, SYSML_DIR, output);
+      result.expectedOutputs.push({
+        path: output,
+        exists: await fileExists(fullPath),
+      });
+    }
+
+    // Scan all .sysml files
+    const sysmlFiles = await scanSysmlFiles(basePath);
+    result.totalFileCount = sysmlFiles.length;
+
+    // Validate syntax of each file
+    for (const file of sysmlFiles) {
+      const fullPath = join(basePath, SYSML_DIR, file);
+      try {
+        const content = await readFile(fullPath, "utf-8");
+        const validationResult = await validateSysml(content);
+
+        if (!validationResult.valid) {
+          const errors = validationResult.issues
+            .filter((i) => i.severity === "error")
+            .map((i) => `Line ${i.line}:${i.column}: ${i.message}`);
+
+          if (errors.length > 0) {
+            result.syntaxErrors.push({ file, errors });
+          }
+        } else {
+          result.validFileCount++;
+        }
+      } catch (error) {
+        result.syntaxErrors.push({
+          file,
+          errors: [`Failed to read: ${error instanceof Error ? error.message : String(error)}`],
+        });
+      }
+    }
+
+    // Collect file contents for count validation and reference checking
+    const fileContents: Map<string, string> = new Map();
+    for (const file of sysmlFiles) {
+      const fullPath = join(basePath, SYSML_DIR, file);
+      try {
+        const content = await readFile(fullPath, "utf-8");
+        fileContents.set(file, content);
+      } catch {
+        // Already reported in syntax errors if file can't be read
+      }
+    }
+
+    // Check count mismatches from manifest cycles
+    await this.validateCounts(manifest, fileContents, basePath, result);
+
+    // Check for orphaned files (files not referenced in expectedOutputs)
+    this.detectOrphanedFiles(sysmlFiles, expectedOutputs, result);
+
+    // Check reference integrity (imports and specializations)
+    this.validateReferences(fileContents, result);
+
+    // Check coverage completeness (target files exist)
+    await this.validateCoverage(manifest, basePath, result);
+
+    return result;
+  }
+
+  /**
+   * Get total issue count from validation result.
+   */
+  static getIssueCount(result: SysMLValidationResult): number {
+    let count = result.manifestErrors.length;
+    count += result.expectedOutputs.filter((o) => !o.exists).length;
+    count += result.syntaxErrors.length;
+    count += result.countMismatches.length;
+    count += result.orphanedFiles.length;
+    count += result.missingReferences.length;
+    count += result.coverageIssues.length;
+    return count;
+  }
+
+  /**
+   * Validate that element counts in SysML files match manifest declarations.
+   */
+  private async validateCounts(
+    manifest: Manifest,
+    fileContents: Map<string, string>,
+    basePath: string,
+    result: SysMLValidationResult
+  ): Promise<void> {
+    for (const [cycleKey, cycle] of Object.entries(manifest.cycles)) {
+      if (!cycle.counts) continue;
+
+      for (const [countKey, expected] of Object.entries(cycle.counts)) {
+        let actual = 0;
+
+        // Map count keys to element types and source files
+        switch (countKey) {
+          case "models":
+          case "entities": {
+            // Count item def and part def in data/*.sysml
+            for (const [file, content] of fileContents) {
+              if (file.startsWith("data/") && !file.includes("_index")) {
+                const counts = countElements(content);
+                actual += counts.itemDefs + counts.partDefs;
+              }
+            }
+            break;
+          }
+
+          case "enums": {
+            // Count enum def in data/enums.sysml or all data files
+            for (const [file, content] of fileContents) {
+              if (file.startsWith("data/")) {
+                const counts = countElements(content);
+                actual += counts.enumDefs;
+              }
+            }
+            break;
+          }
+
+          case "services": {
+            // Count parts with layer="service" in structure/modules.sysml
+            for (const [file, content] of fileContents) {
+              if (file.startsWith("structure/") && file.includes("modules")) {
+                const layerCounts = countPartsByLayer(content);
+                actual += layerCounts.services;
+              }
+            }
+            break;
+          }
+
+          case "controllers": {
+            // Count parts with layer="presentation" in structure/modules.sysml
+            for (const [file, content] of fileContents) {
+              if (file.startsWith("structure/") && file.includes("modules")) {
+                const layerCounts = countPartsByLayer(content);
+                actual += layerCounts.controllers;
+              }
+            }
+            break;
+          }
+
+          case "modules": {
+            // Count all part : Module definitions
+            for (const [file, content] of fileContents) {
+              if (file.startsWith("structure/") && file.includes("modules")) {
+                const layerCounts = countPartsByLayer(content);
+                actual += layerCounts.modules;
+              }
+            }
+            break;
+          }
+
+          case "operations": {
+            // Count action def in behavior/*.sysml
+            for (const [file, content] of fileContents) {
+              if (file.startsWith("behavior/")) {
+                const counts = countElements(content);
+                actual += counts.actionDefs;
+              }
+            }
+            break;
+          }
+
+          case "requirements": {
+            // Count requirement definitions in context/*.sysml
+            for (const [file, content] of fileContents) {
+              if (file.startsWith("context/") || file.includes("requirements")) {
+                const counts = countElements(content);
+                actual += counts.requirementDefs;
+              }
+            }
+            break;
+          }
+
+          default:
+            // Unknown count key - skip validation but don't report as mismatch
+            continue;
+        }
+
+        if (actual !== expected) {
+          result.countMismatches.push({
+            cycle: cycleKey,
+            item: countKey,
+            expected,
+            actual,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Detect files in .sysml directory not listed in expectedOutputs.
+   */
+  private detectOrphanedFiles(
+    sysmlFiles: string[],
+    expectedOutputs: string[],
+    result: SysMLValidationResult
+  ): void {
+    const expectedSet = new Set(expectedOutputs);
+
+    // Add system files to expected set
+    for (const systemFile of SYSTEM_FILES) {
+      expectedSet.add(systemFile);
+    }
+
+    for (const file of sysmlFiles) {
+      // Skip system files (starting with _)
+      if (file.startsWith("_")) {
+        continue;
+      }
+
+      // Skip index files (subdirectory/_index.sysml)
+      if (file.endsWith("/_index.sysml") || file === "_index.sysml") {
+        continue;
+      }
+
+      // Check if file is in expected outputs
+      if (!expectedSet.has(file)) {
+        result.orphanedFiles.push(file);
+      }
+    }
+  }
+
+  /**
+   * Validate that imports and specializations reference existing packages/elements.
+   */
+  private validateReferences(
+    fileContents: Map<string, string>,
+    result: SysMLValidationResult
+  ): void {
+    // First, collect all defined names across all files
+    const allDefinedNames = new Set<string>();
+
+    // Add standard library packages that are always available
+    const standardPackages = new Set([
+      "SysMLPrimitives",
+      "ISQ",
+      "SI",
+      "Base",
+      "Metaobjects",
+      "Links",
+      "Objects",
+      "Performances",
+      "Occurrences",
+      "Items",
+      "Parts",
+      "Ports",
+      "Connections",
+      "Interfaces",
+      "Actions",
+      "States",
+      "Calculations",
+      "Constraints",
+      "Requirements",
+      "Cases",
+      "Analysis",
+      "Allocations",
+      "Metadata",
+      "Views",
+      "ScalarValues",
+    ]);
+
+    for (const name of standardPackages) {
+      allDefinedNames.add(name);
+    }
+
+    // Collect definitions from all files
+    for (const [, content] of fileContents) {
+      const names = extractDefinedNames(content);
+      for (const name of names) {
+        allDefinedNames.add(name);
+      }
+    }
+
+    // Check imports in each file
+    for (const [file, content] of fileContents) {
+      const imports = extractImports(content);
+      for (const imp of imports) {
+        if (!allDefinedNames.has(imp.packageName)) {
+          result.missingReferences.push({
+            file,
+            line: imp.line,
+            type: "import",
+            reference: imp.packageName,
+            context: imp.fullImport,
+          });
+        }
+      }
+
+      // Check specializations
+      const specializations = extractSpecializations(content);
+      for (const spec of specializations) {
+        // Only check if the base type looks like a user-defined type (capitalized)
+        if (/^[A-Z]/.test(spec.baseType) && !allDefinedNames.has(spec.baseType)) {
+          result.missingReferences.push({
+            file,
+            line: spec.line,
+            type: "specialization",
+            reference: spec.baseType,
+            context: spec.context,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate coverage completeness - target files in manifest exist.
+   */
+  private async validateCoverage(
+    manifest: Manifest,
+    basePath: string,
+    result: SysMLValidationResult
+  ): Promise<void> {
+    // Check cycle.coverage.targetFiles
+    for (const [cycleKey, cycle] of Object.entries(manifest.cycles)) {
+      if (cycle.coverage?.targetFiles) {
+        for (const targetFile of cycle.coverage.targetFiles) {
+          const fullPath = join(basePath, targetFile);
+          if (!(await fileExists(fullPath))) {
+            result.coverageIssues.push({
+              cycle: cycleKey,
+              type: "missing-file",
+              path: targetFile,
+            });
+          }
+        }
+      }
+    }
+
+    // Check directories paths exist
+    if (manifest.directories) {
+      for (const dir of manifest.directories) {
+        const fullPath = join(basePath, dir.path);
+        if (!(await fileExists(fullPath))) {
+          result.coverageIssues.push({
+            cycle: "directories",
+            type: "missing-directory",
+            path: dir.path,
+          });
+        } else {
+          // Check that patterns match at least one file
+          for (const [cycleKey, cycleConfig] of Object.entries(dir.cycles)) {
+            for (const pattern of cycleConfig.patterns) {
+              const globPattern = join(basePath, dir.path, pattern);
+              const matches = await fg(globPattern, { onlyFiles: true });
+              if (matches.length === 0) {
+                result.coverageIssues.push({
+                  cycle: cycleKey,
+                  type: "pattern-no-match",
+                  path: `${dir.path}/${pattern}`,
+                  detail: "Pattern does not match any files",
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

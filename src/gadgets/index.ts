@@ -15,6 +15,8 @@ export { fileViewerNextFileSet } from "./file-viewer-next.js";
 // SysML reverse engineering gadgets
 export { sysmlWrite, sysmlRead, sysmlList } from "./sysml-write.js";
 export type { SysMLWriteResult } from "./sysml-write.js";
+export { sysmlQuery } from "./sysml-query.js";
+export { finishSysmlFix } from "./sysml-fix-gadget.js";
 export { projectMetaRead, projectMetaDiscover, projectMetaUpdate } from "./project-meta.js";
 export { fileDiscover, fileDiscoverCustom, cycleInfo } from "./file-discover.js";
 export { manifestWrite, manifestRead, countPatterns, loadManifest, getManifestCycleFiles, getManifestCycleCounts, getManifestDirectoryPatterns } from "./manifest-write.js";
