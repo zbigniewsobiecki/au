@@ -1,3 +1,9 @@
+## [1.5.0](https://github.com/zbigniewsobiecki/au/compare/v1.4.1...v1.5.0) (2026-01-22)
+
+### Features
+
+* **sysml:** add agentic --fix mode to sysml validate ([b1f429b](https://github.com/zbigniewsobiecki/au/commit/b1f429b66260afbb1d03f8f0414fcf5741a249c8))
+
 ## [1.4.1](https://github.com/zbigniewsobiecki/au/compare/v1.4.0...v1.4.1) (2026-01-22)
 
 ### Bug Fixes
