@@ -15,7 +15,7 @@ export interface CycleCounts {
   name: string;
   filePatterns: number;
   expectedOutputs: number;
-  counts?: Record<string, number>;
+  sourceFiles?: string[];
 }
 
 export interface SourceCoverage {
@@ -148,7 +148,7 @@ export class SysMLStats {
             name: cycle.name,
             filePatterns: cycle.files?.length ?? 0,
             expectedOutputs: cycle.expectedOutputs?.length ?? 0,
-            counts: cycle.counts,
+            sourceFiles: cycle.sourceFiles,
           };
         }
 

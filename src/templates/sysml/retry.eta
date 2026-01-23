@@ -1,0 +1,54 @@
+## Coverage Retry Phase - Cycle <%= it.cycle %>
+
+The following source files were **NOT covered** in the main cycle and MUST be documented:
+
+<% for (const file of it.missingFiles) { %>
+- `<%= file %>`
+<% } %>
+<% if (it.totalMissing > it.missingFiles.length) { %>
+
+*(... and <%= it.totalMissing - it.missingFiles.length %> more files)*
+<% } %>
+
+## Requirements
+
+You **MUST**:
+
+1. Read and analyze EACH of the files listed above
+2. Add appropriate SysML definitions for entities, types, operations, etc. found in each file
+3. **CRITICAL**: Include `// Source: <filepath>` comments in your SysML output to track which files have been covered
+
+## SysML Source Comment Format
+
+Every SysML definition must include a source comment indicating which file(s) it documents:
+
+```sysml
+// Source: src/controllers/user.controller.ts
+action def CreateUser {
+    doc /**Create a new user account */
+    in request : CreateUserRequest;
+    out response : UserResponse;
+}
+
+// Source: src/services/auth.service.ts
+action def AuthenticateUser {
+    doc /**Authenticate user credentials */
+    in credentials : LoginRequest;
+    out tokens : TokenResponse;
+}
+```
+
+## Important Notes
+
+- Focus ONLY on the missing files listed above
+- Do NOT recreate entities that already exist in the model
+- Each source file should result in at least one SysML element with a `// Source:` comment
+- If a file contains multiple significant entities, document all of them
+
+<% if (it.existingModel) { %>
+## Existing Model Context
+
+The following SysML content has already been generated. Reference it to avoid duplicates:
+
+<%= it.existingModel %>
+<% } %>

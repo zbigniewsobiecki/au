@@ -16,13 +16,19 @@ import {
   ripGrep,
   manifestWrite,
   manifestRead,
-  countPatterns,
   loadManifest,
   getManifestDirectoryPatterns,
+  getManifestCycleSourceFiles,
   enumerateDirectories,
   fileViewerNextFileSet,
+  setCoverageContext,
   type SysMLWriteResult,
 } from "../gadgets/index.js";
+import {
+  checkCycleCoverage,
+  formatCoverageResult,
+  type CoverageResult,
+} from "../lib/sysml/index.js";
 import { parsePathList } from "../lib/command-utils.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
@@ -146,7 +152,7 @@ function extractEntitiesFromSysml(content: string, file: string): CreatedEntity[
 interface ManifestHints {
   directories: string[];         // Relevant directories for this cycle
   filePatterns: string[] | null; // File patterns to search (e.g., "src/**/*.service.ts")
-  counts: Record<string, number> | null;  // Target counts (e.g., services: 5)
+  sourceFiles: string[] | null;  // Source files to cover (supports glob patterns)
   expectedOutputs: string[] | null;       // Expected SysML outputs
   expectedFileCount: number | null;       // Estimated number of files to analyze
 }
@@ -258,7 +264,7 @@ async function expandManifestGlobs(
 /**
  * Find cycle data in manifest (handles both "cycle1" and "1" key formats).
  */
-function findManifestCycle(manifest: { cycles: Record<string, { files?: string[]; counts?: Record<string, number>; expectedOutputs?: string[] }> }, cycle: number) {
+function findManifestCycle(manifest: { cycles: Record<string, { files?: string[]; sourceFiles?: string[]; expectedOutputs?: string[] }> }, cycle: number) {
   // Try "cycle1" format first
   const prefixedKey = `cycle${cycle}`;
   if (manifest.cycles[prefixedKey]) {
@@ -274,7 +280,7 @@ function findManifestCycle(manifest: { cycles: Record<string, { files?: string[]
 
 /**
  * Get manifest hints for a cycle to guide LLM exploration.
- * Returns directories, counts, and file patterns that help the LLM discover relevant files.
+ * Returns directories, sourceFiles, and file patterns that help the LLM discover relevant files.
  */
 async function getManifestHintsForCycle(cycle: number, language?: string): Promise<ManifestHints | null> {
   const manifest = await loadManifest();
@@ -301,10 +307,14 @@ async function getManifestHintsForCycle(cycle: number, language?: string): Promi
     }
   }
 
-  // Fallback: if no directories, extract directories from cycle files
-  if (relevantDirs.length === 0 && cycleData?.files) {
+  // Get source files from manifest (may contain glob patterns)
+  const sourceFiles = cycleData?.sourceFiles ?? null;
+
+  // Fallback: if no directories, extract directories from cycle files or sourceFiles
+  if (relevantDirs.length === 0) {
+    const files = cycleData?.files ?? sourceFiles ?? [];
     const dirSet = new Set<string>();
-    for (const file of cycleData.files) {
+    for (const file of files) {
       // Extract directory from file path or pattern
       const lastSlash = file.lastIndexOf("/");
       if (lastSlash > 0) {
@@ -317,11 +327,12 @@ async function getManifestHintsForCycle(cycle: number, language?: string): Promi
     }
     relevantDirs.push(...Array.from(dirSet).sort());
     // Also add the files themselves as patterns
-    filePatterns.push(...cycleData.files);
+    if (cycleData?.files) {
+      filePatterns.push(...cycleData.files);
+    }
   }
 
-  // Calculate expected file count from actual pattern-matched files
-  // This ensures consistency with the final heuristic coverage check
+  // Calculate expected file count from sourceFiles patterns
   const ignorePatterns = [
     "**/node_modules/**",
     "**/vendor/**",
@@ -335,31 +346,48 @@ async function getManifestHintsForCycle(cycle: number, language?: string): Promi
 
   let expectedFileCount: number | null = null;
 
-  // Try to count actual files matching cycle patterns
-  const patterns = getCyclePatterns(cycle, language);
-  if (patterns.length > 0) {
-    const matchedFiles = await fg(patterns, {
-      cwd: ".",
-      ignore: ignorePatterns,
-      onlyFiles: true,
-    });
-    expectedFileCount = matchedFiles.length;
+  // Try to expand sourceFiles patterns to get actual count
+  if (sourceFiles && sourceFiles.length > 0) {
+    const expandedFiles: string[] = [];
+    for (const pattern of sourceFiles) {
+      if (pattern.includes("*")) {
+        const matches = await fg(pattern, {
+          cwd: ".",
+          ignore: ignorePatterns,
+          onlyFiles: true,
+        });
+        expandedFiles.push(...matches);
+      } else {
+        expandedFiles.push(pattern);
+      }
+    }
+    expectedFileCount = [...new Set(expandedFiles)].length;
   }
 
-  // Fallback to manifest data if no patterns or no matches
+  // Fallback to cycle patterns if no sourceFiles
+  if (!expectedFileCount || expectedFileCount === 0) {
+    const patterns = getCyclePatterns(cycle, language);
+    if (patterns.length > 0) {
+      const matchedFiles = await fg(patterns, {
+        cwd: ".",
+        ignore: ignorePatterns,
+        onlyFiles: true,
+      });
+      expectedFileCount = matchedFiles.length;
+    }
+  }
+
+  // Final fallback to manifest files count
   if (!expectedFileCount || expectedFileCount === 0) {
     if (cycleData?.files) {
       expectedFileCount = cycleData.files.length;
-    } else if (cycleData?.counts) {
-      // Sum all counts as rough estimate
-      expectedFileCount = Object.values(cycleData.counts).reduce((a, b) => a + b, 0);
     }
   }
 
   return {
     directories: relevantDirs,
     filePatterns: filePatterns.length > 0 ? filePatterns : null,
-    counts: cycleData?.counts ?? null,
+    sourceFiles,
     expectedOutputs: cycleData?.expectedOutputs ?? null,
     expectedFileCount,
   };
@@ -771,7 +799,43 @@ export default class SysmlIngest extends Command {
 
       for (let cycle = startCycle; cycle <= endCycle; cycle++) {
         state.currentCycle = cycle;
+
+        // Set coverage context for the FileViewerNextFileSet gadget
+        setCoverageContext({
+          cycle,
+          basePath: ".",
+          minCoveragePercent: flags["coverage-threshold"],
+        });
+
         const cycleResult = await this.runCycle(client, state, flags, out);
+
+        // Post-cycle coverage validation and retry
+        const coverage = await checkCycleCoverage(cycle, ".");
+        if (coverage.missingFiles.length > 0 && coverage.coveragePercent < flags["coverage-threshold"]) {
+          if (flags.verbose) {
+            out.warn(`Cycle ${cycle} incomplete: ${coverage.missingFiles.length} files not covered (${coverage.coveragePercent}%)`);
+          }
+
+          // Run retry phase
+          const retryResult = await this.runCycleRetry(
+            client,
+            state,
+            flags,
+            out,
+            coverage
+          );
+
+          // Accumulate retry results
+          cycleResult.inputTokens += retryResult.inputTokens;
+          cycleResult.outputTokens += retryResult.outputTokens;
+          cycleResult.cachedTokens += retryResult.cachedTokens;
+          cycleResult.cost += retryResult.cost;
+          cycleResult.filesWritten += retryResult.filesWritten;
+        }
+
+        // Clear coverage context after cycle completes
+        setCoverageContext(null);
+
         state.cycleHistory.push(cycleResult);
 
         state.totalInputTokens += cycleResult.inputTokens;
@@ -885,7 +949,7 @@ export default class SysmlIngest extends Command {
     const cyclePrompt = render(`sysml/cycle${cycle}`, {
       metadata: state.metadata,
       files: seedFiles,
-      targetCounts: manifestHints?.counts ?? null,
+      sourceFiles: manifestHints?.sourceFiles ?? null,
       totalCount: seedFiles.length,  // Initial count, may discover more
       isIterative: true,
     });
@@ -1053,6 +1117,201 @@ export default class SysmlIngest extends Command {
     }
 
     return cycleState;
+  }
+
+  /**
+   * Run a retry phase to cover missing files from a cycle.
+   * This is called when post-cycle validation shows incomplete coverage.
+   */
+  private async runCycleRetry(
+    client: LLMist,
+    state: IngestState,
+    flags: {
+      model: string;
+      verbose: boolean;
+      rpm: number;
+      tpm: number;
+      "max-iterations": number;
+      "max-files-per-turn": number;
+      "coverage-threshold": number;
+    },
+    out: Output,
+    initialCoverage: CoverageResult
+  ): Promise<CycleState> {
+    const cycle = state.currentCycle;
+    const maxRetryAttempts = 3;
+    let missingFiles = [...initialCoverage.missingFiles];
+
+    const retryState: CycleState = {
+      cycle,
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedTokens: 0,
+      cost: 0,
+      filesWritten: 0,
+    };
+
+    if (flags.verbose) {
+      console.log();
+      console.log(`\x1b[33m━━━ Cycle ${cycle} Retry Phase ━━━\x1b[0m`);
+      console.log(`\x1b[2m   Missing files: ${missingFiles.length}\x1b[0m`);
+    }
+
+    // Read existing model for context
+    const existingModel = await readExistingModel(cycle);
+    const systemPrompt = render("sysml/system", {});
+
+    for (let attempt = 1; attempt <= maxRetryAttempts && missingFiles.length > 0; attempt++) {
+      if (flags.verbose) {
+        console.log(`\x1b[2m   Retry attempt ${attempt}/${maxRetryAttempts}: ${missingFiles.length} files remaining\x1b[0m`);
+      }
+
+      // Create focused retry prompt
+      const retryPrompt = render("sysml/retry", {
+        cycle,
+        missingFiles: missingFiles.slice(0, 30), // Show first 30 missing files
+        totalMissing: missingFiles.length,
+        existingModel,
+      });
+
+      // Read contents of missing files in batches
+      const batchSize = flags["max-files-per-turn"];
+      const fileBatch = missingFiles.slice(0, batchSize);
+      const fileContents = await readFileContents(fileBatch);
+
+      const userMessage = `${retryPrompt}\n\n## Files to Document\n\n${fileContents}`;
+
+      // Run retry turn
+      const textState = createTextBlockState();
+
+      let builder = new AgentBuilder(client)
+        .withModel(flags.model)
+        .withSystem(systemPrompt)
+        .withMaxIterations(Math.min(flags["max-iterations"], 15))
+        .withGadgets(
+          sysmlWrite,
+          sysmlRead,
+          sysmlList,
+          readFiles,
+          readDirs
+        )
+        .withTextOnlyHandler("terminate");
+
+      builder = configureBuilder(builder, out, flags.rpm, flags.tpm);
+
+      const agent = builder.ask(userMessage);
+
+      // Track usage
+      let turnInputTokens = 0;
+      let turnOutputTokens = 0;
+      let turnCachedTokens = 0;
+      let turnCost = 0;
+
+      const tree = agent.getTree();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tree.onAll((event: any) => {
+        if (event.type === "llm_call_complete") {
+          if (event.usage) {
+            turnInputTokens = event.usage.inputTokens || 0;
+            turnOutputTokens = event.usage.outputTokens || 0;
+            turnCachedTokens = event.usage.cachedInputTokens || 0;
+            retryState.inputTokens += turnInputTokens;
+            retryState.outputTokens += turnOutputTokens;
+            retryState.cachedTokens += turnCachedTokens;
+          }
+          if (event.cost) {
+            turnCost = event.cost;
+            retryState.cost += turnCost;
+          }
+
+          if (flags.verbose) {
+            const inputStr = formatTokens(turnInputTokens);
+            const outputStr = formatTokens(turnOutputTokens);
+            const costStr = turnCost >= 0.01
+              ? `$${turnCost.toFixed(3)}`
+              : `$${turnCost.toFixed(4)}`;
+            console.log(`\x1b[2m   ⤷ Retry turn: ${inputStr} in · ${outputStr} out · ${costStr}\x1b[0m`);
+          }
+        }
+      });
+
+      // Stream events
+      for await (const event of agent.run()) {
+        if (event.type === "text") {
+          if (flags.verbose) {
+            textState.inTextBlock = true;
+            out.thinkingChunk(event.content);
+          }
+        } else if (event.type === "gadget_call") {
+          if (flags.verbose) {
+            endTextBlock(textState, out);
+            const params = event.call.parameters as Record<string, unknown>;
+            out.gadgetCall(event.call.gadgetName, params);
+          }
+        } else if (event.type === "gadget_result") {
+          const result = event.result;
+
+          if (flags.verbose) {
+            endTextBlock(textState, out);
+          }
+
+          if (result.gadgetName === "SysMLWrite") {
+            if (result.error) {
+              out.gadgetError(result.gadgetName, result.error);
+            } else if (result.result) {
+              retryState.filesWritten++;
+
+              // Parse the path from result
+              let writtenPath: string;
+              try {
+                const parsed: SysMLWriteResult = JSON.parse(result.result);
+                writtenPath = parsed.path;
+              } catch {
+                const pathMatch = result.result.match(/Wrote (.+?) \[/);
+                writtenPath = pathMatch ? pathMatch[1] : result.result;
+              }
+
+              if (flags.verbose) {
+                console.log(`${chalk.green("   ✓")} ${writtenPath}`);
+              } else {
+                console.log(`  Wrote: ${writtenPath}`);
+              }
+            }
+          } else if (flags.verbose) {
+            out.gadgetResult(result.gadgetName);
+          }
+        }
+      }
+
+      if (flags.verbose) {
+        endTextBlock(textState, out);
+      }
+
+      // Re-check coverage after retry attempt
+      const newCoverage = await checkCycleCoverage(cycle, ".");
+      missingFiles = newCoverage.missingFiles;
+
+      if (flags.verbose) {
+        console.log(`\x1b[2m   After attempt ${attempt}: ${newCoverage.coveragePercent}% coverage, ${missingFiles.length} files remaining\x1b[0m`);
+      }
+
+      // If coverage threshold is met, stop retrying
+      if (newCoverage.coveragePercent >= flags["coverage-threshold"]) {
+        break;
+      }
+    }
+
+    // Final status
+    if (flags.verbose) {
+      const finalCoverage = await checkCycleCoverage(cycle, ".");
+      if (finalCoverage.missingFiles.length > 0) {
+        out.warn(`Retry phase complete: ${finalCoverage.coveragePercent}% coverage (${finalCoverage.missingFiles.length} files still missing)`);
+      } else {
+        out.success(`Retry phase complete: ${finalCoverage.coveragePercent}% coverage achieved`);
+      }
+    }
+
+    return retryState;
   }
 
   /**
@@ -1377,7 +1636,6 @@ The manifest will guide subsequent cycles with exact file lists and counts.
       .withGadgets(
         manifestWrite,
         manifestRead,
-        countPatterns,
         enumerateDirectories,
         projectMetaRead,
         fileDiscoverCustom,
@@ -1493,10 +1751,10 @@ The manifest will guide subsequent cycles with exact file lists and counts.
         const sortedEntries = Object.entries(manifest.cycles).sort(([a], [b]) => getCycleNum(a) - getCycleNum(b));
         for (const [key, cycleData] of sortedEntries) {
           const cycleNum = getCycleNum(key);
-          const countsStr = cycleData.counts
-            ? Object.entries(cycleData.counts).map(([k, v]) => `${k}=${v}`).join(", ")
+          const sourceFilesStr = cycleData.sourceFiles
+            ? `${cycleData.sourceFiles.length} patterns`
             : "";
-          console.log(`\x1b[2m   ${cycleNum}. ${cycleData.name}: ${cycleData.files?.length ?? 0} files${countsStr ? ` (${countsStr})` : ""}\x1b[0m`);
+          console.log(`\x1b[2m   ${cycleNum}. ${cycleData.name}: ${cycleData.files?.length ?? 0} files${sourceFilesStr ? ` (${sourceFilesStr})` : ""}\x1b[0m`);
         }
       }
     }

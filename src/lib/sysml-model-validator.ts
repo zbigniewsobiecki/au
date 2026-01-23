@@ -215,11 +215,12 @@ export interface SyntaxError {
   errors: string[];
 }
 
-export interface CountMismatch {
+export interface FileCoverageMismatch {
   cycle: string;
-  item: string;
-  expected: number;
-  actual: number;
+  patterns: string[];      // Original patterns from manifest
+  expected: number;        // Expanded file count
+  covered: number;         // Files with // Source: comments
+  uncoveredFiles: string[]; // Specific files not covered
 }
 
 export interface ReferenceMissing {
@@ -242,7 +243,7 @@ export interface SysMLValidationResult {
   manifestErrors: string[];
   expectedOutputs: ExpectedOutputCheck[];
   syntaxErrors: SyntaxError[];
-  countMismatches: CountMismatch[];
+  fileCoverageMismatches: FileCoverageMismatch[];
   orphanedFiles: string[];
   missingReferences: ReferenceMissing[];
   coverageIssues: CoverageIssue[];
@@ -340,7 +341,7 @@ export class SysMLModelValidator {
       manifestErrors: [],
       expectedOutputs: [],
       syntaxErrors: [],
-      countMismatches: [],
+      fileCoverageMismatches: [],
       orphanedFiles: [],
       missingReferences: [],
       coverageIssues: [],
@@ -439,8 +440,8 @@ export class SysMLModelValidator {
       }
     }
 
-    // Check count mismatches from manifest cycles
-    await this.validateCounts(manifest, fileContents, basePath, result);
+    // Check file coverage from manifest cycles
+    await this.validateFileCoverage(manifest, fileContents, basePath, result);
 
     // Check for orphaned files (files not referenced in expectedOutputs)
     this.detectOrphanedFiles(sysmlFiles, expectedOutputs, result);
@@ -461,7 +462,7 @@ export class SysMLModelValidator {
     let count = result.manifestErrors.length;
     count += result.expectedOutputs.filter((o) => !o.exists).length;
     count += result.syntaxErrors.length;
-    count += result.countMismatches.length;
+    count += result.fileCoverageMismatches.length;
     count += result.orphanedFiles.length;
     count += result.missingReferences.length;
     count += result.coverageIssues.length;
@@ -469,115 +470,88 @@ export class SysMLModelValidator {
   }
 
   /**
-   * Validate that element counts in SysML files match manifest declarations.
+   * Validate that source files are covered by SysML definitions.
+   * Checks for // Source: <path> comments in SysML files.
    */
-  private async validateCounts(
+  private async validateFileCoverage(
     manifest: Manifest,
     fileContents: Map<string, string>,
     basePath: string,
     result: SysMLValidationResult
   ): Promise<void> {
+    // Extract all covered files from SysML content (// Source: comments)
+    const coveredFiles = this.findCoveredFiles(fileContents);
+
     for (const [cycleKey, cycle] of Object.entries(manifest.cycles)) {
-      if (!cycle.counts) continue;
+      if (!cycle.sourceFiles || cycle.sourceFiles.length === 0) continue;
 
-      for (const [countKey, expected] of Object.entries(cycle.counts)) {
-        let actual = 0;
+      // Expand glob patterns to actual file paths
+      const expectedFiles = await this.expandPatterns(cycle.sourceFiles, basePath);
 
-        // Map count keys to element types and source files
-        switch (countKey) {
-          case "models":
-          case "entities": {
-            // Count item def and part def in data/*.sysml
-            for (const [file, content] of fileContents) {
-              if (file.startsWith("data/") && !file.includes("_index")) {
-                const counts = countElements(content);
-                actual += counts.itemDefs + counts.partDefs;
-              }
-            }
-            break;
-          }
+      if (expectedFiles.length === 0) continue;
 
-          case "enums": {
-            // Count enum def in data/enums.sysml or all data files
-            for (const [file, content] of fileContents) {
-              if (file.startsWith("data/")) {
-                const counts = countElements(content);
-                actual += counts.enumDefs;
-              }
-            }
-            break;
-          }
+      // Find which files are not covered
+      const uncoveredFiles = expectedFiles.filter(f => !coveredFiles.has(f));
 
-          case "services": {
-            // Count parts with layer="service" in structure/modules.sysml
-            for (const [file, content] of fileContents) {
-              if (file.startsWith("structure/") && file.includes("modules")) {
-                const layerCounts = countPartsByLayer(content);
-                actual += layerCounts.services;
-              }
-            }
-            break;
-          }
+      if (uncoveredFiles.length > 0) {
+        result.fileCoverageMismatches.push({
+          cycle: cycleKey,
+          patterns: cycle.sourceFiles,
+          expected: expectedFiles.length,
+          covered: expectedFiles.length - uncoveredFiles.length,
+          uncoveredFiles,
+        });
+      }
+    }
+  }
 
-          case "controllers": {
-            // Count parts with layer="presentation" in structure/modules.sysml
-            for (const [file, content] of fileContents) {
-              if (file.startsWith("structure/") && file.includes("modules")) {
-                const layerCounts = countPartsByLayer(content);
-                actual += layerCounts.controllers;
-              }
-            }
-            break;
-          }
+  /**
+   * Extract source file references from SysML content.
+   * Looks for // Source: <path> comments.
+   */
+  private findCoveredFiles(fileContents: Map<string, string>): Set<string> {
+    const covered = new Set<string>();
 
-          case "modules": {
-            // Count all part : Module definitions
-            for (const [file, content] of fileContents) {
-              if (file.startsWith("structure/") && file.includes("modules")) {
-                const layerCounts = countPartsByLayer(content);
-                actual += layerCounts.modules;
-              }
-            }
-            break;
-          }
-
-          case "operations": {
-            // Count action def in behavior/*.sysml
-            for (const [file, content] of fileContents) {
-              if (file.startsWith("behavior/")) {
-                const counts = countElements(content);
-                actual += counts.actionDefs;
-              }
-            }
-            break;
-          }
-
-          case "requirements": {
-            // Count requirement definitions in context/*.sysml
-            for (const [file, content] of fileContents) {
-              if (file.startsWith("context/") || file.includes("requirements")) {
-                const counts = countElements(content);
-                actual += counts.requirementDefs;
-              }
-            }
-            break;
-          }
-
-          default:
-            // Unknown count key - skip validation but don't report as mismatch
-            continue;
-        }
-
-        if (actual !== expected) {
-          result.countMismatches.push({
-            cycle: cycleKey,
-            item: countKey,
-            expected,
-            actual,
-          });
+    for (const [, content] of fileContents) {
+      // Match // Source: <path> comments
+      const sourceMatches = content.matchAll(/\/\/\s*Source:\s*(.+?)(?:\s*$|\s*\/\/)/gm);
+      for (const match of sourceMatches) {
+        const sourcePath = match[1].trim();
+        if (sourcePath) {
+          covered.add(sourcePath);
         }
       }
     }
+
+    return covered;
+  }
+
+  /**
+   * Expand glob patterns to actual file paths.
+   */
+  private async expandPatterns(patterns: string[], basePath: string): Promise<string[]> {
+    const files: string[] = [];
+
+    for (const pattern of patterns) {
+      if (pattern.includes("*")) {
+        // Expand glob pattern
+        const matches = await fg(pattern, {
+          cwd: basePath,
+          onlyFiles: true,
+          ignore: ["**/node_modules/**", "**/dist/**", "**/.git/**"],
+        });
+        files.push(...matches);
+      } else {
+        // Literal path - check if it exists
+        const fullPath = join(basePath, pattern);
+        if (await fileExists(fullPath)) {
+          files.push(pattern);
+        }
+      }
+    }
+
+    // Deduplicate
+    return [...new Set(files)];
   }
 
   /**

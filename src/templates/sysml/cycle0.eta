@@ -90,28 +90,64 @@ EnumerateDirectories(path="apps/frontend/src", depth=2)
 
 ---
 
-### Phase 4: Schema Discovery
+### Phase 4: Identify Source File Patterns
 
-**This phase determines Cycle 3 accuracy.**
+**This phase defines which files each cycle should cover.**
 
-**Step 4.1: Find ALL schema files**
+For each cycle, identify the source files/patterns to be covered. Use glob patterns when a group of files follows a naming convention.
+
+**Cycle 2 (Structure)**: Module entry points
+- `src/modules/*/index.ts` or `src/**/*.module.ts`
+
+**Cycle 3 (Data)**: Schema and type definition files
+- `prisma/schema.prisma` (literal if single file)
+- `src/models/**/*.ts`, `src/types/**/*.ts`
+- `**/*.graphql`, `**/*.proto`
+
+**Cycle 4 (Behavior)**: Service and handler files
+- `src/**/*.service.ts`, `src/**/*.handler.ts`
+
+**Step 4.1: Find schema files**
 ```
 FileDiscoverCustom(patterns="**/*.prisma,**/*.graphql,**/*.gql,**/*.proto,**/*.sql")
 ```
 
-**Step 4.2: Get EXACT counts from each schema file**
+**Step 4.2: Record patterns in manifest**
+Store patterns in `manifest.cycles[N].sourceFiles`:
+- Use glob patterns for groups: `src/models/**/*.ts`
+- Use literal paths for specific files: `prisma/schema.prisma`
 
-For Prisma schemas:
-```
-CountPatterns(file="path/to/schema.prisma", patterns=["^model ", "^enum "])
-```
+**IMPORTANT**: These source file patterns will be used for validation - the system will verify that SysML files include `// Source: <path>` comments for each covered file.
 
-For GraphQL schemas:
-```
-CountPatterns(file="path/to/schema.graphql", patterns=["^type ", "^enum ", "^input "])
-```
+---
 
-**IMPORTANT**: These counts become EXTRACTION TARGETS for Cycle 3.
+### Phase 4.5: Coverage Verification (CRITICAL)
+
+**The ManifestWrite gadget will REJECT manifests with <80% coverage.**
+
+Before writing the manifest, ensure your sourceFiles patterns cover all discoverable source files.
+
+**Step 4.5.1: Verify coverage completeness**
+Your patterns must cover these common file categories:
+
+| Category | Example Patterns | Typical Cycle |
+|----------|-----------------|---------------|
+| **Components** | `apps/*/src/components/**/*.tsx` | cycle2 (Structure) |
+| **Pages/Routes** | `apps/*/src/pages/**/*.tsx`, `apps/*/src/app/**/*.tsx` | cycle2 (Structure) |
+| **Hooks** | `apps/*/src/hooks/*.ts`, `src/hooks/**/*.ts` | cycle4 (Behavior) |
+| **Store/State** | `apps/*/src/store/*.ts`, `src/store/**/*.ts` | cycle4 (Behavior) |
+| **Utils** | `apps/*/src/utils/*.ts`, `src/utils/**/*.ts` | cycle4 (Behavior) |
+| **Entry points** | `apps/*/src/App.tsx`, `apps/*/src/main.tsx` | cycle2 (Structure) |
+| **Config files** | `*.config.ts`, `*.config.js` | cycle6 (Analysis) |
+| **API clients** | `src/api/**/*.ts`, `src/services/**/*.ts` | cycle4 (Behavior) |
+| **Types** | `src/types/**/*.ts`, `**/*.types.ts` | cycle3 (Data) |
+
+**Step 4.5.2: Check for commonly missed directories**
+- Frontend: `components/`, `hooks/`, `store/`, `utils/`, `pages/`, `layouts/`
+- Backend: `middleware/`, `utils/`, `helpers/`, `lib/`
+- Shared: `common/`, `shared/`, `packages/*/src/`
+
+**NOTE**: If ManifestWrite returns an error listing uncovered files, add appropriate patterns and try again. The gadget will suggest patterns based on the uncovered files.
 
 ---
 
@@ -167,7 +203,7 @@ ManifestWrite(manifest={
   "cycles": {
     "cycle1": {
       "name": "Discovery & Context",
-      "files": ["README.md", "package.json", ...],
+      "sourceFiles": ["README.md", "package.json", "docs/**/*.md"],
       "expectedOutputs": ["context/boundaries.sysml", "context/requirements.sysml"],
       "entityTracking": {
         "requirements": { "lastId": 0 },
@@ -177,13 +213,12 @@ ManifestWrite(manifest={
     },
     "cycle2": {
       "name": "Structure & Modules",
-      "counts": { "modules": <exact count from EnumerateDirectories> },
+      "sourceFiles": ["src/modules/**/index.ts", "src/**/*.module.ts"],
       "expectedOutputs": ["structure/modules.sysml"]
     },
     "cycle3": {
       "name": "Data & Types",
-      "files": ["<path to schema files>"],
-      "counts": { "models": <count>, "enums": <count> },
+      "sourceFiles": ["prisma/schema.prisma", "src/models/**/*.ts", "src/types/**/*.ts"],
       "expectedOutputs": ["data/entities.sysml", "data/enums.sysml"],
       "entityTracking": {
         "entities": { "lastId": 0 }
@@ -191,7 +226,7 @@ ManifestWrite(manifest={
     },
     "cycle4": {
       "name": "Behavior & Logic",
-      "counts": { "services": <count from directory assignments> },
+      "sourceFiles": ["src/**/*.service.ts", "src/**/*.controller.ts", "src/**/*.handler.ts"],
       "expectedOutputs": ["behavior/operations.sysml"],
       "entityTracking": {
         "operations": { "lastId": 0 }
@@ -199,12 +234,12 @@ ManifestWrite(manifest={
     },
     "cycle5": {
       "name": "Verification & Quality",
-      "counts": { "testFiles": <count from directory assignments> },
+      "sourceFiles": ["**/*.spec.ts", "**/*.test.ts"],
       "expectedOutputs": ["verification/tests.sysml"]
     },
     "cycle6": {
       "name": "Analysis & Properties",
-      "files": ["<config, middleware, auth files>"],
+      "sourceFiles": ["src/**/*.config.ts", "src/**/*.middleware.ts"],
       "expectedOutputs": ["analysis/performance.sysml", "analysis/security.sysml"]
     }
   },
@@ -223,18 +258,20 @@ Before writing the manifest, verify:
 
 - [ ] **Phase 1**: Project architecture identified (monorepo, single-app, etc.)
 - [ ] **Phase 2**: ALL source directories enumerated with `EnumerateDirectories`
-  - EXACT count of module directories (e.g., 49 not "~50")
 - [ ] **Phase 3**: EVERY directory assigned to appropriate cycles
-- [ ] **Phase 4**: ALL schema files found and counted with `CountPatterns`
-  - For Prisma: exact model and enum counts
-  - For GraphQL: exact type, enum, and input counts
+- [ ] **Phase 4**: Source file patterns identified for each cycle
+  - Glob patterns for file groups (e.g., `src/models/**/*.ts`)
+  - Literal paths for specific files (e.g., `prisma/schema.prisma`)
+- [ ] **Phase 4.5**: Coverage verification - patterns cover ≥80% of repository source files
 - [ ] **Phase 5**: Context files gathered for Cycle 1
-- [ ] **Phase 6**: Manifest v2 written with ALL directory assignments
+- [ ] **Phase 6**: Manifest v2 written with ALL directory assignments and sourceFiles
 
 **CRITICAL**:
-- Do NOT guess counts. Use `EnumerateDirectories` and `CountPatterns` to get exact numbers.
+- Use glob patterns to capture groups of files (e.g., `src/**/*.service.ts`)
+- Use literal paths for specific important files (e.g., `prisma/schema.prisma`)
+- The sourceFiles patterns will be expanded at validation time to verify coverage
 - Do NOT skip directories. EVERY directory from Phase 2 must be assigned.
-- These assignments will determine which files subsequent cycles process.
+- **ManifestWrite will REJECT manifests with <80% coverage** - ensure all source files are covered by patterns.
 
 ---
 
