@@ -13,7 +13,7 @@
 <% } %>
 
 <% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
-### Unread Files (first 15)
+### Files Not Yet Covered (first 15)
 <% for (const file of it.unreadFiles.slice(0, 15)) { %>
 - `<%= file %>`
 <% } %>
@@ -27,11 +27,15 @@
 <% if (coveragePercent < 80) { %>
 1. Use `FileDiscover` or `ReadFiles` to find more files
 2. Analyze and write SysML for discovered elements
-3. Request next batch with `FileViewerNextFileSet(paths="...")`
+3. Include `// Source: <filepath>` comments in SysML to track coverage
+4. Request next batch with `FileViewerNextFileSet(paths="...")`
 
 **DO NOT call `FileViewerNextFileSet(paths="")` until coverage >= 80%**
 <% } else { %>
-Coverage is good. You may finish if you've extracted all relevant SysML elements.
+Coverage is good. You may finish if you've:
+- Extracted all relevant SysML elements
+- Included `// Source: <filepath>` comments for each covered file
 <% } %>
 
 **REQUIRED**: At least 2 SysMLWrite calls per response when there are files to analyze.
+**IMPORTANT**: Include `// Source: <filepath>` comments to track which source files are covered.

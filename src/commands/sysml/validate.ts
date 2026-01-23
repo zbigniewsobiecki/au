@@ -197,19 +197,27 @@ export default class SysmlValidate extends Command {
       }
     }
 
-    // Count validation
-    if (result.countMismatches.length === 0) {
-      // Only show success if there were expected counts to validate
-      const hasCounts = result.expectedOutputs.length > 0;
-      if (hasCounts) {
-        console.log("✓ Element counts: all match");
+    // File coverage validation
+    if (result.fileCoverageMismatches.length === 0) {
+      // Only show success if there were expected source files to validate
+      const hasSourceFiles = result.expectedOutputs.length > 0;
+      if (hasSourceFiles) {
+        console.log("✓ Source file coverage: all files covered");
       }
     } else {
-      console.log("⚠ Count mismatches:");
-      for (const mismatch of result.countMismatches) {
+      console.log("⚠ Coverage mismatches:");
+      for (const mismatch of result.fileCoverageMismatches) {
         console.log(
-          `  ${mismatch.cycle}: expected ${mismatch.expected} ${mismatch.item}, found ${mismatch.actual}`
+          `  ${mismatch.cycle}: ${mismatch.covered}/${mismatch.expected} files covered`
         );
+        if (verbose && mismatch.uncoveredFiles.length > 0) {
+          for (const file of mismatch.uncoveredFiles.slice(0, 5)) {
+            console.log(`    ✗ Missing: ${file}`);
+          }
+          if (mismatch.uncoveredFiles.length > 5) {
+            console.log(`    ... and ${mismatch.uncoveredFiles.length - 5} more`);
+          }
+        }
       }
     }
 

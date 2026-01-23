@@ -52,9 +52,15 @@ All paths are relative to: **<%= it.basePath %>**
 <% if (result.countMismatches && result.countMismatches.length > 0) { %>
 ### Count Mismatches (<%= result.countMismatches.length %>)
 
+**The codebase is the source of truth. SysML is incomplete.**
+
 <% result.countMismatches.forEach(function(mismatch) { %>
 - **<%= mismatch.cycle %>**: expected <%= mismatch.expected %> <%= mismatch.item %>, found <%= mismatch.actual %>
+  → SysML is missing <%= mismatch.expected - mismatch.actual %> <%= mismatch.item %> definitions
+  → Read codebase to find what's missing, then generate SysML
 <% }); %>
+
+**To fix:** Use ReadFiles/RipGrep to find the missing elements in the codebase, then create SysML definitions.
 
 <% } %>
 

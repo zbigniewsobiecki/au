@@ -10,16 +10,16 @@
 **Ports**: <%= Object.entries(it.metadata.ports || {}).filter(([,v]) => v).map(([k]) => k).join(", ") || "none" %>
 <% } %>
 
-<% if (it.targetCounts) { %>
-### EXTRACTION TARGETS (from Cycle 0 Manifest)
+<% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
+### SOURCE FILES TO COVER (from Cycle 0 Manifest)
 
-**IMPORTANT**: You should extract approximately:
+**IMPORTANT**: Generate SysML behavior definitions from ALL files matching these patterns:
 
-<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
-- **<%= value %>** <%= key %>
+<% for (const pattern of it.sourceFiles) { %>
+- `<%= pattern %>`
 <% } %>
 
-Before finishing, verify your counts are close to these targets.
+Include `// Source: <filepath>` comments to track which files have been covered.
 <% } %>
 
 ### Files to Analyze
@@ -79,7 +79,8 @@ Before finishing, verify your counts are close to these targets.
 
        // User registration operation
        action def RegisterUser {
-           doc /**Register a new user account */
+           doc /**Register a new user account.
+           Steps: validateInput -> checkExistingEmail -> hashPassword -> createUser -> generateTokens */
 
            in request : CreateUserRequest;
            out response : UserResponse;
@@ -104,25 +105,12 @@ Before finishing, verify your counts are close to these targets.
            action generateTokens {
                doc /**Generate JWT access and refresh tokens */
            }
-
-           // Flow
-           flow request to validateInput.input;
-           flow validateInput.output to checkExistingEmail.input;
-           flow checkExistingEmail.output to hashPassword.input;
-           flow hashPassword.output to createUser.input;
-           flow createUser.output to generateTokens.input;
-           flow generateTokens.output to response;
-
-           // Sequencing
-           succession validateInput then checkExistingEmail;
-           succession checkExistingEmail then hashPassword;
-           succession hashPassword then createUser;
-           succession createUser then generateTokens;
        }
 
        // Authentication operation
        action def Login {
-           doc /**Authenticate user and issue tokens */
+           doc /**Authenticate user and issue tokens.
+           Steps: verifyCredentials -> checkAccountStatus -> issueTokens */
 
            in credentials : LoginRequest;
            out tokens : TokenResponse;
@@ -131,9 +119,6 @@ Before finishing, verify your counts are close to these targets.
            action verifyCredentials;
            action checkAccountStatus;
            action issueTokens;
-
-           succession verifyCredentials then checkAccountStatus;
-           succession checkAccountStatus then issueTokens;
        }
    }
    ```
@@ -150,7 +135,7 @@ Before finishing, verify your counts are close to these targets.
        state def OrderLifecycle {
            doc /**Order processing state machine */
 
-           statePending {
+           state Pending {
                doc /**Order created, awaiting processing */
            }
 
@@ -171,37 +156,23 @@ Before finishing, verify your counts are close to these targets.
            }
 
            // Transitions
-           transition pendingToProcessing
-               from Pending to Processing
-               on ProcessOrder;
-
-           transition processingToShipped
-               from Processing to Shipped
-               on ShipOrder;
-
-           transition shippedToDelivered
-               from Shipped to Delivered
-               on ConfirmDelivery;
-
-           transition pendingToCancelled
-               from Pending to Cancelled
-               on CancelOrder;
-
-           transition processingToCancelled
-               from Processing to Cancelled
-               on CancelOrder;
+           transition first Pending then Processing;
+           transition first Processing then Shipped;
+           transition first Shipped then Delivered;
+           transition first Pending then Cancelled;
+           transition first Processing then Cancelled;
        }
 
        // User session state
        state def SessionState {
-           stateAnonymous;
+           state Anonymous;
            state Authenticated;
            state Expired;
 
-           transition login from Anonymous to Authenticated on LoginSuccess;
-           transition logout from Authenticated to Anonymous on Logout;
-           transition expire from Authenticated to Expired on TokenExpired;
-           transition refresh from Expired to Authenticated on TokenRefreshed;
+           transition first Anonymous then Authenticated;
+           transition first Authenticated then Anonymous;
+           transition first Authenticated then Expired;
+           transition first Expired then Authenticated;
        }
    }
    ```

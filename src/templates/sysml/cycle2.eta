@@ -10,16 +10,16 @@
 **Framework**: <%= it.metadata.framework || "none" %>
 <% } %>
 
-<% if (it.targetCounts) { %>
-### EXTRACTION TARGETS (from Cycle 0 Manifest)
+<% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
+### SOURCE FILES TO COVER (from Cycle 0 Manifest)
 
-**IMPORTANT**: You should extract approximately:
+**IMPORTANT**: Generate SysML definitions for content in files matching these patterns:
 
-<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
-- **<%= value %>** <%= key %>
+<% for (const pattern of it.sourceFiles) { %>
+- `<%= pattern %>`
 <% } %>
 
-Before finishing, verify your module count is close to these targets.
+Include `// Source: <filepath>` comments to track which files have been covered.
 <% } %>
 
 ### Files to Analyze
@@ -107,9 +107,16 @@ Before finishing, verify your module count is close to these targets.
 
        doc /**Module interface definitions */
 
+       // Note: interface def contains attributes/ports, NOT methods with in/out
        interface def AuthInterface {
-           in login(credentials: Credentials);
-           out token: AuthToken;
+           attribute operations : String [0..*];
+       }
+
+       // For detailed API contracts, use port def instead:
+       port def AuthPort {
+           attribute login : String;
+           attribute refresh : String;
+           attribute logout : String;
        }
    }
    ```
@@ -152,11 +159,10 @@ This cycle focuses ONLY on architectural structure. Data models, behaviors, etc.
 
 ### Success Criteria
 
-<% if (it.targetCounts) { %>
-**Target Counts**:
-<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
-- [ ] Extracted approximately **<%= value %>** <%= key %>
-<% } %>
+<% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
+**Source File Coverage**:
+- [ ] All files matching source patterns have been processed
+- [ ] SysML definitions include `// Source: <filepath>` comments
 <% } %>
 
 - [ ] All major directories mapped to modules

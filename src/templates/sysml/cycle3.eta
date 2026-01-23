@@ -9,16 +9,17 @@
 **Framework**: <%= it.metadata.framework || "none" %>
 <% } %>
 
-<% if (it.targetCounts) { %>
-### EXTRACTION TARGETS (from Cycle 0 Manifest)
+<% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
+### SOURCE FILES TO COVER (from Cycle 0 Manifest)
 
-**CRITICAL**: You MUST extract exactly the following counts. These were determined by analyzing the actual schema files:
+**CRITICAL**: You MUST extract data models from ALL files matching these patterns:
 
-<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
-- **<%= value %>** <%= key %>
+<% for (const pattern of it.sourceFiles) { %>
+- `<%= pattern %>`
 <% } %>
 
-Before finishing, **verify your counts match these targets**. If you extracted fewer items than expected, you missed some - go back and find them.
+Include `// Source: <filepath>` comments in your SysML output to track coverage.
+Before finishing, verify you have covered ALL matching files.
 <% } %>
 
 ### PRIORITY: Schema File Extraction
@@ -108,10 +109,6 @@ If Protobuf files are present:
            attribute name : String;
            attribute createdAt : DateTime;
            attribute status : UserStatus;
-
-           constraint emailNotEmpty {
-               doc /**Email must not be empty */
-           }
        }
 
        // Relationships between entities
@@ -198,6 +195,28 @@ If Protobuf files are present:
 - Always continue from the highest existing ID
 - Never reuse or reassign IDs
 
+### Reserved Keywords - CRITICAL
+
+**NEVER use these as attribute names** (they are SysML keywords and will cause parse errors):
+
+| Keyword | Use Instead |
+|---------|-------------|
+| `state` | `stateValue`, `status`, `stateProvince` |
+| `action` | `actionType`, `actionName` |
+| `flow` | `flowType`, `dataFlow` |
+| `connection` | `connectionType`, `conn` |
+| `transition` | `transitionType`, `trans` |
+| `port` | `portNumber`, `portValue` |
+| `item` | `itemValue`, `itemType` |
+| `part` | `partNumber`, `partValue` |
+| `package` | `packageName`, `pkg` |
+| `import` | `importType`, `importPath` |
+| `in` | `input`, `inbound` |
+| `out` | `output`, `outbound` |
+| `end` | `endDate`, `ending` |
+
+If a source field is named `state`, rename to `stateProvince` or `status` in SysML.
+
 ### Type Sources by Language
 
 | Language | Type Sources |
@@ -231,11 +250,11 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 
 ### Success Criteria
 
-<% if (it.targetCounts) { %>
-**MANDATORY COUNT VERIFICATION**:
-<% for (const [key, value] of Object.entries(it.targetCounts)) { %>
-- [ ] Extracted exactly **<%= value %>** <%= key %>
-<% } %>
+<% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
+**SOURCE FILE COVERAGE VERIFICATION**:
+- [ ] All files matching source patterns have been processed
+- [ ] Each SysML definition includes `// Source: <filepath>` comments
+- [ ] No source files are missing from coverage
 <% } %>
 
 - [ ] **ALL schema entities captured** (if Prisma: every `model`; if GraphQL: every `type`)
@@ -248,11 +267,7 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 - [ ] Events captured (if event-driven architecture)
 - [ ] Output is limited to `data/` directory only
 
-<% if (it.targetCounts) { %>
-**CRITICAL**: Before finishing, count your `item def` and `enum def` declarations. They MUST match the target counts above. If they don't, you have missed entities - go back and extract them.
-<% } else { %>
-**Verification**: Count your output entities/enums and compare to the schema file. They should match.
-<% } %>
+**Verification**: Ensure your SysML files include `// Source:` comments for every source file you processed. The validation system will check these comments against the manifest's sourceFiles patterns.
 
 <% if (it.isIterative) { %>
 ### File Selection Priority for Data Extraction

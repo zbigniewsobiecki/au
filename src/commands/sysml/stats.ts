@@ -65,20 +65,17 @@ export default class SysmlStats extends Command {
         const cycle = result.cycleCounts[key];
         const cycleNum = key.replace("cycle", "");
 
-        // Format counts if present
-        let countsStr = "";
-        if (cycle.counts && Object.keys(cycle.counts).length > 0) {
-          const countParts = Object.entries(cycle.counts)
-            .map(([k, v]) => `${v} ${k}`)
-            .join(", ");
-          countsStr = ` (${countParts})`;
+        // Format sourceFiles if present
+        let sourceFilesStr = "";
+        if (cycle.sourceFiles && cycle.sourceFiles.length > 0) {
+          sourceFilesStr = ` (${cycle.sourceFiles.length} patterns)`;
         }
 
         const outputsStr = cycle.expectedOutputs > 0
           ? ` → ${cycle.expectedOutputs} output${cycle.expectedOutputs === 1 ? "" : "s"}`
           : "";
 
-        console.log(`  cycle${cycleNum} ${cycle.name}:${countsStr}${outputsStr}`);
+        console.log(`  cycle${cycleNum} ${cycle.name}:${sourceFilesStr}${outputsStr}`);
       }
     }
 

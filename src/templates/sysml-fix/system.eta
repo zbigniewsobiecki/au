@@ -33,17 +33,34 @@ You can call multiple read gadgets (SysMLRead, SysMLList, SysMLQuery, ReadFiles,
 - Use SysMLQuery to find where the referenced type might be defined
 
 ### Count Mismatches
-The manifest declares expected counts that don't match actual elements.
-- If expected > actual: Add missing definitions
-- If actual > expected: Either remove extra definitions OR update the manifest count
-- Check manifest to understand what the count represents
+The manifest counts reflect what EXISTS in the codebase. The SysML model is INCOMPLETE.
+
+**Codebase → SysML → Manifest** (codebase is source of truth)
+
+Example: `cycle3: expected 9 models, found 0`
+- The codebase has 9 data models (entities, schemas, etc.)
+- The SysML files have 0 `item def` or `part def` representing them
+- FIX: Read the codebase and generate SysML definitions for missing models
+
+Workflow:
+1. Use ReadFiles to read relevant source files (e.g., Prisma schema, TypeScript interfaces)
+2. Identify what entities/models exist in the codebase
+3. Use SysMLWrite to create `item def` definitions for each missing model
+4. DO NOT update manifest counts - they are correct
+
+For `expected N enums, found M`:
+- If M < N: Read codebase to find missing enums, add to SysML
+- If M > N: Extra enum in SysML may be valid (from manual addition) - review before removing
 
 ### Orphaned Files
-Files exist in .sysml/ but aren't listed in manifest expectedOutputs.
-Options:
-1. Add the file to manifest expectedOutputs (if the file should exist)
-2. Delete the file (if it's no longer needed)
-3. The file may be an index file (_index.sysml) which is okay
+Files exist in .sysml/ but aren't in manifest expectedOutputs.
+
+These are likely VALID files that were added after initial ingest. Options:
+1. **Keep them** - If they represent real codebase content, they should stay
+2. **Delete them** - Only if they're truly obsolete or duplicate
+
+DO NOT automatically add to expectedOutputs without understanding why they exist.
+Use SysMLRead to examine the orphaned file content before deciding.
 
 ### Coverage Issues
 - missing-file: A file referenced in manifest coverage doesn't exist
