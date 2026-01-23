@@ -1,5 +1,4 @@
 import chalk from "chalk";
-import type { ProgressTracker } from "./progress-tracker.js";
 import { GadgetName } from "./constants.js";
 
 export interface OutputOptions {
@@ -25,9 +24,6 @@ export class Output {
   private totalBytes: number = 0;
   private bytesSinceCheckpoint: number = 0;
 
-  // Progress tracker reference
-  private progressTracker?: ProgressTracker;
-
   // Configurable label for progress display
   private progressLabel: string;
 
@@ -35,10 +31,6 @@ export class Output {
     this.verbose = options.verbose;
     this.progressLabel = options.progressLabel || "Understanding";
     this.startTime = Date.now();
-  }
-
-  setProgressTracker(tracker: ProgressTracker): void {
-    this.progressTracker = tracker;
   }
 
   // Startup messages
@@ -105,19 +97,6 @@ export class Output {
           const depth = params.depth || 2;
           const paths = (params.paths as string).split("\n").filter(p => p.trim());
           console.log(chalk.dim(`   ${paths.join(", ")} (depth: ${depth})`));
-        } else if (name === GadgetName.AUUpdate && params.filePath) {
-          const path = params.path as string || "";
-          const value = params.value;
-          let valuePreview = "";
-          if (value === null) {
-            valuePreview = chalk.red("(delete)");
-          } else if (typeof value === "string") {
-            valuePreview = this.truncate(value, 50);
-          } else if (typeof value === "object") {
-            valuePreview = this.truncate(JSON.stringify(value), 50);
-          }
-          console.log(chalk.dim(`   ${params.filePath}`));
-          console.log(chalk.dim(`   ${chalk.cyan(path)} = ${valuePreview}`));
         } else if (name === GadgetName.RipGrep && params.pattern) {
           console.log(chalk.dim(`   pattern: ${params.pattern}`));
           if (params.glob) {
@@ -172,10 +151,7 @@ export class Output {
       this.totalBytes += byteDiff;
     }
 
-    // Get progress if tracker is available
-    const progressStr = this.progressTracker
-      ? ` [${this.progressTracker.getProgressPercent()}%]`
-      : "";
+    const progressStr = "";
 
     if (this.verbose) {
       let diffStr = "";
@@ -202,7 +178,7 @@ export class Output {
     }
   }
 
-  // Set initial total bytes (from existing .au files)
+  // Set initial total bytes (from existing model files)
   setInitialBytes(bytes: number): void {
     this.totalBytes = bytes;
   }
@@ -259,14 +235,6 @@ export class Output {
     if (this.verbose) {
       console.log(chalk.blue("━━━ Summary ━━━"));
       console.log(chalk.white(`Files documented: ${this.filesDocumented}`));
-
-      // Add progress/coverage display
-      if (this.progressTracker) {
-        const counts = this.progressTracker.getCounts();
-        const percent = this.progressTracker.getProgressPercent();
-        console.log(chalk.white(`Coverage: ${percent}% (${counts.documented}/${counts.total} items)`));
-      }
-
       console.log(chalk.white(`${this.progressLabel}: ${this.formatBytes(this.totalBytes)}`));
       console.log(chalk.white(`Iterations: ${this.currentIteration}`));
       console.log(chalk.white(`Time: ${elapsed}s`));
@@ -278,12 +246,6 @@ export class Output {
       }
     } else {
       let summary = `Done. Created understanding for ${this.filesDocumented} files in ${elapsed}s.`;
-
-      // Add coverage to non-verbose summary
-      if (this.progressTracker) {
-        summary += ` Coverage: ${this.progressTracker.getProgressPercent()}%`;
-      }
-
       if (this.totalCost > 0) {
         summary += ` Cost: ${this.formatCost(this.totalCost)}`;
       }

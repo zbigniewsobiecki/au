@@ -6,10 +6,10 @@ import {
   resolveValue,
 } from "llmist";
 import type { ExecutionContext } from "llmist";
-import { auRead, auList } from "../gadgets/index.js";
+import { sysmlRead, sysmlList, sysmlQuery } from "../gadgets/index.js";
 
 /**
- * Internal gadget for the AU agent to report its final result.
+ * Internal gadget for the SysML agent to report its final result.
  * Uses TaskCompletionSignal to properly terminate the agent loop.
  */
 class ReportResult extends Gadget({
@@ -19,7 +19,7 @@ class ReportResult extends Gadget({
   schema: z.object({
     answer: z
       .string()
-      .describe("Your comprehensive answer synthesizing findings from the codebase understanding."),
+      .describe("Your comprehensive answer synthesizing findings from the codebase model."),
   }),
 }) {
   execute(params: this["params"]): string {
@@ -28,27 +28,31 @@ class ReportResult extends Gadget({
 }
 
 /**
- * System prompt for the AU subagent.
+ * System prompt for the SysML subagent.
  */
-const SYSTEM_PROMPT = `You are an AI assistant that answers questions about codebases using pre-captured semantic understanding.
+const SYSTEM_PROMPT = `You are an AI assistant that answers questions about codebases using pre-captured SysML models.
 
 ## Available Gadgets
 
-### AUList
-List all existing understanding entries with their contents. Use this first to see what documentation exists across the codebase.
+### SysMLList
+List all existing SysML model entries with their contents. Use this first to see what documentation exists across the codebase.
 
-### AURead
-Read the understanding for a specific file or directory. Returns concise summaries of purpose, exports, dependencies, and patterns.
+### SysMLRead
+Read the SysML model for a specific file or directory. Returns structured understanding of purpose, exports, dependencies, and patterns.
+
+### SysMLQuery
+Search across the SysML model using semantic queries. Use this to find specific information across the codebase.
 
 ### ReportResult
 **IMPORTANT**: When you have gathered enough information to answer the question, you MUST call ReportResult with your complete answer. This returns your answer to the caller.
 
 ## Strategy
 
-1. **Use AUList first**: See what documentation exists across the codebase
-2. **Drill down with AURead**: Get detailed understanding of specific files/directories
-3. **Follow relationships**: Understanding entries document dependencies - use them to navigate
-4. **Report your answer**: When you have enough information, call ReportResult with a comprehensive answer
+1. **Use SysMLList first**: See what model entries exist across the codebase
+2. **Drill down with SysMLRead**: Get detailed understanding of specific files/directories
+3. **Use SysMLQuery for search**: Find specific patterns or concepts across the model
+4. **Follow relationships**: Model entries document dependencies - use them to navigate
+5. **Report your answer**: When you have enough information, call ReportResult with a comprehensive answer
 
 ## Guidelines
 
@@ -60,28 +64,28 @@ Read the understanding for a specific file or directory. Returns concise summari
 `;
 
 /**
- * AU subagent - queries codebase understanding autonomously.
+ * SysML subagent - queries codebase understanding autonomously.
  *
- * This subagent runs its own agent loop using AURead and AUList gadgets
- * to answer questions about a codebase based on captured understanding.
- * It operates in AU-only mode, meaning it cannot access source code directly.
+ * This subagent runs its own agent loop using SysMLRead, SysMLList, and SysMLQuery gadgets
+ * to answer questions about a codebase based on captured SysML models.
+ * It operates in model-only mode, meaning it cannot access source code directly.
  *
  * @example
  * ```typescript
  * // In your agent
- * const au = new AU();
- * registry.register('AskAboutCodebase', au);
+ * const sysml = new SysML();
+ * registry.register('AskAboutCodebase', sysml);
  *
  * // The agent can now call:
  * // AskAboutCodebase(question="How does authentication work?")
  * ```
  */
-export class AU extends Gadget({
+export class SysML extends Gadget({
   name: "AskAboutCodebase",
   description: `Query the semantic understanding of a codebase.
-This gadget uses pre-captured semantic understanding to answer questions about code architecture, patterns, and relationships.
+This gadget uses pre-captured SysML models to answer questions about code architecture, patterns, and relationships.
 Use this for understanding how systems work, finding entry points, or exploring dependencies.
-Returns a comprehensive answer synthesized from the codebase understanding.`,
+Returns a comprehensive answer synthesized from the codebase model.`,
   schema: z.object({
     question: z
       .string()
@@ -105,7 +109,7 @@ Returns a comprehensive answer synthesized from the codebase understanding.`,
         "Model to use for the agent (default: inherit from parent agent, configurable via CLI)"
       ),
   }),
-  timeoutMs: 120000, // 2 minutes - reading AU files is fast
+  timeoutMs: 120000, // 2 minutes - reading SysML files is fast
 }) {
   async execute(
     params: this["params"],
@@ -124,10 +128,10 @@ Returns a comprehensive answer synthesized from the codebase understanding.`,
     }
 
     try {
-      // Pre-load AU list as synthetic gadget call for efficiency
-      let initialAuList: string | null = null;
+      // Pre-load SysML list as synthetic gadget call for efficiency
+      let initialSysmlList: string | null = null;
       try {
-        initialAuList = (await auList.execute({ path: "." })) as string;
+        initialSysmlList = (await sysmlList.execute({ path: "." })) as string;
       } catch {
         // Ignore - best effort
       }
@@ -143,19 +147,19 @@ Returns a comprehensive answer synthesized from the codebase understanding.`,
       // This handles model resolution, tree sharing, abort signals, etc.
       const builder = createSubagent(ctx!, {
         name: "AskAboutCodebase",
-        gadgets: [new ReportResult(), auRead, auList],
+        gadgets: [new ReportResult(), sysmlRead, sysmlList, sysmlQuery],
         systemPrompt: SYSTEM_PROMPT,
         model: params.model,
         defaultModel: "sonnet",
         maxIterations,
       });
 
-      // Inject pre-loaded AU list as synthetic call
-      if (initialAuList) {
+      // Inject pre-loaded SysML list as synthetic call
+      if (initialSysmlList) {
         builder.withSyntheticGadgetCall(
-          "AUList",
+          "SysMLList",
           { path: "." },
-          initialAuList,
+          initialSysmlList,
           "auto_list"
         );
       }
@@ -190,7 +194,7 @@ Returns a comprehensive answer synthesized from the codebase understanding.`,
       return (
         reportedResult ||
         finalText ||
-        "Could not find an answer in the codebase understanding."
+        "Could not find an answer in the codebase model."
       );
     } finally {
       // Restore working directory

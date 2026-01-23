@@ -1,7 +1,6 @@
 import { createGadget, z } from "llmist";
 import { readFile } from "node:fs/promises";
 import { createFileFilter } from "../lib/file-filter.js";
-import { isAuFile } from "../lib/au-paths.js";
 import { parsePathList } from "../lib/command-utils.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
@@ -24,11 +23,6 @@ src/config.ts"`,
     const pathList = parsePathList(paths);
 
     for (const filePath of pathList) {
-      // Filter out .au files
-      if (isAuFile(filePath)) {
-        continue;
-      }
-
       // Filter out gitignored files
       if (!filter.accepts(filePath)) {
         continue;

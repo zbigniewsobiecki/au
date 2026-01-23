@@ -2,7 +2,6 @@ import { createGadget, z } from "llmist";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createFileFilter } from "../lib/file-filter.js";
-import { isAuFile } from "../lib/au-paths.js";
 import { parsePathList } from "../lib/command-utils.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
@@ -58,9 +57,6 @@ apps/backend"
         for (const item of items.sort()) {
           const fullPath = join(dirPath, item);
           const relativePath = basePath ? join(basePath, item) : item;
-
-          // Skip .au files
-          if (isAuFile(item)) continue;
 
           // Skip gitignored items (unless includeGitIgnored is true)
           if (!includeGitIgnored && !filter.accepts(relativePath)) continue;

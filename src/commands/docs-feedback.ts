@@ -10,8 +10,9 @@ import {
   writeDoc,
   setTargetDir,
   finishFixing,
-  auRead,
-  auList,
+  sysmlRead,
+  sysmlList,
+  sysmlQuery,
 } from "../gadgets/index.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
@@ -111,7 +112,7 @@ export default class DocsFeedback extends Command {
     // Scan for markdown files
     let mdFiles = await fg("**/*.md", {
       cwd: targetDir,
-      ignore: ["**/node_modules/**", "**/.au/**"],
+      ignore: ["**/node_modules/**", "**/.sysml/**"],
     });
 
     // Filter to specific document if requested
@@ -284,9 +285,9 @@ export default class DocsFeedback extends Command {
           documentsWithIssues,
         });
 
-        // Build fix agent with gadgets (AU access for accurate fixes)
+        // Build fix agent with gadgets (SysML access for accurate fixes)
         const fixClient = new LLMist();
-        const fixGadgets = [writeDoc, finishFixing, readDoc, auRead, auList];
+        const fixGadgets = [writeDoc, finishFixing, readDoc, sysmlRead, sysmlList, sysmlQuery];
 
         let fixBuilder = new AgentBuilder(fixClient)
           .withModel(flags.model)

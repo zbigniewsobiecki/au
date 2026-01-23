@@ -115,7 +115,6 @@ async function expandSourcePatterns(patterns: string[]): Promise<string[]> {
     "**/build/**",
     "**/.git/**",
     "**/.sysml/**",
-    "**/*.au",
   ];
 
   const allFiles: string[] = [];

@@ -9,10 +9,10 @@ import {
   readDirs,
   ripGrep,
   finishSysmlFix,
-} from "../../gadgets/index.js";
-import { SysMLModelValidator, type SysMLValidationResult } from "../../lib/sysml-model-validator.js";
-import { Output } from "../../lib/output.js";
-import { render } from "../../lib/templates.js";
+} from "../gadgets/index.js";
+import { SysMLModelValidator, type SysMLValidationResult } from "../lib/sysml-model-validator.js";
+import { Output } from "../lib/output.js";
+import { render } from "../lib/templates.js";
 import {
   agentFlags,
   configureBuilder,
@@ -20,19 +20,19 @@ import {
   endTextBlock,
   setupIterationTracking,
   withWorkingDirectory,
-} from "../../lib/command-utils.js";
-import { runAgentWithEvents } from "../../lib/agent-runner.js";
+} from "../lib/command-utils.js";
+import { runAgentWithEvents } from "../lib/agent-runner.js";
 
-export default class SysmlValidate extends Command {
+export default class Validate extends Command {
   static description =
     "Validate SysML model structure and coverage. Use --fix for agentic auto-fixing.";
 
   static examples = [
-    "<%= config.bin %> sysml validate",
-    "<%= config.bin %> sysml validate --path ./my-project",
-    "<%= config.bin %> sysml validate --verbose",
-    "<%= config.bin %> sysml validate --fix",
-    "<%= config.bin %> sysml validate --fix --model opus",
+    "<%= config.bin %> validate",
+    "<%= config.bin %> validate --path ./my-project",
+    "<%= config.bin %> validate --verbose",
+    "<%= config.bin %> validate --fix",
+    "<%= config.bin %> validate --fix --model opus",
   ];
 
   static flags = {
@@ -53,7 +53,7 @@ export default class SysmlValidate extends Command {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(SysmlValidate);
+    const { flags } = await this.parse(Validate);
     const out = new Output({ verbose: flags.verbose });
 
     const { restore } = withWorkingDirectory(flags.path, out);

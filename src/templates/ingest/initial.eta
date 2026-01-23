@@ -1,7 +1,0 @@
-Document this codebase efficiently:
-
-1. Source files are pre-loaded below - don't re-read files you can already see
-2. Document 3-5 files per response using multiple AUUpdate(path=".") calls
-3. Start with entry points and work through the codebase
-
-For maximum efficiency, batch your AUUpdate calls - don't stop after documenting one file.

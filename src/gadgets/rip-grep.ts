@@ -27,9 +27,7 @@ Respects gitignore. Returns matching lines with file paths and line numbers.`,
         "--line-number",
         "--no-heading",
         "-g",
-        "!*.au", // Exclude .au files
-        "-g",
-        "!.au", // Exclude .au directories
+        "!.sysml/**", // Exclude .sysml directory
         "-m",
         String(maxResults),
       ];

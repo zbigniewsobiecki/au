@@ -14,7 +14,7 @@ export const writeDoc = createGadget({
   maxConcurrent: 1,
   description: `Write a SINGLE documentation file. You may only call this gadget ONCE per turn.
 
-⚠️ ONE WriteFile PER TURN: You can call AURead, ReadFiles, and other read gadgets freely,
+⚠️ ONE WriteFile PER TURN: You can call SysMLRead, ReadFiles, and other read gadgets freely,
 but only ONE WriteFile call per turn. After WriteFile, STOP and wait for confirmation.
 
 Parameters:

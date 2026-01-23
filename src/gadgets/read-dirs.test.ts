@@ -12,13 +12,8 @@ vi.mock("../lib/file-filter.js", () => ({
   })),
 }));
 
-vi.mock("../lib/au-paths.js", () => ({
-  isAuFile: vi.fn(() => false),
-}));
-
 import { readdir, stat } from "node:fs/promises";
 import { readDirs } from "./read-dirs.js";
-import { isAuFile } from "../lib/au-paths.js";
 import { createFileFilter } from "../lib/file-filter.js";
 
 describe("readDirs gadget", () => {
@@ -125,30 +120,6 @@ describe("readDirs gadget", () => {
       expect(result).toContain("commands/");
       // readdir should only be called once (for src dir)
       expect(readdir).toHaveBeenCalledTimes(1);
-    });
-
-    it("skips .au files", async () => {
-      vi.mocked(readdir).mockResolvedValue([
-        "file.ts",
-        ".au",
-        "other.ts",
-      ] as never);
-      vi.mocked(stat)
-        .mockResolvedValueOnce({
-          isDirectory: () => false,
-          size: 100,
-        } as never)
-        .mockResolvedValueOnce({
-          isDirectory: () => false,
-          size: 200,
-        } as never);
-      vi.mocked(isAuFile).mockImplementation((name) => name === ".au");
-
-      const result = await readDirs.execute({ paths: "src", depth: 1 });
-
-      expect(result).toContain("file.ts 100");
-      expect(result).toContain("other.ts 200");
-      expect(result).not.toContain(".au");
     });
 
     it("respects gitignore filter", async () => {
