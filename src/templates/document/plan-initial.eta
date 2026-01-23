@@ -1,15 +1,15 @@
 ## Codebase Structure
 
-Below are the AU entries available for this codebase (summaries only - use AURead for full content).
+Below are the SysML model entries available for this codebase (summaries only - use SysMLRead for full content).
 
-<au-summary>
-<%= it.auSummary %>
-</au-summary>
+<sysml-summary>
+<%= it.sysmlSummary %>
+</sysml-summary>
 
 <% if (it.structureAnalysis) { %>
 ## Pre-Computed Structure Analysis
 
-The following analysis was computed from the AU content. Use these counts to guide your coverage decisions:
+The following analysis was computed from the SysML model. Use these counts to guide your coverage decisions:
 
 <structure-analysis>
 <%= it.structureAnalysis %>
@@ -18,7 +18,7 @@ The following analysis was computed from the AU content. Use these counts to gui
 
 ## Pre-Planning Analysis
 
-Before creating your documentation plan, analyze the AU summaries and structure analysis above to understand:
+Before creating your documentation plan, analyze the SysML summaries and structure analysis above to understand:
 
 ### Codebase Characteristics
 1. **Scale**: How many major components/modules exist? (See structure analysis above if available)
@@ -53,7 +53,7 @@ Use these minimum targets based on structure analysis:
 
 ## Instructions
 
-1. **Analyze the AU summaries** to identify:
+1. **Analyze the SysML summaries** to identify:
    - What the project does
    - Key features and components
    - Architecture patterns

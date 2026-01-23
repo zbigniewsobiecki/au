@@ -6,7 +6,7 @@ Fix ONE document at a time. After calling WriteFile, STOP and wait for the next 
 
 Workflow for each document:
 1. ReadDoc - read the current document content
-2. AURead - read AU understanding for mustCoverPaths
+2. SysMLRead - read SysML model for mustCoverPaths
 3. ReadFiles - verify facts from source files
 4. WriteFile - write the fixed document
 5. STOP - wait for confirmation
@@ -18,7 +18,7 @@ Workflow for each document:
 ### <%= index + 1 %>. <%= doc.path %>
 
 <% if (doc.mustCoverPaths && doc.mustCoverPaths.length > 0) { %>
-**Must cover AU paths**: <%= doc.mustCoverPaths.join(', ') %>
+**Must cover paths**: <%= doc.mustCoverPaths.join(', ') %>
 <% } %>
 <% if (doc.validationFiles && doc.validationFiles.length > 0) { %>
 **Validation files**: <%= doc.validationFiles.join(', ') %>
@@ -41,13 +41,13 @@ No documents with issues to fix.
 
 1. **Errors first**: Fix all ERROR severity issues before warnings
 2. **Inaccurate content**: Prioritize fixing factually incorrect information
-3. **Missing content**: Add missing sections and AU coverage
+3. **Missing content**: Add missing sections and coverage
 4. **Structural issues**: Fix frontmatter, headings, and cross-references
 
 ## Start Fixing
 
 Begin by reading the first document with ReadDoc, then:
-1. Read the relevant AU content with AURead
+1. Read the relevant SysML content with SysMLRead
 2. Read source files with ReadFiles to verify facts
 3. Write the corrected document with WriteFile
 4. STOP and wait for the next turn

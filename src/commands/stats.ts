@@ -1,13 +1,13 @@
 import { Command, Flags } from "@oclif/core";
-import { SysMLStats, formatBytes } from "../../lib/sysml-stats.js";
+import { SysMLStats, formatBytes } from "../lib/sysml-stats.js";
 
-export default class SysmlStats extends Command {
+export default class Stats extends Command {
   static description =
     "Display statistics about SysML model coverage (deterministic, non-agentic)";
 
   static examples = [
-    "<%= config.bin %> sysml stats",
-    "<%= config.bin %> sysml stats --path ./my-project",
+    "<%= config.bin %> stats",
+    "<%= config.bin %> stats --path ./my-project",
   ];
 
   static flags = {
@@ -19,14 +19,14 @@ export default class SysmlStats extends Command {
   };
 
   async run(): Promise<void> {
-    const { flags } = await this.parse(SysmlStats);
+    const { flags } = await this.parse(Stats);
 
     const stats = new SysMLStats();
     const result = await stats.getStats(flags.path);
 
     if (result.fileCount === 0) {
       console.log("No SysML model found.");
-      console.log("Run 'au sysml-ingest' first to generate the model.");
+      console.log("Run 'au ingest' first to generate the model.");
       return;
     }
 

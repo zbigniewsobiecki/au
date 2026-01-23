@@ -1,20 +1,16 @@
 import { render } from "./templates.js";
 
-export const ASK_SYSTEM_PROMPT = (options: { sysmlOnly?: boolean; auOnly?: boolean; codeOnly?: boolean } = {}) => {
-  // auOnly is deprecated alias for sysmlOnly
-  const modelOnly = options.sysmlOnly ?? options.auOnly ?? false;
+export const ASK_SYSTEM_PROMPT = (options: { sysmlOnly?: boolean; codeOnly?: boolean } = {}) => {
   return render("ask/sysml-system", {
-    sysmlOnly: modelOnly,
+    sysmlOnly: options.sysmlOnly ?? false,
     codeOnly: options.codeOnly ?? false,
   });
 };
 
-export const ASK_INITIAL_PROMPT = (question: string, options: { sysmlOnly?: boolean; auOnly?: boolean; codeOnly?: boolean } = {}) => {
-  // auOnly is deprecated alias for sysmlOnly
-  const modelOnly = options.sysmlOnly ?? options.auOnly ?? false;
+export const ASK_INITIAL_PROMPT = (question: string, options: { sysmlOnly?: boolean; codeOnly?: boolean } = {}) => {
   return render("ask/sysml-initial", {
     question,
-    sysmlOnly: modelOnly,
+    sysmlOnly: options.sysmlOnly ?? false,
     codeOnly: options.codeOnly ?? false,
   });
 };

@@ -11,7 +11,7 @@ import {
   selectReadGadgets,
 } from "../lib/command-utils.js";
 
-type Mode = "au-only" | "code-only" | "default";
+type Mode = "model-only" | "code-only" | "default";
 
 interface BenchmarkResult {
   question: string;
@@ -37,7 +37,7 @@ export default class Benchmark extends Command {
   static examples = [
     '<%= config.bin %> benchmark -q "What is the architecture?"',
     '<%= config.bin %> benchmark --questions questions.yaml --path ~/Code/myproject',
-    '<%= config.bin %> benchmark -q "How does auth work?" --modes au-only,default',
+    '<%= config.bin %> benchmark -q "How does auth work?" --modes model-only,default',
   ];
 
   static flags = {
@@ -50,7 +50,7 @@ export default class Benchmark extends Command {
       description: "Path to YAML file with questions",
     }),
     modes: Flags.string({
-      default: "au-only,code-only,default",
+      default: "model-only,code-only,default",
       description: "Comma-separated modes to compare",
     }),
     output: Flags.string({
@@ -93,7 +93,7 @@ export default class Benchmark extends Command {
 
     // Parse modes
     const modes = flags.modes.split(",").map((m) => m.trim()) as Mode[];
-    const validModes: Mode[] = ["au-only", "code-only", "default"];
+    const validModes: Mode[] = ["model-only", "code-only", "default"];
     for (const mode of modes) {
       if (!validModes.includes(mode)) {
         out.error(`Invalid mode: ${mode}. Valid: ${validModes.join(", ")}`);
@@ -169,15 +169,15 @@ export default class Benchmark extends Command {
   ): Promise<BenchmarkResult> {
     const client = new LLMist();
 
-    const auOnly = mode === "au-only";
+    const modelOnly = mode === "model-only";
     const codeOnly = mode === "code-only";
 
     // Select gadgets - no preloading, agent discovers on demand
-    const gadgets = selectReadGadgets({ auOnly, codeOnly });
+    const gadgets = selectReadGadgets({ modelOnly, codeOnly });
 
     let builder = new AgentBuilder(client)
       .withModel(flags.model)
-      .withSystem(ASK_SYSTEM_PROMPT({ auOnly, codeOnly }))
+      .withSystem(ASK_SYSTEM_PROMPT({ sysmlOnly: modelOnly, codeOnly }))
       .withMaxIterations(flags["max-iterations"])
       .withGadgets(...gadgets);
 
@@ -259,28 +259,28 @@ export default class Benchmark extends Command {
     for (const [question, questionResults] of byQuestion) {
       lines.push(`### ${question.slice(0, 60)}${question.length > 60 ? "..." : ""}\n`);
 
-      const auOnlyResult = questionResults.find((r) => r.mode === "au-only");
+      const modelOnlyResult = questionResults.find((r) => r.mode === "model-only");
       const codeOnlyResult = questionResults.find((r) => r.mode === "code-only");
       const defaultResult = questionResults.find((r) => r.mode === "default");
 
-      if (auOnlyResult && codeOnlyResult) {
-        const iterSaved = codeOnlyResult.iterations - auOnlyResult.iterations;
-        const tokenSaved = codeOnlyResult.totalTokens - auOnlyResult.totalTokens;
-        const timeSaved = codeOnlyResult.timeMs - auOnlyResult.timeMs;
+      if (modelOnlyResult && codeOnlyResult) {
+        const iterSaved = codeOnlyResult.iterations - modelOnlyResult.iterations;
+        const tokenSaved = codeOnlyResult.totalTokens - modelOnlyResult.totalTokens;
+        const timeSaved = codeOnlyResult.timeMs - modelOnlyResult.timeMs;
 
-        lines.push(`**AU-only vs Code-only:**`);
-        lines.push(`- Iterations saved: ${iterSaved} (${auOnlyResult.iterations} vs ${codeOnlyResult.iterations})`);
-        lines.push(`- Tokens saved: ${tokenSaved.toLocaleString()} (${auOnlyResult.totalTokens.toLocaleString()} vs ${codeOnlyResult.totalTokens.toLocaleString()})`);
+        lines.push(`**Model-only vs Code-only:**`);
+        lines.push(`- Iterations saved: ${iterSaved} (${modelOnlyResult.iterations} vs ${codeOnlyResult.iterations})`);
+        lines.push(`- Tokens saved: ${tokenSaved.toLocaleString()} (${modelOnlyResult.totalTokens.toLocaleString()} vs ${codeOnlyResult.totalTokens.toLocaleString()})`);
         lines.push(`- Time saved: ${(timeSaved / 1000).toFixed(1)}s`);
         lines.push("");
       }
 
-      if (auOnlyResult && defaultResult) {
-        const iterSaved = defaultResult.iterations - auOnlyResult.iterations;
-        const tokenSaved = defaultResult.totalTokens - auOnlyResult.totalTokens;
+      if (modelOnlyResult && defaultResult) {
+        const iterSaved = defaultResult.iterations - modelOnlyResult.iterations;
+        const tokenSaved = defaultResult.totalTokens - modelOnlyResult.totalTokens;
 
-        lines.push(`**AU-only vs Default:**`);
-        lines.push(`- Iterations saved: ${iterSaved} (${auOnlyResult.iterations} vs ${defaultResult.iterations})`);
+        lines.push(`**Model-only vs Default:**`);
+        lines.push(`- Iterations saved: ${iterSaved} (${modelOnlyResult.iterations} vs ${defaultResult.iterations})`);
         lines.push(`- Tokens saved: ${tokenSaved.toLocaleString()}`);
         lines.push("");
       }

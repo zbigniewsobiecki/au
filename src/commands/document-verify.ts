@@ -111,7 +111,7 @@ export default class DocumentVerify extends Command {
 
     // Load plan from target directory
     const targetDir = resolve(flags.target);
-    const planFile = `${targetDir}/.au/doc-plan.json`;
+    const planFile = `${targetDir}/.sysml/doc-plan.json`;
 
     let plan: DocPlanStructure;
     try {

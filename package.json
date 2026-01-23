@@ -74,11 +74,12 @@
     "subagents": {
       "AskAboutCodebase": {
         "entryPoint": "./dist/index.js",
-        "export": "AU",
-        "description": "Query codebase understanding from AI-captured documentation",
+        "export": "SysML",
+        "description": "Query codebase understanding from SysML models",
         "uses": [
-          "AURead",
-          "AUList",
+          "SysMLRead",
+          "SysMLList",
+          "SysMLQuery",
           "ReportResult"
         ],
         "defaultModel": "sonnet",
@@ -91,8 +92,9 @@
         "AskAboutCodebase"
       ],
       "readonly": [
-        "AURead",
-        "AUList"
+        "SysMLRead",
+        "SysMLList",
+        "SysMLQuery"
       ]
     }
   }

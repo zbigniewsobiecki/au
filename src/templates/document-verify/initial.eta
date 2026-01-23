@@ -1,12 +1,12 @@
 Verify the following documentation for accuracy and completeness.
 
-## Important: On-Demand AU Reading
+## Important: On-Demand SysML Reading
 
-You have access to AURead and AUList gadgets. Use them to fetch AU content as needed for each document.
+You have access to SysMLRead and SysMLList gadgets. Use them to fetch model content as needed for each document.
 
-DO NOT try to load all AU content upfront - this will overflow the context window.
+DO NOT try to load all content upfront - this will overflow the context window.
 
-For documents with mustCoverPaths, use AURead with ONLY those specific paths.
+For documents with mustCoverPaths, use SysMLRead with ONLY those specific paths.
 
 ## Documents to Verify
 
@@ -19,7 +19,7 @@ For documents with mustCoverPaths, use AURead with ONLY those specific paths.
 - **Expected sections**: <%= doc.sections.join(', ') %>
 <% } %>
 <% if (doc.mustCoverPaths && doc.mustCoverPaths.length > 0) { %>
-- **Must cover AU paths**: <%= doc.mustCoverPaths.join(', ') %>
+- **Must cover paths**: <%= doc.mustCoverPaths.join(', ') %>
 <% } %>
 <% if (doc.validationFiles && doc.validationFiles.length > 0) { %>
 - **Validation files**: <%= doc.validationFiles.join(', ') %>
@@ -45,8 +45,8 @@ For each document:
    - Check framework names match actual dependencies
    - Verify npm scripts exist
    - Confirm file paths are valid
-5. **Check AU coverage** (if mustCoverPaths specified):
-   - Read the AU paths
+5. **Check coverage** (if mustCoverPaths specified):
+   - Read the SysML paths
    - Verify the document discusses those paths
 6. **Report issues** using ReportIssue for each problem found
 
@@ -63,7 +63,7 @@ Always check these files when verifying facts:
 ## Start Verification
 
 Begin by reading the first document with ReadDoc, then:
-1. Read the relevant AU content with AURead
+1. Read the relevant SysML content with SysMLRead
 2. Read source files with ReadFiles to verify facts
 3. Report any issues found with ReportIssue
 4. Move to the next document

@@ -3,7 +3,6 @@ import { AgentBuilder, LLMist, resolveModel } from "llmist";
 import type { ExecutionEvent, AbstractGadget } from "llmist";
 import { stat, readFile } from "node:fs/promises";
 import { Output } from "./output.js";
-import { AU_SEPARATOR } from "./constants.js";
 import {
   sysmlRead,
   sysmlList,
@@ -36,14 +35,12 @@ export function withWorkingDirectory(
 
 /**
  * Selects the appropriate read gadgets based on the mode.
- * - sysmlOnly/auOnly: Only SysML reading gadgets (auOnly is deprecated alias)
+ * - modelOnly: Only SysML reading gadgets
  * - codeOnly: Only source code reading gadgets
  * - default: Both SysML and source code gadgets
  */
-export function selectReadGadgets(mode: { sysmlOnly?: boolean; auOnly?: boolean; codeOnly?: boolean }): AbstractGadget[] {
-  // auOnly is deprecated alias for sysmlOnly
-  const modelOnly = mode.sysmlOnly || mode.auOnly;
-  if (modelOnly) return [sysmlList, sysmlRead, sysmlQuery];
+export function selectReadGadgets(mode: { modelOnly?: boolean; codeOnly?: boolean }): AbstractGadget[] {
+  if (mode.modelOnly) return [sysmlList, sysmlRead, sysmlQuery];
   if (mode.codeOnly) return [readFiles, readDirs, ripGrep];
   return [sysmlList, sysmlRead, sysmlQuery, readFiles, readDirs, ripGrep];
 }
@@ -233,22 +230,6 @@ export function setupIterationTracking(
   });
 
   return () => currentIteration;
-}
-
-/**
- * Counts lines in AU content (excluding separator lines).
- * @deprecated Use countAuBytes instead
- */
-export function countAuLines(content: string): number {
-  return content.split("\n").filter(line => !line.startsWith(AU_SEPARATOR)).length;
-}
-
-/**
- * Counts bytes in AU content (excluding separator lines).
- */
-export function countAuBytes(content: string): number {
-  const lines = content.split("\n").filter(line => !line.startsWith(AU_SEPARATOR));
-  return Buffer.byteLength(lines.join("\n"), "utf-8");
 }
 
 /**
