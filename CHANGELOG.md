@@ -1,3 +1,9 @@
+## [1.6.0](https://github.com/zbigniewsobiecki/au/compare/v1.5.0...v1.6.0) (2026-01-23)
+
+### Features
+
+* **sysml:** add JSON string handling for ManifestWrite and raise coverage to 99% ([#17](https://github.com/zbigniewsobiecki/au/issues/17)) ([fcfba29](https://github.com/zbigniewsobiecki/au/commit/fcfba29db226293f6784fa1bc0fc29aaf1464925))
+
 ## [1.5.0](https://github.com/zbigniewsobiecki/au/compare/v1.4.1...v1.5.0) (2026-01-22)
 
 ### Features
