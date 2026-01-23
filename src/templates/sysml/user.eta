@@ -54,10 +54,13 @@
 <% } %>
 <% } %>
 
-<% if (it.manifestHints.counts) { %>
-### Target Counts
-<% for (const [key, value] of Object.entries(it.manifestHints.counts)) { %>
-- **<%= value %>** <%= key %>
+<% if (it.manifestHints.sourceFiles && it.manifestHints.sourceFiles.length > 0) { %>
+### Source Files to Cover
+<% for (const pattern of it.manifestHints.sourceFiles.slice(0, 10)) { %>
+- `<%= pattern %>`
+<% } %>
+<% if (it.manifestHints.sourceFiles.length > 10) { %>
+*(+<%= it.manifestHints.sourceFiles.length - 10 %> more patterns)*
 <% } %>
 <% } %>
 <% } %>
@@ -141,8 +144,9 @@ You may finish when you've extracted all relevant SysML elements.
 - Use FileDiscover to find files matching patterns (e.g., `*.service.ts`)
 - Track what you've already analyzed to avoid redundant work
 - Only signal completion by calling `FileViewerNextFileSet(paths="")` when you have thoroughly explored this cycle's scope
-<% if (it.manifestHints?.counts) { %>
-- Verify you've captured elements matching the target counts (<% for (const [key, value] of Object.entries(it.manifestHints.counts)) { %><%= value %> <%= key %><% if (!Object.entries(it.manifestHints.counts).slice(-1).includes([key, value])) { %>, <% } %><% } %>)
+<% if (it.manifestHints?.sourceFiles && it.manifestHints.sourceFiles.length > 0) { %>
+- Verify you've included `// Source: <filepath>` comments for all covered files
+- Ensure all source file patterns have been processed
 <% } %>
 
 <% } else { %>

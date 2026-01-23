@@ -69,3 +69,18 @@ export {
   type MatchFailure,
   type MatchSuggestion,
 } from "./matcher.js";
+
+// Coverage Checker
+export {
+  checkCycleCoverage,
+  findCoveredFiles,
+  formatCoverageResult,
+  // Manifest coverage checking
+  discoverAllSourceFiles,
+  checkManifestCoverage,
+  formatManifestCoverageResult,
+  suggestPatternsForUncoveredFiles,
+  type CoverageResult,
+  type CoverageContext,
+  type ManifestCoverageResult,
+} from "./coverage-checker.js";

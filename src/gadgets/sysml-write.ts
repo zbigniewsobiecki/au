@@ -141,6 +141,20 @@ export const sysmlWrite = createGadget({
       return `Error: File path must end with .sysml extension`;
     }
 
+    // Block writes to manifest files - manifest counts are authoritative
+    // The fix phase should generate missing SysML content, not edit manifests
+    if (path.endsWith("/manifest.sysml") || path === "manifest.sysml") {
+      return `Error: Cannot edit manifest files via SysMLWrite.
+
+Manifest counts reflect what EXISTS in the codebase - they are correct.
+The SysML model is incomplete, not the manifest wrong.
+
+To fix count mismatches:
+1. Use ReadFiles/RipGrep to find entities in the codebase
+2. Use SysMLWrite to create SysML definitions (item def, part def, etc.)
+3. The manifest counts will match once SysML content is complete`;
+    }
+
     const fullPath = join(".sysml", path);
 
     // Determine mode

@@ -7,6 +7,13 @@ import { createGadget, z } from "llmist";
 import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
+import {
+  checkManifestCoverage,
+  suggestPatternsForUncoveredFiles,
+} from "../lib/sysml/coverage-checker.js";
+
+/** Minimum coverage percentage required for manifest to be accepted */
+const MIN_MANIFEST_COVERAGE = 99;
 
 /**
  * Entity ID tracking for sequential ID assignment.
@@ -25,7 +32,7 @@ export interface EntityTracking {
 export interface ManifestCycle {
   name: string;
   files?: string[];  // Optional for cycles using directory assignments
-  counts?: Record<string, number>;
+  sourceFiles?: string[];  // Explicit source file list (supports glob patterns)
   expectedOutputs?: string[];
   // Coverage tracking for comprehensive mode
   coverage?: {
@@ -74,6 +81,50 @@ export interface Manifest {
 
 const MANIFEST_PATH = ".sysml/_manifest.json";
 
+/**
+ * Schema for the manifest object, extracted for use with z.preprocess().
+ * This allows accepting both parsed objects and JSON strings from LLMs.
+ */
+const manifestObjectSchema = z.object({
+  version: z.number().describe("Manifest version (should be 2 for directory-based assignment)"),
+  discoveredAt: z.string().describe("ISO timestamp of discovery"),
+  project: z.object({
+    name: z.string().describe("Project name"),
+    primaryLanguage: z.string().describe("Primary programming language"),
+    framework: z.string().optional().describe("Primary framework (e.g., fastify, nextjs)"),
+    architectureStyle: z.string().optional().describe("Architecture style (e.g., monorepo, microservices)"),
+  }),
+  directories: z.array(z.object({
+    path: z.string().describe("Directory path relative to project root"),
+    purpose: z.string().optional().describe("Brief description of directory purpose"),
+    cycles: z.record(z.string(), z.object({
+      patterns: z.array(z.string()).describe("File patterns within this directory for this cycle"),
+      reason: z.string().optional().describe("Why this directory is assigned to this cycle"),
+    })).describe("Cycle assignments for this directory"),
+  })).optional().describe("Per-directory cycle assignments (version 2+)"),
+  cycles: z.record(z.string(), z.object({
+    name: z.string().describe("Cycle name"),
+    files: z.array(z.string()).optional().describe("Files or glob patterns for this cycle (optional if using directory assignments)"),
+    sourceFiles: z.array(z.string()).optional().describe("Source files to cover (supports glob patterns like 'src/models/**/*.ts')"),
+    expectedOutputs: z.array(z.string()).optional().describe("Expected SysML output files"),
+    coverage: z.object({
+      targetFiles: z.array(z.string()).describe("All files matching patterns for this cycle"),
+      totalCount: z.number().describe("Total number of target files"),
+    }).optional().describe("Coverage tracking for comprehensive file reading"),
+    entityTracking: z.object({
+      requirements: z.object({ lastId: z.number() }).optional(),
+      entities: z.object({ lastId: z.number() }).optional(),
+      operations: z.object({ lastId: z.number() }).optional(),
+      security: z.object({ lastId: z.number() }).optional(),
+      nfr: z.object({ lastId: z.number() }).optional(),
+    }).optional().describe("Track last assigned IDs for sequential numbering"),
+  })).describe("Cycle configurations keyed by cycle number"),
+  statistics: z.object({
+    totalFiles: z.number().optional(),
+    relevantFiles: z.number().optional(),
+  }).optional().describe("Overall statistics"),
+});
+
 export const manifestWrite = createGadget({
   name: "ManifestWrite",
   maxConcurrent: 1,
@@ -84,65 +135,183 @@ ManifestWrite(manifest={ version: 1, project: {...}, cycles: {...} })
 
 The manifest contains:
 - Project metadata (name, language, framework)
-- Per-cycle file lists with exact counts
+- Per-cycle sourceFiles lists (glob patterns supported)
 - Expected outputs for validation
 
-**IMPORTANT**: Use "cycle1", "cycle2", etc. as keys (NOT "1", "2", etc.)
+**IMPORTANT**:
+- Use "cycle1", "cycle2", etc. as keys (NOT "1", "2", etc.)
+- sourceFiles patterns MUST cover ALL source files in the repository (>=${MIN_MANIFEST_COVERAGE}% coverage required)
+- The manifest will be REJECTED if coverage is below threshold
 
-Example:
+**Cycle purposes and typical sourceFiles:**
+- cycle1 (Context): README, docs, configs → context/*.sysml
+- cycle2 (Structure): Components, modules, routes → structure/*.sysml
+- cycle3 (Data): Models, schemas, types, DTOs → data/*.sysml
+- cycle4 (Behavior): Services, controllers, hooks, utils, state → behavior/*.sysml
+- cycle5 (Verification): Tests, CI/CD configs → verification/*.sysml
+- cycle6 (Analysis): Performance, security, observability → analysis/*.sysml
+
+**COMPREHENSIVE EXAMPLE** (TypeScript monorepo with frontend + backend):
+
 ManifestWrite(manifest={
   version: 1,
-  discoveredAt: "2026-01-22T...",
-  project: { name: "myapp", primaryLanguage: "typescript", framework: "fastify" },
+  discoveredAt: "2026-01-23T10:00:00.000Z",
+  project: {
+    name: "car-dealership",
+    primaryLanguage: "typescript",
+    framework: "express+react",
+    architectureStyle: "monorepo"
+  },
   cycles: {
-    "cycle1": { name: "Discovery", files: ["README.md", "package.json"], expectedOutputs: ["context/boundaries.sysml"] },
-    "cycle2": { name: "Structure", files: ["apps/backend/src/modules/*/index.ts"], counts: { modules: 48 } },
-    "cycle3": { name: "Data", files: ["schema.prisma"], counts: { models: 34, enums: 30 } }
+    "cycle1": {
+      name: "Context & Boundaries",
+      sourceFiles: [
+        "README.md",
+        "package.json",
+        "apps/*/package.json",
+        "tsconfig.json",
+        "docker-compose.yml",
+        ".github/workflows/*.yml"
+      ],
+      expectedOutputs: ["context/boundaries.sysml", "context/stakeholders.sysml"]
+    },
+    "cycle2": {
+      name: "Structure",
+      sourceFiles: [
+        "apps/backend/src/app.ts",
+        "apps/backend/src/routes/**/*.ts",
+        "apps/backend/src/middleware/**/*.ts",
+        "apps/frontend/src/App.tsx",
+        "apps/frontend/src/main.tsx",
+        "apps/frontend/src/routes/**/*.tsx",
+        "apps/frontend/src/components/**/*.tsx",
+        "apps/frontend/src/pages/**/*.tsx",
+        "apps/frontend/src/layouts/**/*.tsx"
+      ],
+      expectedOutputs: ["structure/components.sysml", "structure/modules.sysml"]
+    },
+    "cycle3": {
+      name: "Data Model",
+      sourceFiles: [
+        "prisma/schema.prisma",
+        "apps/backend/src/models/**/*.ts",
+        "apps/backend/src/entities/**/*.ts",
+        "apps/backend/src/dto/**/*.ts",
+        "apps/frontend/src/types/**/*.ts",
+        "apps/shared/src/types/**/*.ts"
+      ],
+      expectedOutputs: ["data/entities.sysml", "data/relationships.sysml"]
+    },
+    "cycle4": {
+      name: "Behavior",
+      sourceFiles: [
+        "apps/backend/src/services/**/*.ts",
+        "apps/backend/src/controllers/**/*.ts",
+        "apps/backend/src/utils/**/*.ts",
+        "apps/frontend/src/services/**/*.ts",
+        "apps/frontend/src/hooks/**/*.ts",
+        "apps/frontend/src/store/**/*.ts",
+        "apps/frontend/src/utils/**/*.ts",
+        "apps/frontend/src/context/**/*.tsx"
+      ],
+      expectedOutputs: ["behavior/operations.sysml", "behavior/handlers.sysml", "behavior/states.sysml"]
+    },
+    "cycle5": {
+      name: "Verification",
+      sourceFiles: [
+        "apps/backend/test/**/*.ts",
+        "apps/backend/src/**/*.spec.ts",
+        "apps/backend/src/**/*.test.ts",
+        "apps/frontend/src/**/*.test.tsx",
+        "apps/frontend/src/**/*.spec.tsx",
+        "e2e/**/*.ts",
+        ".github/workflows/ci.yml"
+      ],
+      expectedOutputs: ["verification/test-mapping.sysml"]
+    },
+    "cycle6": {
+      name: "Analysis",
+      sourceFiles: [
+        "apps/backend/src/middleware/auth*.ts",
+        "apps/backend/src/middleware/rate*.ts",
+        "apps/backend/src/config/**/*.ts",
+        "apps/frontend/src/config/**/*.ts",
+        "docker-compose.yml",
+        "Dockerfile*"
+      ],
+      expectedOutputs: ["analysis/security.sysml", "analysis/deployment.sysml"]
+    }
+  },
+  statistics: {
+    totalFiles: 150,
+    relevantFiles: 108
   }
-})`,
+})
+
+**Common patterns by file type:**
+- Components: "src/components/**/*.tsx", "apps/*/src/components/**/*.tsx"
+- Services: "src/services/**/*.ts", "apps/backend/src/services/**/*.ts"
+- Hooks: "src/hooks/**/*.ts", "apps/frontend/src/hooks/*.ts"
+- State/Store: "src/store/**/*.ts", "src/context/**/*.tsx"
+- Utils: "src/utils/**/*.ts", "src/lib/**/*.ts"
+- Tests: "**/*.test.ts", "**/*.spec.ts", "test/**/*.ts"
+- Config: "*.config.ts", "*.config.js", "config/**/*.ts"`,
   schema: z.object({
     reason: z.string().describe(GADGET_REASON_DESCRIPTION),
-    manifest: z.object({
-      version: z.number().describe("Manifest version (should be 2 for directory-based assignment)"),
-      discoveredAt: z.string().describe("ISO timestamp of discovery"),
-      project: z.object({
-        name: z.string().describe("Project name"),
-        primaryLanguage: z.string().describe("Primary programming language"),
-        framework: z.string().optional().describe("Primary framework (e.g., fastify, nextjs)"),
-        architectureStyle: z.string().optional().describe("Architecture style (e.g., monorepo, microservices)"),
-      }),
-      directories: z.array(z.object({
-        path: z.string().describe("Directory path relative to project root"),
-        purpose: z.string().optional().describe("Brief description of directory purpose"),
-        cycles: z.record(z.string(), z.object({
-          patterns: z.array(z.string()).describe("File patterns within this directory for this cycle"),
-          reason: z.string().optional().describe("Why this directory is assigned to this cycle"),
-        })).describe("Cycle assignments for this directory"),
-      })).optional().describe("Per-directory cycle assignments (version 2+)"),
-      cycles: z.record(z.string(), z.object({
-        name: z.string().describe("Cycle name"),
-        files: z.array(z.string()).optional().describe("Files or glob patterns for this cycle (optional if using directory assignments)"),
-        counts: z.record(z.string(), z.number()).optional().describe("Exact counts for validation (e.g., { models: 34, enums: 30 })"),
-        expectedOutputs: z.array(z.string()).optional().describe("Expected SysML output files"),
-        coverage: z.object({
-          targetFiles: z.array(z.string()).describe("All files matching patterns for this cycle"),
-          totalCount: z.number().describe("Total number of target files"),
-        }).optional().describe("Coverage tracking for comprehensive file reading"),
-        entityTracking: z.object({
-          requirements: z.object({ lastId: z.number() }).optional(),
-          entities: z.object({ lastId: z.number() }).optional(),
-          operations: z.object({ lastId: z.number() }).optional(),
-          security: z.object({ lastId: z.number() }).optional(),
-          nfr: z.object({ lastId: z.number() }).optional(),
-        }).optional().describe("Track last assigned IDs for sequential numbering"),
-      })).describe("Cycle configurations keyed by cycle number"),
-      statistics: z.object({
-        totalFiles: z.number().optional(),
-        relevantFiles: z.number().optional(),
-      }).optional().describe("Overall statistics"),
-    }).describe("The manifest object"),
+    manifest: z.preprocess(
+      (val) => {
+        // If it's already an object, return as-is
+        if (typeof val === "object" && val !== null) {
+          return val;
+        }
+        // If it's a string, try to parse as JSON
+        if (typeof val === "string") {
+          try {
+            return JSON.parse(val);
+          } catch {
+            return val; // Let Zod handle the validation error
+          }
+        }
+        return val;
+      },
+      manifestObjectSchema
+    ).describe("The manifest object (accepts JSON string or object)"),
   }),
   execute: async ({ reason: _reason, manifest }) => {
+    // Check manifest coverage before writing
+    const coverage = await checkManifestCoverage(manifest as Manifest);
+
+    if (coverage.coveragePercent < MIN_MANIFEST_COVERAGE) {
+      // Generate suggestions for uncovered files
+      const suggestions = suggestPatternsForUncoveredFiles(coverage.notCoveredFiles);
+
+      let errorMsg = `ERROR: Manifest coverage too low (${coverage.coveragePercent}% < ${MIN_MANIFEST_COVERAGE}% threshold)\n\n`;
+      errorMsg += `Discovered ${coverage.discoveredFiles.length} source files in repository.\n`;
+      errorMsg += `Manifest patterns cover ${coverage.coveredByPatterns.length} files.\n`;
+      errorMsg += `Missing ${coverage.notCoveredFiles.length} files:\n\n`;
+
+      // Show uncovered files (up to 30)
+      const displayCount = Math.min(coverage.notCoveredFiles.length, 30);
+      for (let i = 0; i < displayCount; i++) {
+        errorMsg += `  - ${coverage.notCoveredFiles[i]}\n`;
+      }
+      if (coverage.notCoveredFiles.length > 30) {
+        errorMsg += `  ... and ${coverage.notCoveredFiles.length - 30} more\n`;
+      }
+
+      // Add suggestions
+      if (suggestions.length > 0) {
+        errorMsg += `\nSuggested patterns to add:\n`;
+        for (const suggestion of suggestions) {
+          errorMsg += `  - ${suggestion}\n`;
+        }
+      }
+
+      errorMsg += `\nAdd patterns to appropriate cycles and call ManifestWrite again.`;
+
+      return errorMsg;
+    }
+
     // Create directory if needed
     const dir = dirname(MANIFEST_PATH);
     if (dir && dir !== ".") {
@@ -158,17 +327,15 @@ ManifestWrite(manifest={
     const cycleKeys = Object.keys(manifest.cycles).sort();
     for (const key of cycleKeys) {
       totalCycleFiles += manifest.cycles[key].files?.length ?? 0;
+      totalCycleFiles += manifest.cycles[key].sourceFiles?.length ?? 0;
     }
 
-    // Summarize counts
-    const countsInfo: string[] = [];
+    // Summarize sourceFiles
+    const sourceFilesInfo: string[] = [];
     for (const key of cycleKeys) {
       const cycle = manifest.cycles[key];
-      if (cycle.counts && Object.keys(cycle.counts).length > 0) {
-        const countStr = Object.entries(cycle.counts)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(", ");
-        countsInfo.push(`Cycle ${key}: ${countStr}`);
+      if (cycle.sourceFiles && cycle.sourceFiles.length > 0) {
+        sourceFilesInfo.push(`Cycle ${key}: ${cycle.sourceFiles.length} patterns`);
       }
     }
 
@@ -176,10 +343,11 @@ ManifestWrite(manifest={
     result += `  Version: ${manifest.version}\n`;
     result += `  Project: ${manifest.project.name} (${manifest.project.primaryLanguage})\n`;
     result += `  Cycles defined: ${cycleKeys.join(", ")}\n`;
-    result += `  Total file entries: ${totalCycleFiles}`;
+    result += `  Total file entries: ${totalCycleFiles}\n`;
+    result += `  Manifest coverage: ${coverage.coveragePercent}% (${coverage.coveredByPatterns.length}/${coverage.discoveredFiles.length} files)`;
 
-    if (countsInfo.length > 0) {
-      result += `\n  Target counts:\n    ${countsInfo.join("\n    ")}`;
+    if (sourceFilesInfo.length > 0) {
+      result += `\n  Source file patterns:\n    ${sourceFilesInfo.join("\n    ")}`;
     }
 
     // Report directory assignments if present (version 2+)
@@ -251,11 +419,14 @@ Returns the manifest contents or an error if not found.`,
         const cycleNum = getCycleNumber(key);
         output += `  ${cycleNum}. ${cycle.name}\n`;
         output += `     Files: ${cycle.files?.length ?? 0} entries\n`;
-        if (cycle.counts && Object.keys(cycle.counts).length > 0) {
-          const countStr = Object.entries(cycle.counts)
-            .map(([k, v]) => `${k}=${v}`)
-            .join(", ");
-          output += `     Counts: ${countStr}\n`;
+        if (cycle.sourceFiles && cycle.sourceFiles.length > 0) {
+          output += `     Source files: ${cycle.sourceFiles.length} patterns\n`;
+          for (const pattern of cycle.sourceFiles.slice(0, 5)) {
+            output += `       - ${pattern}\n`;
+          }
+          if (cycle.sourceFiles.length > 5) {
+            output += `       ... +${cycle.sourceFiles.length - 5} more\n`;
+          }
         }
       }
 
@@ -266,67 +437,6 @@ Returns the manifest contents or an error if not found.`,
   },
 });
 
-export const countPatterns = createGadget({
-  name: "CountPatterns",
-  description: `Count regex pattern matches in a file.
-
-**Usage:**
-CountPatterns(file="schema.prisma", patterns=["^model ", "^enum "])
-
-Returns exact counts for each pattern. Use this to get accurate counts for the manifest.
-
-Example output:
-  "^model ": 34
-  "^enum ": 30`,
-  schema: z.object({
-    reason: z.string().describe(GADGET_REASON_DESCRIPTION),
-    file: z.string().describe("Path to the file to analyze"),
-    patterns: z.array(z.string()).describe("Array of regex patterns to count (line-by-line matching)"),
-  }),
-  execute: async ({ reason: _reason, file, patterns }) => {
-    try {
-      const content = await readFile(file, "utf-8");
-      const lines = content.split("\n");
-
-      const counts: Record<string, number> = {};
-      const matchedLines: Record<string, string[]> = {};
-
-      for (const pattern of patterns) {
-        const regex = new RegExp(pattern);
-        counts[pattern] = 0;
-        matchedLines[pattern] = [];
-
-        for (const line of lines) {
-          if (regex.test(line)) {
-            counts[pattern]++;
-            // Store first few matches as examples (up to 5)
-            if (matchedLines[pattern].length < 5) {
-              matchedLines[pattern].push(line.trim().slice(0, 80));
-            }
-          }
-        }
-      }
-
-      let output = `=== Pattern Counts for ${file} ===\n\n`;
-      for (const pattern of patterns) {
-        output += `"${pattern}": ${counts[pattern]}\n`;
-        if (matchedLines[pattern].length > 0) {
-          output += `  Examples:\n`;
-          for (const match of matchedLines[pattern]) {
-            output += `    - ${match}\n`;
-          }
-        }
-      }
-
-      // Also output as JSON for easy parsing
-      output += `\nJSON: ${JSON.stringify(counts)}`;
-
-      return output;
-    } catch (error) {
-      return `Error reading file ${file}: ${error instanceof Error ? error.message : String(error)}`;
-    }
-  },
-});
 
 /**
  * Load manifest from disk.
@@ -375,17 +485,17 @@ export async function getManifestCycleFiles(cycle: number): Promise<string[] | n
 }
 
 /**
- * Get target counts for a specific cycle from the manifest.
- * Returns null if manifest doesn't exist or cycle has no counts.
+ * Get source files for a specific cycle from the manifest.
+ * Returns null if manifest doesn't exist or cycle has no sourceFiles.
  */
-export async function getManifestCycleCounts(cycle: number): Promise<Record<string, number> | null> {
+export async function getManifestCycleSourceFiles(cycle: number): Promise<string[] | null> {
   const manifest = await loadManifest();
   if (!manifest) return null;
 
   const cycleData = findCycleData(manifest, cycle);
-  if (!cycleData || !cycleData.counts) return null;
+  if (!cycleData || !cycleData.sourceFiles) return null;
 
-  return cycleData.counts;
+  return cycleData.sourceFiles;
 }
 
 /**

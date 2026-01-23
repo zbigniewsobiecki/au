@@ -61,6 +61,11 @@
     "vitest": "^4.0.16"
   },
   "packageManager": "pnpm@9.15.4",
+  "pnpm": {
+    "overrides": {
+      "chevrotain": "11.0.3"
+    }
+  },
   "engines": {
     "node": ">=22.0.0"
   },
