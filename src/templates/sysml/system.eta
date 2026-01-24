@@ -377,42 +377,43 @@ part def UserModule :> ServiceModule {
 
 ## Metadata Annotations
 
-**RULE:** Metadata must IMMEDIATELY PRECEDE an element (no semicolon after @).
+**RULE:** Parameterless metadata REQUIRES semicolon before an element. Metadata with body `{ }` does NOT.
 
 ```sysml
 // Metadata definitions
 metadata def CriticalPath;
 metadata def SecurityCritical;
-metadata def PerformanceSensitive;
+metadata def external;
 
 metadata def SourceFile {
     attribute path : FilePath;
     attribute line : Integer [0..1];
 }
 
-// VALID - metadata immediately before element
-@CriticalPath
+// VALID - parameterless metadata WITH semicolon before element
+@CriticalPath;
 action def ProcessPayment { /* ... */ }
 
-@SecurityCritical
-part def AuthModule { /* ... */ }
+@external;
+part def Database { /* ... */ }
 
+// VALID - metadata with body (no semicolon needed, body terminates it)
 @SourceFile { path = "src/services/user.ts"; line = 42; }
 action def CreateUser { /* ... */ }
 
-// INVALID - semicolon terminates, applies to nothing!
-@external;
-part def Database { }        // Has NO metadata!
+// INVALID - parameterless metadata WITHOUT semicolon!
+@CriticalPath
+action def ProcessPayment { }   // ERROR: expected 'about', ';', '{'
 
-// INVALID - inside body without target
+// VALID - metadata inside body (applies to container)
 part def Component {
-    @CriticalPath;           // ERROR: dangling!
-    attribute name : String;
+    @SecurityCritical;
+    attribute secret : String;
 }
 
-// VALID - metadata on attribute
+// VALID - metadata on attribute (also needs semicolon!)
 part def Component {
-    @CriticalPath
+    @CriticalPath;
     attribute name : String; // Metadata applies to 'name'
 }
 ```

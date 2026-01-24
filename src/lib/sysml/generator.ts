@@ -148,11 +148,16 @@ export function generateStdlib(): string {
     }
 
     // ========== METADATA ==========
-    metadata def SourceRef {
-        attribute file : FilePath;
+    // Usage: @SourceFile { path = "src/file.ts"; line = 42; }
+    // Or prefix: #SourceFile { path = "src/file.ts"; }
+    metadata def SourceFile {
+        attribute path : FilePath;
         attribute line : Integer;
     }
 
+    // Stereotype markers - use with semicolon: @external; or prefix: #external
+    metadata def external;
+    metadata def internal;
     metadata def Deprecated;
     metadata def SecurityCritical;
     metadata def PerformanceCritical;
