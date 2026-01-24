@@ -1,0 +1,37 @@
+## SysML Model Content
+
+Review the following SysML model files for completeness, consistency, and correctness.
+
+<%= it.sysmlContent %>
+
+## Manifest Summary
+
+<%= it.manifestSummary %>
+
+## Static Validation Results
+
+The following checks have already been run programmatically:
+
+<%= it.staticResults %>
+
+## Instructions
+
+1. **Review the model thoroughly** across all five verification domains:
+   - Structure: packages, modules, layers, imports
+   - Data: entities, attributes, types, enums
+   - Behavior: actions, state machines, operations
+   - Verification: test mappings, requirements
+   - Quality: naming, docs, unused imports
+
+2. **Report each issue** using the VerifyFinding gadget:
+   - Specify the category (error/warning/suggestion)
+   - Identify the domain
+   - Reference the specific file when applicable
+   - Describe the issue clearly
+   - Provide a recommendation
+
+3. **Be thorough** - check every file and every domain
+
+4. **When complete**, call FinishVerify with a summary
+
+Start by reviewing the model content above and reporting any issues you find.

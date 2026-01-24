@@ -48,15 +48,26 @@
 
 5. **Generate SysML**:
 
-   **analysis/_index.sysml** - Update overview:
+   **analysis/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
    package Analysis {
        import SysMLPrimitives::*;
        import SystemArchitecture::*;
+       // CRITICAL: Import all sibling packages to avoid orphaned files
+       import PerformanceAnalysis::*;
+       import ReliabilityAnalysis::*;
+       import SecurityAnalysis::*;
+       import ObservabilityAnalysis::*;
 
        doc /**System analysis and quality attributes */
    }
    ```
+
+   **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
+   If modifying an existing index:
+   1. First use `SysMLRead("analysis/_index.sysml")` to see current content
+   2. Then use search/replace mode to ADD new imports after existing ones
+   3. Do NOT assume the file matches these examples - it may already have other imports
 
    **analysis/performance.sysml** - Add performance analysis:
    ```sysml
@@ -256,6 +267,82 @@
    }
    ```
 
+   **analysis/allocations.sysml** - Map behaviors to implementing modules:
+   ```sysml
+   package BehaviorAllocations {
+       import SysMLPrimitives::*;
+       import SystemArchitecture::*;
+       import SystemBehavior::*;
+
+       doc /**Maps operations to implementing modules for traceability */
+
+       // Allocation type for operation-to-module mapping
+       allocation def OperationAllocation :> BehaviorToModule {
+           doc /**Maps an operation to its implementing module */
+       }
+
+       // Allocate specific operations to modules
+       allocate RegisterUser to UserModule;
+       allocate Login to AuthModule;
+       allocate ProcessOrder to OrderModule;
+       allocate ProcessPayment to PaymentModule;
+
+       // Critical path allocations with metadata
+       @CriticalPath
+       allocate Checkout to CheckoutModule;
+   }
+   ```
+
+   **analysis/constraints.sysml** - Performance constraints and assertions:
+   ```sysml
+   package PerformanceConstraints {
+       import SysMLPrimitives::*;
+       import SystemArchitecture::*;
+
+       doc /**Performance constraints with expressions */
+
+       // Response time constraint
+       constraint def ResponseTimeLimit {
+           doc /**API response must be within limit */
+           in actual : Real;
+           in limit : Real = 200;
+           actual <= limit
+       }
+
+       // Throughput constraint
+       constraint def ThroughputMinimum {
+           doc /**System must handle minimum requests per second */
+           in actual : Real;
+           in minimum : Real = 100;
+           actual >= minimum
+       }
+
+       // Availability constraint
+       constraint def AvailabilityTarget {
+           doc /**System uptime must meet SLA */
+           in uptime : Real;
+           in target : Real = 99.9;
+           uptime >= target
+       }
+
+       // Apply constraints with assert
+       assert constraint apiResponseTime : ResponseTimeLimit {
+           in actual = system.measuredLatency;
+           in limit = 200;
+       }
+
+       assert constraint systemThroughput : ThroughputMinimum {
+           in actual = system.requestsPerSecond;
+           in minimum = 1000;
+       }
+
+       assert constraint systemAvailability : AvailabilityTarget {
+           in uptime = system.uptimePercent;
+           in target = 99.9;
+       }
+   }
+   ```
+
 ### Pattern Detection Guide
 
 | Pattern | Look For |
@@ -285,8 +372,55 @@ Write ONLY these files:
 - `analysis/reliability.sysml` - Reliability patterns and error handling
 - `analysis/security.sysml` - Security controls and posture
 - `analysis/observability.sysml` - Logging, metrics, tracing setup
+- `analysis/allocations.sysml` - Behavior-to-module mappings
+- `analysis/constraints.sysml` - Performance constraints with expressions
 
 This is the final cycle. You may also update the master `_model.sysml` index if needed.
+
+### Allocation and Constraint Patterns
+
+**Allocation Pattern** - Map behaviors to implementing modules:
+```sysml
+// Simple allocation
+allocate {Operation} to {Module};
+
+// With metadata
+@CriticalPath
+allocate {CriticalOperation} to {Module};
+
+// Typed allocation
+allocation {name} : OperationAllocation
+    allocate {Operation} to {Module};
+```
+
+**Constraint Pattern** - Define with expressions:
+```sysml
+constraint def {ConstraintName} {
+    in {param} : {Type};
+    in {limit} : {Type} = {default};
+    {param} <= {limit}  // or >=, ==, and, or
+}
+```
+
+**Assert Pattern** - Apply constraints:
+```sysml
+assert constraint {name} : {ConstraintDef} {
+    in {param} = {actualValue};
+    in {limit} = {targetValue};
+}
+```
+
+**Metadata Pattern** - Annotate critical elements:
+```sysml
+@CriticalPath
+action def ProcessPayment { /* ... */ }
+
+@SecurityCritical
+part def AuthModule { /* ... */ }
+
+@PerformanceSensitive
+action def SearchProducts { /* ... */ }
+```
 
 ### Success Criteria
 
@@ -294,6 +428,9 @@ This is the final cycle. You may also update the master `_model.sysml` index if 
 - [ ] Reliability patterns identified
 - [ ] Security controls analyzed
 - [ ] Observability setup documented
+- [ ] **Allocations** mapping operations to modules
+- [ ] **Constraints** with actual expressions (not just doc placeholders)
+- [ ] **Metadata annotations** for critical paths
 - [ ] Recommendations provided for gaps
 - [ ] Output is limited to `analysis/` directory (and optionally `_model.sysml`)
 

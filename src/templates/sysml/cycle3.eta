@@ -87,37 +87,75 @@ If Protobuf files are present:
 
 6. **Generate SysML**:
 
-   **data/_index.sysml** - Update overview:
+   **data/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
    package DataModel {
        import SysMLPrimitives::*;
+       // CRITICAL: Import all sibling packages to avoid orphaned files
+       import DomainEntities::*;
+       import DataTransferObjects::*;
+       import DomainEnums::*;
 
        doc /**Data structures discovered from {sources} */
    }
    ```
 
-   **data/entities.sysml** - Add domain entities:
+   **data/entities.sysml** - Add domain entities with specialization hierarchy:
    ```sysml
    package DomainEntities {
        import SysMLPrimitives::*;
+       import DataModel::*;
 
-       doc /**Core domain entities */
+       doc /**Core domain entities using specialization hierarchy */
 
-       item def User {
-           attribute id : Identifier;
+       // Base entity is defined in DataModel - specialize with :>
+       item def User :> BaseEntity {
+           // Source: src/models/user.ts
            attribute email : String;
            attribute name : String;
-           attribute createdAt : DateTime;
+           attribute role : UserRole;
            attribute status : UserStatus;
        }
 
-       // Relationships between entities
-       association def UserOrders {
+       // Further specialization
+       item def AdminUser :> User {
+           // Source: src/models/admin.ts
+           redefines role : UserRole = UserRole::Admin;
+           attribute permissions : String [0..*];
+           attribute department : String;
+       }
+
+       item def Order :> BaseEntity {
+           // Source: prisma/schema.prisma (Order model)
+           attribute userId : Identifier;
+           attribute total : Real;
+           attribute status : OrderStatus;
+           attribute items : OrderItem [1..*];
+       }
+
+       item def OrderItem {
+           // Source: prisma/schema.prisma (OrderItem model)
+           attribute productId : Identifier;
+           attribute quantity : Integer;
+           attribute unitPrice : Real;
+       }
+
+       // Relationships between entities using connection
+       connection def UserOrders {
+           doc /**User has many orders */
            end user : User [1];
            end orders : Order [0..*];
        }
+
+       connection def OrderItems {
+           doc /**Order contains line items */
+           end order : Order [1];
+           end items : OrderItem [1..*];
+       }
    }
    ```
+
+   **IMPORTANT**: Include `// Source: <filepath>` comments in your definitions to track where each entity came from. This helps with verification and traceability.
 
    **data/dtos.sysml** - Add DTOs:
    ```sysml
@@ -217,6 +255,70 @@ If Protobuf files are present:
 
 If a source field is named `state`, rename to `stateProvince` or `status` in SysML.
 
+### Specialization Patterns
+
+**Entity Specialization** - Use `:>` to inherit from base types:
+```sysml
+// All domain entities inherit from BaseEntity (in DataModel)
+item def {Entity} :> BaseEntity {
+    // BaseEntity provides: id, createdAt, updatedAt
+    attribute {field} : {Type};
+}
+
+// Further specialization for subtypes
+item def {SpecializedEntity} :> {Entity} {
+    redefines {field} : {Type} = {value};  // Override inherited field
+    attribute {newField} : {Type};
+}
+```
+
+**Relationship Pattern** - Model relationships between entities using connection:
+```sysml
+// One-to-many relationship
+connection def {EntityA}{EntityB}s {
+    doc /**{EntityA} has many {EntityB}s */
+    end {entityA} : {EntityA} [1];
+    end {entityB}s : {EntityB} [0..*];
+}
+
+// One-to-one relationship
+connection def {EntityA}{EntityB} {
+    end {entityA} : {EntityA} [1];
+    end {entityB} : {EntityB} [0..1];
+}
+
+// Many-to-many relationship
+connection def {EntityA}{EntityB}Mapping {
+    end {entityA}s : {EntityA} [0..*];
+    end {entityB}s : {EntityB} [0..*];
+}
+```
+
+**DTO Specialization** - Request/Response patterns:
+```sysml
+// Base DTO from DataModel
+item def {Create}{Entity}Request :> BaseDTO {
+    // Only fields needed for creation
+    attribute {field} : {Type};
+}
+
+item def {Entity}Response :> BaseDTO {
+    // Full entity representation for API responses
+    attribute id : Identifier;
+    attribute {field} : {Type};
+}
+```
+
+**Event Specialization** - Domain event patterns:
+```sysml
+// All events inherit from BaseDomainEvent
+item def {Entity}Created :> BaseDomainEvent {
+    // BaseDomainEvent provides: eventId, timestamp, eventType
+    attribute {entity}Id : Identifier;
+    attribute {field} : {Type};
+}
+```
+
 ### Type Sources by Language
 
 | Language | Type Sources |
@@ -259,12 +361,12 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 
 - [ ] **ALL schema entities captured** (if Prisma: every `model`; if GraphQL: every `type`)
 - [ ] **ALL schema enums captured** (if Prisma: every `enum`; if GraphQL: every `enum`)
-- [ ] All domain entities captured
-- [ ] All DTOs (request/response) captured
+- [ ] All domain entities captured with **specialization** (`:> BaseEntity`)
+- [ ] All DTOs (request/response) captured with **specialization** (`:> BaseDTO`)
 - [ ] All enumerations captured
-- [ ] Relationships between entities documented (Prisma `@relation`, GraphQL field references)
+- [ ] **Relationships** between entities documented (`connection def`)
 - [ ] Validation constraints extracted (`@unique`, `@@unique`, `@@index`)
-- [ ] Events captured (if event-driven architecture)
+- [ ] Events captured with **specialization** (`:> BaseDomainEvent`) if event-driven
 - [ ] Output is limited to `data/` directory only
 
 **Verification**: Ensure your SysML files include `// Source:` comments for every source file you processed. The validation system will check these comments against the manifest's sourceFiles patterns.

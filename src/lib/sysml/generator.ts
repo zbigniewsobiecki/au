@@ -109,6 +109,106 @@ export function generateStdlib(): string {
     constraint def NonNegative {
         doc /**Number must be greater than or equal to zero */
     }
+
+    // Constraint with expressions
+    constraint def LatencyBound {
+        doc /**Response time must be within limit */
+        in measured : Real;
+        in limit : Real;
+        measured <= limit
+    }
+
+    constraint def ValidRange {
+        doc /**Value must be within min/max bounds */
+        in value : Real;
+        in minVal : Real;
+        in maxVal : Real;
+        value >= minVal and value <= maxVal
+    }
+
+    // Port definitions for common patterns
+    port def DataPort {
+        doc /**Bidirectional data port */
+        in item request [0..*];
+        out item response [0..*];
+    }
+
+    port def EventPort {
+        doc /**Event emission port */
+        out item events [0..*];
+    }
+
+    port def ServicePort {
+        doc /**Service interface with request/response/error */
+        in item requests [0..*];
+        out item responses [0..*];
+        out item errors [0..*];
+    }
+
+    port def CommandPort {
+        doc /**Command input port */
+        in item commands [0..*];
+        out item results [0..*];
+    }
+
+    // Connection definitions
+    connection def DataConnection {
+        doc /**Binary data connection between components */
+        end source;
+        end target;
+    }
+
+    connection def ServiceConnection {
+        doc /**Service connection between client and server */
+        end client;
+        end server;
+    }
+
+    // Allocation base types
+    allocation def FunctionToComponent {
+        doc /**Maps functions/behaviors to implementing components */
+        end function;
+        end component;
+    }
+
+    allocation def RequirementToElement {
+        doc /**Maps requirements to satisfying elements */
+        end requirement;
+        end element;
+    }
+
+    allocation def BehaviorToModule {
+        doc /**Maps behavior definitions to module implementations */
+        end behavior;
+        end module;
+    }
+
+    // Enhanced metadata definitions
+    metadata def SourceFile {
+        doc /**Tracks source file origin for traceability */
+        attribute path : FilePath;
+        attribute line : Integer [0..1];
+    }
+
+    metadata def CriticalPath {
+        doc /**Marks elements on the critical execution path */
+    }
+
+    metadata def SecurityCritical {
+        doc /**Marks security-sensitive elements */
+    }
+
+    metadata def PerformanceSensitive {
+        doc /**Marks performance-critical elements */
+    }
+
+    metadata def Async {
+        doc /**Marks asynchronous operations */
+    }
+
+    metadata def Transactional {
+        doc /**Marks transactional boundaries */
+    }
 }
 `;
 }
@@ -251,17 +351,44 @@ export function generateStructureTemplate(): string {
     // Architecture style (to be set by analysis)
     attribute architectureStyle : String;
 
-    // Module definition
+    // Base module definition with ports
     part def Module {
         attribute path : FilePath;
         attribute responsibility : String;
         attribute layer : String [0..1];
     }
 
-    // Interface definition
+    // Service module with standard ports
+    part def ServiceModule :> Module {
+        doc /**Module that exposes a service interface */
+        port api : ServicePort;
+        port events : EventPort [0..1];
+    }
+
+    // Data module with database connectivity
+    part def DataModule :> Module {
+        doc /**Module that manages data persistence */
+        port data : DataPort;
+    }
+
+    // Interface definitions for module contracts
     interface def ModuleInterface {
-        attribute name : String;
-        attribute methods : String [0..*];
+        doc /**Contract between module provider and consumer */
+        end provider;
+        end consumer;
+    }
+
+    interface def ServiceInterface {
+        doc /**Service contract with typed endpoints */
+        end server : ServicePort;
+        end client : ~ServicePort;
+    }
+
+    // Connection patterns
+    connection def ModuleConnection {
+        doc /**Standard connection between modules */
+        end source;
+        end target;
     }
 
     // System decomposition (to be populated by analysis)
@@ -283,19 +410,47 @@ export function generateDataModelTemplate(): string {
 
     doc /**Data Model. Domain entities, data transfer objects, and enumerations. Data structures discovered from type definitions and schemas. */
 
+    // Base entity with common attributes - use :> for specialization
+    item def BaseEntity {
+        doc /**Common base for all domain entities */
+        attribute id : Identifier;
+        attribute createdAt : DateTime;
+        attribute updatedAt : DateTime;
+    }
+
+    // Base DTO for API transfers
+    item def BaseDTO {
+        doc /**Common base for data transfer objects */
+    }
+
+    // Base event for domain events
+    item def BaseDomainEvent {
+        doc /**Common base for domain events */
+        attribute eventId : Identifier;
+        attribute timestamp : DateTime;
+        attribute eventType : String;
+    }
+
+    // Relationship template for entity connections
+    connection def EntityRelation {
+        doc /**Template for entity relationships */
+        end source [1];
+        end target [0..*];
+    }
+
     // Entity definitions (to be populated by analysis)
     package Entities {
-        doc /**Domain entities */
+        doc /**Domain entities - specialize from BaseEntity */
     }
 
     // Data transfer objects (to be populated by analysis)
     package DTOs {
-        doc /**Request/Response shapes */
+        doc /**Request/Response shapes - specialize from BaseDTO */
     }
 
     // Events (to be populated by analysis)
     package Events {
-        doc /**Domain events */
+        doc /**Domain events - specialize from BaseDomainEvent */
     }
 
     // Enumerations (to be populated by analysis)
@@ -317,22 +472,58 @@ export function generateBehaviorTemplate(): string {
 
     doc /**System Behavior. Operations, state machines, and event handlers. Behavioral aspects of the system. */
 
-    // State machine template
+    // State machine template with transitions
     state def EntityLifecycle {
         doc /**Template for entity state machines */
 
+        entry;
         state Initial;
         state Processing;
         state Completed;
         state Error;
+
+        transition first entry then Initial;
+        transition first Initial then Processing;
+        transition first Processing then Completed;
+        transition first Processing then Error;
     }
 
-    // Operation template
+    // Operation template with flow pattern
     action def Operation {
-        doc /**Template for system operations */
+        doc /**Template for system operations with data flow */
 
         in input;
         out output;
+        out error [0..1];
+
+        action validate { out validated; }
+        action process { in data; out result; }
+        action respond { in result; }
+
+        // Data flows between steps
+        flow from input to validate;
+        flow from validate.validated to process.data;
+        flow from process.result to respond.result;
+        flow from respond to output;
+
+        // Control flow sequencing
+        first validate then process;
+        first process then respond;
+    }
+
+    // Event handler template
+    action def EventHandler {
+        doc /**Template for event-driven operations */
+
+        in event;
+
+        action handle { in eventData; out result; }
+        action notify { in result; }
+
+        flow from event to handle.eventData;
+        flow from handle.result to notify.result;
+
+        first handle then notify;
     }
 
     // Operations (to be populated by analysis)
@@ -406,6 +597,7 @@ export function generateAnalysisTemplate(): string {
   return `package Analysis {
     import SysMLPrimitives::*;
     import SystemArchitecture::*;
+    import SystemBehavior::*;
 
     doc /**Analysis. Non-functional analysis and system properties. System analysis and quality attributes. */
 
@@ -456,6 +648,42 @@ export function generateAnalysisTemplate(): string {
         attribute hasMetrics : Boolean = false;
         attribute hasTracing : Boolean = false;
         attribute hasAlerting : Boolean = false;
+    }
+
+    // Performance constraint definitions
+    constraint def ResponseTimeConstraint {
+        doc /**Response time must be within acceptable limit */
+        in measured : Real;
+        in limit : Real;
+        measured <= limit
+    }
+
+    constraint def ThroughputConstraint {
+        doc /**Throughput must meet minimum requirement */
+        in actual : Real;
+        in minimum : Real;
+        actual >= minimum
+    }
+
+    constraint def AvailabilityConstraint {
+        doc /**Availability must meet SLA */
+        in uptime : Real;
+        in target : Real;
+        uptime >= target
+    }
+
+    // Allocation definitions for traceability
+    package BehaviorAllocations {
+        doc /**Maps behaviors to implementing modules */
+
+        allocation def OperationToModule :> BehaviorToModule {
+            doc /**Maps operations to their implementing modules */
+        }
+    }
+
+    // Performance requirements
+    package PerformanceConstraints {
+        doc /**Performance constraints and assertions */
     }
 
     // Analysis instances (to be populated by analysis)

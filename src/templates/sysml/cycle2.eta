@@ -52,11 +52,15 @@ Include `// Source: <filepath>` comments to track which files have been covered.
 
 4. **Generate SysML**:
 
-   **structure/_index.sysml** - Update architecture overview:
+   **structure/_index.sysml** - Update architecture overview (MUST import all sibling packages):
    ```sysml
    package SystemArchitecture {
        import SysMLPrimitives::*;
        import SystemContext::*;
+       // CRITICAL: Import all sibling packages to avoid orphaned files
+       import SystemModules::*;
+       import SystemInterfaces::*;
+       import SystemConnections::*;
 
        doc /**Architecture: {style} */
 
@@ -77,47 +81,143 @@ Include `// Source: <filepath>` comments to track which files have been covered.
    }
    ```
 
-   **structure/modules.sysml** - Add discovered modules:
+   **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
+   If modifying an existing index:
+   1. First use `SysMLRead("structure/_index.sysml")` to see current content
+   2. Then use search/replace mode to ADD new imports after existing ones
+   3. Do NOT assume the file matches these examples - it may already have other imports
+
+   **structure/modules.sysml** - Add discovered modules with ports:
    ```sysml
    package SystemModules {
        import SysMLPrimitives::*;
        import SystemArchitecture::*;
+       import SystemInterfaces::*;
 
-       doc /**System module decomposition */
+       doc /**System module decomposition with typed ports */
 
-       // Example module
-       part authModule : Module {
+       // Use specialization :> for module types
+       part def AuthModule :> ServiceModule {
+           doc /**Authentication and authorization module */
            :>> path = "src/auth";
            :>> responsibility = "Authentication and authorization";
            :>> layer = "service";
 
-           port authInterface : AuthInterface;
+           // Typed port with directional items
+           port authApi : AuthPort;
+           port tokenEvents : EventPort;
        }
 
-       // Module connections
-       // IMPORTANT: 'connection' keyword is REQUIRED - bare 'connect' is invalid!
-       connection apiToAuth connect apiModule.authPort to authModule.authInterface;
+       part def UserModule :> ServiceModule {
+           doc /**User management module */
+           :>> path = "src/users";
+           :>> responsibility = "User management";
+           :>> layer = "service";
+
+           port userApi : UserServicePort;
+           port dbAccess : ~DataPort;  // Conjugated - consumes data
+       }
+
+       part def ApiGateway :> Module {
+           doc /**API gateway and routing */
+           :>> path = "src/api";
+           :>> responsibility = "Request routing and validation";
+           :>> layer = "presentation";
+
+           // Client ports (conjugated to consume services)
+           port authClient : ~AuthPort;
+           port userClient : ~UserServicePort;
+       }
+
+       // Module instances
+       part authModule : AuthModule;
+       part userModule : UserModule;
+       part apiGateway : ApiGateway;
+
+       // Module connections (REQUIRED: 'connection' keyword!)
+       connection apiToAuth connect apiGateway.authClient to authModule.authApi;
+       connection apiToUser connect apiGateway.userClient to userModule.userApi;
    }
    ```
 
-   **structure/interfaces.sysml** - Define module interfaces:
+   **structure/interfaces.sysml** - Define module interfaces with ports:
    ```sysml
    package SystemInterfaces {
        import SysMLPrimitives::*;
 
-       doc /**Module interface definitions */
+       doc /**Module interface definitions with typed ports */
 
-       // Note: interface def contains attributes/ports, NOT methods with in/out
-       interface def AuthInterface {
-           attribute operations : String [0..*];
-       }
-
-       // For detailed API contracts, use port def instead:
+       // Port definitions for module communication contracts
+       // Use 'in item' and 'out item' for typed data flow
        port def AuthPort {
-           attribute login : String;
-           attribute refresh : String;
-           attribute logout : String;
+           doc /**Authentication service port */
+           in item credentials : LoginRequest;
+           out item tokens : TokenResponse;
+           out item error : AuthError [0..1];
        }
+
+       port def UserServicePort {
+           doc /**User management service port */
+           in item createUser : CreateUserRequest;
+           in item updateUser : UpdateUserRequest;
+           out item user : User;
+           out item error : ServiceError [0..1];
+       }
+
+       port def DataPort {
+           doc /**Generic data access port */
+           in item query [0..*];
+           out item results [0..*];
+       }
+
+       // Interface definitions connect provider and consumer ports
+       interface def AuthInterface {
+           doc /**Authentication contract between client and server */
+           end provider : AuthPort;
+           end consumer : ~AuthPort;  // Conjugated (directions flipped)
+       }
+
+       interface def ServiceInterface {
+           doc /**Generic service contract */
+           end server : ServicePort;
+           end client : ~ServicePort;
+       }
+   }
+   ```
+
+   **structure/connections.sysml** - Inter-module wiring:
+   ```sysml
+   package SystemConnections {
+       import SysMLPrimitives::*;
+       import SystemModules::*;
+       import SystemInterfaces::*;
+
+       doc /**Module connections and wiring */
+
+       // Named connection types
+       connection def ServiceConnection {
+           doc /**Service-to-service connection */
+           end client;
+           end server;
+       }
+
+       connection def DataConnection {
+           doc /**Data access connection */
+           end source;
+           end target;
+       }
+
+       // Typed interface usage
+       interface authContract : AuthInterface connect
+           provider ::> authModule.authPort to
+           consumer ::> apiModule.authClient;
+
+       // Simple module connections
+       connection userToDb : DataConnection
+           connect userModule.dbPort to database.clientPort;
+
+       connection apiToUser : ServiceConnection
+           connect apiModule.userClient to userModule.api;
    }
    ```
 
@@ -150,9 +250,41 @@ Include `// Source: <filepath>` comments to track which files have been covered.
 
 Write ONLY these files:
 - `structure/_index.sysml` - Architecture overview and module definitions
-- `structure/modules.sysml` - Detailed module decomposition
-- `structure/interfaces.sysml` - Module interface definitions
-- `structure/connections.sysml` - Inter-module wiring (optional)
+- `structure/modules.sysml` - Module decomposition with typed ports
+- `structure/interfaces.sysml` - Port and interface definitions
+- `structure/connections.sysml` - Inter-module connections and wiring
+
+### Port and Interface Patterns
+
+**Port Definition Pattern** - Define typed communication contracts:
+```sysml
+port def {Service}Port {
+    in item {request} : {RequestType};
+    out item {response} : {ResponseType};
+    out item error : {ErrorType} [0..1];
+}
+```
+
+**Interface Definition Pattern** - Connect provider and consumer:
+```sysml
+interface def {Service}Interface {
+    end provider : {Service}Port;
+    end consumer : ~{Service}Port;
+}
+```
+
+**Module Specialization Pattern** - Inherit from base module types:
+```sysml
+part def {Name}Module :> ServiceModule {
+    port api : {Service}Port;
+    port db : ~DataPort;
+}
+```
+
+**Connection Pattern** - Wire modules together:
+```sysml
+connection {name} connect {source}.{port} to {target}.{port};
+```
 
 **IMPORTANT**: Do NOT write to context/, data/, behavior/, verification/, or analysis/ directories.
 This cycle focuses ONLY on architectural structure. Data models, behaviors, etc. will be handled in later cycles.
@@ -167,8 +299,10 @@ This cycle focuses ONLY on architectural structure. Data models, behaviors, etc.
 
 - [ ] All major directories mapped to modules
 - [ ] Architecture style correctly identified
-- [ ] Module interfaces defined
-- [ ] Inter-module connections documented
+- [ ] **Port definitions** created for each module's communication contract
+- [ ] **Interface definitions** for inter-module contracts
+- [ ] **Module specialization** hierarchies (`:>` from base types)
+- [ ] **Connections** linking modules via ports
 - [ ] Layer assignments are consistent
 - [ ] Output is limited to `structure/` directory only
 

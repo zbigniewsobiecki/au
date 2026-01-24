@@ -1,20 +1,20 @@
 /**
  * SysML Query Gadget
  * Queries the SysML model for entities, relationships, and cross-references.
- * Uses the sysml-parser to parse and traverse the AST.
+ * Uses the sysml2 CLI to parse and extract semantic information.
  */
 
 import { createGadget, z } from "llmist";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { parseDocument } from "../lib/sysml/sysml-parser-loader.js";
+import { runSysml2 } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
 interface DefinitionInfo {
   name: string;
   type: string;
   file: string;
-  line?: number;
+  qualifiedName: string;
   specializes?: string[];
   doc?: string;
 }
@@ -34,158 +34,58 @@ interface QueryResult {
 }
 
 /**
- * Extract the name from a Name AST node.
+ * Map sysml2 element type to human-readable definition type.
  */
-function extractName(nameNode: unknown): string | undefined {
-  if (!nameNode) return undefined;
-  // Name can be an identifier or a string literal
-  const node = nameNode as { name?: string; value?: string };
-  return node.name ?? node.value;
-}
-
-/**
- * Extract qualified name parts from a QualifiedName node.
- */
-function extractQualifiedName(qn: unknown): string | undefined {
-  if (!qn) return undefined;
-  const node = qn as { names?: unknown[] };
-  if (Array.isArray(node.names)) {
-    return node.names.map(extractName).filter(Boolean).join("::");
-  }
-  return extractName(qn);
-}
-
-/**
- * Extract doc comment from an element if present.
- */
-function extractDoc(element: unknown): string | undefined {
-  const el = element as { doc?: { text?: string } };
-  if (el.doc?.text) {
-    // Strip comment markers
-    return el.doc.text
-      .replace(/^\/\*\*?\s*/, "")
-      .replace(/\s*\*\/$/, "")
-      .replace(/^\s*\*\s?/gm, "")
-      .trim();
-  }
-  return undefined;
-}
-
-/**
- * Get the definition type as a string.
- */
-function getDefinitionType(element: unknown): string | undefined {
-  const el = element as { $type?: string };
+function mapElementType(type: string): string {
+  // sysml2 returns types like "PartDef", "ActionDef", "Package"
   const typeMap: Record<string, string> = {
-    PackageBody: "package",
-    PartDefinition: "part def",
-    ActionDefinition: "action def",
-    ItemDefinition: "item def",
-    AttributeDefinition: "attribute def",
-    PortDefinition: "port def",
-    ConnectionDefinition: "connection def",
-    InterfaceDefinition: "interface def",
-    EnumerationDefinition: "enum def",
-    StateDefinition: "state def",
-    ConstraintDefinition: "constraint def",
-    RequirementDefinition: "requirement def",
-    UseCaseDefinition: "use case def",
-    ViewDefinition: "view def",
-    ViewpointDefinition: "viewpoint def",
-    AllocationDefinition: "allocation def",
+    Package: "package",
+    PartDef: "part def",
+    ActionDef: "action def",
+    ItemDef: "item def",
+    AttributeDef: "attribute def",
+    PortDef: "port def",
+    ConnectionDef: "connection def",
+    InterfaceDef: "interface def",
+    EnumerationDef: "enum def",
+    StateDef: "state def",
+    ConstraintDef: "constraint def",
+    RequirementDef: "requirement def",
+    UseCaseDef: "use case def",
+    ViewDef: "view def",
+    ViewpointDef: "viewpoint def",
+    AllocationDef: "allocation def",
+    FlowDef: "flow def",
+    CalculationDef: "calc def",
+    CaseDef: "case def",
+    AnalysisCaseDef: "analysis def",
+    VerificationCaseDef: "verification def",
+    ConcernDef: "concern def",
+    RenderingDef: "rendering def",
+    MetadataDef: "metadata def",
+    OccurrenceDef: "occurrence def",
   };
-  return typeMap[el.$type ?? ""] ?? el.$type;
+  return typeMap[type] ?? type.replace(/Def$/, " def").toLowerCase();
 }
 
 /**
- * Check if an element is a definition type.
+ * Check if an element type is a definition type.
  */
-function isDefinitionElement(element: unknown): boolean {
-  const el = element as { $type?: string };
-  return !!(el.$type && getDefinitionType(el));
+function isDefinitionType(type: string): boolean {
+  return type.endsWith("Def") || type === "Package";
 }
 
 /**
- * Extract definitions from an AST.
- * The ast is a RootNamespace with namespaceElements.
- */
-function extractDefinitions(ast: { namespaceElements: unknown[] }, filePath: string): DefinitionInfo[] {
-  const definitions: DefinitionInfo[] = [];
-
-  function traverse(elements: unknown[], parentPkg?: string): void {
-    if (!Array.isArray(elements)) return;
-
-    for (const el of elements) {
-      const element = el as {
-        $type?: string;
-        element?: unknown;
-        elements?: unknown[];
-        visibility?: unknown;
-        name?: unknown;
-        specializations?: unknown[];
-        body?: { elements?: unknown[] };
-      };
-
-      if (element.$type === "OwningMembership" && element.element) {
-        const innerEl = element.element as {
-          $type?: string;
-          name?: unknown;
-          specializations?: unknown[];
-          body?: { elements?: unknown[] };
-          elements?: unknown[];
-        };
-
-        if (innerEl.$type === "PackageBody") {
-          const pkgName = extractName(innerEl.name);
-          if (pkgName) {
-            definitions.push({
-              name: parentPkg ? `${parentPkg}::${pkgName}` : pkgName,
-              type: "package",
-              file: filePath,
-              doc: extractDoc(innerEl),
-            });
-            // Recurse into package
-            if (innerEl.elements) {
-              traverse(innerEl.elements, parentPkg ? `${parentPkg}::${pkgName}` : pkgName);
-            }
-          }
-        } else if (isDefinitionElement(innerEl)) {
-          const defName = extractName(innerEl.name);
-          const defType = getDefinitionType(innerEl);
-          if (defName && defType) {
-            const specializes = innerEl.specializations
-              ?.map(extractQualifiedName)
-              .filter((s): s is string => !!s);
-            definitions.push({
-              name: parentPkg ? `${parentPkg}::${defName}` : defName,
-              type: defType,
-              file: filePath,
-              specializes: specializes?.length ? specializes : undefined,
-              doc: extractDoc(innerEl),
-            });
-            // Recurse into body for nested definitions
-            if (innerEl.body?.elements) {
-              traverse(innerEl.body.elements, parentPkg ? `${parentPkg}::${defName}` : defName);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  traverse(ast.namespaceElements);
-  return definitions;
-}
-
-/**
- * Scan all SysML files and extract their definitions.
+ * Scan all SysML files and extract their definitions using sysml2 JSON output.
  */
 async function scanSysmlFiles(): Promise<{
   definitions: DefinitionInfo[];
+  relationships: RelationshipInfo[];
   files: { path: string; content: string }[];
 }> {
   const sysmlDir = ".sysml";
   const definitions: DefinitionInfo[] = [];
+  const relationships: RelationshipInfo[] = [];
   const files: { path: string; content: string }[] = [];
 
   async function scanDir(dir: string, prefix: string = ""): Promise<void> {
@@ -202,11 +102,31 @@ async function scanSysmlFiles(): Promise<{
             const content = await readFile(fullPath, "utf-8");
             files.push({ path: relativePath, content });
 
-            const parseResult = await parseDocument(content, `memory://${relativePath}`);
-            if (parseResult.ast && !parseResult.hasErrors) {
-              const ast = parseResult.ast as { namespaceElements: unknown[] };
-              const defs = extractDefinitions(ast, relativePath);
-              definitions.push(...defs);
+            // Use sysml2 -f json for semantic model
+            const result = await runSysml2(content, { json: true });
+
+            // Extract definitions from elements
+            for (const elem of result.elements) {
+              if (isDefinitionType(elem.type)) {
+                definitions.push({
+                  name: elem.name,
+                  type: mapElementType(elem.type),
+                  file: relativePath,
+                  qualifiedName: elem.id,
+                });
+              }
+            }
+
+            // Extract relationships
+            for (const rel of result.relationships) {
+              if (rel.kind === "specializes" || rel.kind === "Specialization") {
+                relationships.push({
+                  source: rel.source,
+                  target: rel.target,
+                  type: "specializes",
+                  file: relativePath,
+                });
+              }
             }
           } catch {
             // Skip files that can't be parsed
@@ -219,7 +139,7 @@ async function scanSysmlFiles(): Promise<{
   }
 
   await scanDir(sysmlDir);
-  return { definitions, files };
+  return { definitions, relationships, files };
 }
 
 export const sysmlQuery = createGadget({
@@ -254,7 +174,7 @@ export const sysmlQuery = createGadget({
       .describe("Relationship traversal depth (default: 1, max: 3)"),
   }),
   execute: async ({ reason: _reason, query, type = "entity", depth = 1 }) => {
-    const { definitions, files } = await scanSysmlFiles();
+    const { definitions, relationships, files } = await scanSysmlFiles();
 
     if (definitions.length === 0) {
       return "No SysML model found. Run `au sysml:ingest` first to generate the model.";
@@ -267,7 +187,8 @@ export const sysmlQuery = createGadget({
       case "entity": {
         // Search by name or type
         const matches = definitions.filter((d) => {
-          const nameMatch = d.name.toLowerCase().includes(queryLower);
+          const nameMatch = d.name.toLowerCase().includes(queryLower) ||
+                           d.qualifiedName.toLowerCase().includes(queryLower);
           const typeMatch = d.type.toLowerCase() === queryLower;
           return nameMatch || typeMatch;
         });
@@ -282,13 +203,21 @@ export const sysmlQuery = createGadget({
 
       case "relationship": {
         // Find relationships involving the query entity
-        const relationships: RelationshipInfo[] = [];
+        const matchedRelationships: RelationshipInfo[] = [];
 
-        // Find definitions that specialize the query
+        // Find relationships where query is source or target
+        for (const rel of relationships) {
+          if (rel.source.toLowerCase().includes(queryLower) ||
+              rel.target.toLowerCase().includes(queryLower)) {
+            matchedRelationships.push(rel);
+          }
+        }
+
+        // Also find definitions that might specialize the query
         for (const def of definitions) {
           if (def.specializes?.some((s) => s.toLowerCase().includes(queryLower))) {
-            relationships.push({
-              source: def.name,
+            matchedRelationships.push({
+              source: def.qualifiedName,
               target: def.specializes.find((s) => s.toLowerCase().includes(queryLower)) ?? query,
               type: "specializes",
               file: def.file,
@@ -296,24 +225,11 @@ export const sysmlQuery = createGadget({
           }
         }
 
-        // Find if query entity specializes something
-        const queryEntity = definitions.find((d) => d.name.toLowerCase() === queryLower);
-        if (queryEntity?.specializes) {
-          for (const spec of queryEntity.specializes) {
-            relationships.push({
-              source: queryEntity.name,
-              target: spec,
-              type: "specializes",
-              file: queryEntity.file,
-            });
-          }
-        }
-
-        if (relationships.length === 0) {
+        if (matchedRelationships.length === 0) {
           return `No relationships found involving "${query}".`;
         }
 
-        result.relationships = relationships;
+        result.relationships = matchedRelationships;
         break;
       }
 
@@ -382,14 +298,15 @@ export const sysmlQuery = createGadget({
           }
         } else {
           for (const pkg of matchingPkgs) {
-            const prefix = pkg.name + "::";
+            const prefix = pkg.qualifiedName + "::";
             const defs = definitions.filter(
-              (d) => d.name.startsWith(prefix) && d.name.split("::").length === pkg.name.split("::").length + 1
+              (d) => d.qualifiedName.startsWith(prefix) &&
+                     d.qualifiedName.split("::").length === pkg.qualifiedName.split("::").length + 1
             );
             packages.push({
               name: pkg.name,
               file: pkg.file,
-              definitions: defs.map((d) => `${d.type} ${d.name.replace(prefix, "")}`),
+              definitions: defs.map((d) => `${d.type} ${d.name}`),
             });
           }
         }
@@ -410,6 +327,9 @@ export const sysmlQuery = createGadget({
       lines.push(`## Entities matching "${query}":\n`);
       for (const e of result.entities) {
         lines.push(`- **${e.type}** ${e.name} (${e.file})`);
+        if (e.qualifiedName !== e.name) {
+          lines.push(`  qualified: ${e.qualifiedName}`);
+        }
         if (e.specializes?.length) {
           lines.push(`  specializes: ${e.specializes.join(", ")}`);
         }

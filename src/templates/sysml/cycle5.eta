@@ -53,12 +53,15 @@ Before finishing, verify your counts are close to these targets.
 
 5. **Generate SysML**:
 
-   **verification/_index.sysml** - Update overview:
+   **verification/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
    package Verification {
        import SysMLPrimitives::*;
        import SystemRequirements::*;
        import SystemBehavior::*;
+       // CRITICAL: Import all sibling packages to avoid orphaned files
+       import TestMappings::*;
+       import CoverageAnalysis::*;
 
        doc /**Verification and test coverage */
 
