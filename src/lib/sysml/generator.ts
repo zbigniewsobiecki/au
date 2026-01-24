@@ -43,171 +43,159 @@ export function formatDocComment(text: string, indentLevel: number = 0): string 
   const prefix = indent(indentLevel);
   const lines = text.split("\n");
   if (lines.length === 1) {
-    return `${prefix}doc /** ${text} */`;
+    return `${prefix}doc /* ${text} */`;
   }
-  return `${prefix}doc /**\n${lines.map((l) => `${prefix} * ${l}`).join("\n")}\n${prefix} */`;
+  return `${prefix}doc /*\n${lines.map((l) => `${prefix} * ${l}`).join("\n")}\n${prefix} */`;
 }
 
 /**
  * Generate the SysML stdlib file.
+ * Self-contained standard library - all types in one package with no external dependencies.
  */
 export function generateStdlib(): string {
   return `standard library package SysMLPrimitives {
-    doc /**SysML v2 Standard Library Primitives. Provides base types and common definitions for the model. */
+    doc /*
+     * AU SysML v2 Primitives for software project modeling.
+     * Self-contained - no external dependencies required.
+     * All model files should import SysMLPrimitives::* to access these types.
+     */
 
-    // Primitive value types
+    // ========== PRIMITIVE DATATYPES ==========
+    // These can be used to type attributes: \`attribute x : String;\`
     datatype String;
     datatype Integer;
     datatype Real;
     datatype Boolean;
     datatype DateTime;
     datatype Duration;
+    datatype Identifier;
+    datatype URL;
+    datatype FilePath;
+    datatype JSON;
 
-    // Common identifier type
-    datatype Identifier :> String;
-
-    // URL type for references
-    datatype URL :> String;
-
-    // Path type for file references
-    datatype FilePath :> String;
-
-    // Common units
-    attribute def Milliseconds :> Duration;
-    attribute def Seconds :> Duration;
-    attribute def Minutes :> Duration;
-
-    // Stereotypes (annotations)
-    metadata def external;
-    metadata def internal;
-    metadata def deprecated;
-    metadata def required;
-    metadata def optional;
-
-    // Common enumeration for status
-    enum def Status {
-        Pending;
-        InProgress;
-        Completed;
-        Failed;
-        Cancelled;
+    // ========== BASE ITEM TYPES ==========
+    abstract item def Item {
+        doc /*Base for all domain items */
     }
 
-    // Common constraint patterns
+    item def Entity :> Item {
+        doc /*Domain entity with identity */
+        attribute id : Identifier;
+        attribute createdAt : DateTime;
+        attribute updatedAt : DateTime;
+    }
+
+    item def DTO :> Item {
+        doc /*Data transfer object */
+    }
+
+    item def DomainEvent :> Item {
+        doc /*Domain event */
+        attribute eventId : Identifier;
+        attribute eventType : String;
+        attribute timestamp : DateTime;
+    }
+
+    // ========== BASE PART TYPES ==========
+    abstract part def Part {
+        doc /*Base for system components */
+    }
+
+    part def Module :> Part {
+        doc /*Software module */
+        attribute path : FilePath;
+        attribute layer : String;
+    }
+
+    // ========== PORT TYPES ==========
+    abstract port def Port {
+        doc /*Base connection point */
+    }
+
+    port def DataPort :> Port {
+        doc /*Data exchange port */
+    }
+
+    port def EventPort :> Port {
+        doc /*Event emission port */
+    }
+
+    port def ServicePort :> Port {
+        doc /*Service interface port */
+    }
+
+    // ========== CONNECTIONS ==========
+    connection def DataFlow {
+        end source;
+        end target;
+    }
+
+    connection def ServiceBinding {
+        end client;
+        end server;
+    }
+
+    // ========== ALLOCATIONS ==========
+    allocation def Implements {
+        end requirement;
+        end implementation;
+    }
+
+    allocation def BehaviorToModule {
+        doc /*Maps behavior definitions to module implementations */
+        end behavior;
+        end module;
+    }
+
+    // ========== METADATA ==========
+    metadata def SourceRef {
+        attribute file : FilePath;
+        attribute line : Integer;
+    }
+
+    metadata def Deprecated;
+    metadata def SecurityCritical;
+    metadata def PerformanceCritical;
+    metadata def Async;
+
+    // ========== COMMON ENUMS ==========
+    enum def LifecycleStatus {
+        Draft;
+        Active;
+        Deprecated;
+        Archived;
+    }
+
+    // ========== CONSTRAINT PATTERNS ==========
     constraint def NotNull {
-        doc /**Value must not be null */
+        doc /*Value must not be null */
     }
 
     constraint def NotEmpty {
-        doc /**String/collection must not be empty */
+        doc /*String/collection must not be empty */
     }
 
     constraint def Positive {
-        doc /**Number must be greater than zero */
+        doc /*Number must be greater than zero */
     }
 
     constraint def NonNegative {
-        doc /**Number must be greater than or equal to zero */
+        doc /*Number must be greater than or equal to zero */
     }
 
-    // Constraint with expressions
     constraint def LatencyBound {
-        doc /**Response time must be within limit */
+        doc /*Response time must be within limit */
         in measured : Real;
         in limit : Real;
         measured <= limit
     }
 
     constraint def ValidRange {
-        doc /**Value must be within min/max bounds */
+        doc /*Value must be within min/max bounds */
         in value : Real;
         in minVal : Real;
         in maxVal : Real;
         value >= minVal and value <= maxVal
-    }
-
-    // Port definitions for common patterns
-    port def DataPort {
-        doc /**Bidirectional data port */
-        in item request [0..*];
-        out item response [0..*];
-    }
-
-    port def EventPort {
-        doc /**Event emission port */
-        out item events [0..*];
-    }
-
-    port def ServicePort {
-        doc /**Service interface with request/response/error */
-        in item requests [0..*];
-        out item responses [0..*];
-        out item errors [0..*];
-    }
-
-    port def CommandPort {
-        doc /**Command input port */
-        in item commands [0..*];
-        out item results [0..*];
-    }
-
-    // Connection definitions
-    connection def DataConnection {
-        doc /**Binary data connection between components */
-        end source;
-        end target;
-    }
-
-    connection def ServiceConnection {
-        doc /**Service connection between client and server */
-        end client;
-        end server;
-    }
-
-    // Allocation base types
-    allocation def FunctionToComponent {
-        doc /**Maps functions/behaviors to implementing components */
-        end function;
-        end component;
-    }
-
-    allocation def RequirementToElement {
-        doc /**Maps requirements to satisfying elements */
-        end requirement;
-        end element;
-    }
-
-    allocation def BehaviorToModule {
-        doc /**Maps behavior definitions to module implementations */
-        end behavior;
-        end module;
-    }
-
-    // Enhanced metadata definitions
-    metadata def SourceFile {
-        doc /**Tracks source file origin for traceability */
-        attribute path : FilePath;
-        attribute line : Integer [0..1];
-    }
-
-    metadata def CriticalPath {
-        doc /**Marks elements on the critical execution path */
-    }
-
-    metadata def SecurityCritical {
-        doc /**Marks security-sensitive elements */
-    }
-
-    metadata def PerformanceSensitive {
-        doc /**Marks performance-critical elements */
-    }
-
-    metadata def Async {
-        doc /**Marks asynchronous operations */
-    }
-
-    metadata def Transactional {
-        doc /**Marks transactional boundaries */
     }
 }
 `;
@@ -222,7 +210,7 @@ export function generateProjectFile(metadata: ProjectMetadata): string {
   return `package ProjectMetadata {
     import SysMLPrimitives::*;
 
-    doc /**Project Metadata. Auto-discovered from ${escapeSysmlString(metadata.manifestFile ?? "codebase analysis")}. Project: ${escapeSysmlString(metadata.name)} */
+    doc /*Project Metadata. Auto-discovered from ${escapeSysmlString(metadata.manifestFile ?? "codebase analysis")}. Project: ${escapeSysmlString(metadata.name)} */
     comment /** META: ${metaJson} */
 
     // Project identification
@@ -280,7 +268,7 @@ export function generateSystemContext(metadata: ProjectMetadata): string {
     import SysMLPrimitives::*;
     import ProjectMetadata::*;
 
-    doc /**System Context. Defines the system boundary and external dependencies. Discovered from ${escapeSysmlString(metadata.manifestFile ?? "codebase analysis")}. System context for ${escapeSysmlString(metadata.name)} */
+    doc /*System Context. Defines the system boundary and external dependencies. Discovered from ${escapeSysmlString(metadata.manifestFile ?? "codebase analysis")}. System context for ${escapeSysmlString(metadata.name)} */
 
     // External dependency definition
     part def ExternalDependency {
@@ -294,7 +282,7 @@ ${externalDeps}
 
     // System boundary
     part def System {
-        doc /**The ${escapeSysmlString(metadata.name)} system */
+        doc /*The ${escapeSysmlString(metadata.name)} system */
 
         // Entry points
 ${metadata.entryPoints.map((ep) => `        attribute entryPoint_${pathToIdentifier(ep)} : FilePath = "${escapeSysmlString(ep)}";`).join("\n")}
@@ -316,7 +304,7 @@ export function generateRequirements(metadata: ProjectMetadata): string {
   return `package SystemRequirements {
     import SysMLPrimitives::*;
 
-    doc /**System Requirements. Requirements extracted from documentation and codebase analysis for ${escapeSysmlString(metadata.name)}. */
+    doc /*System Requirements. Requirements extracted from documentation and codebase analysis for ${escapeSysmlString(metadata.name)}. */
 
     // Requirement definition
     requirement def DiscoveredRequirement {
@@ -327,12 +315,12 @@ export function generateRequirements(metadata: ProjectMetadata): string {
 
     // Functional requirements (to be populated by analysis)
     package FunctionalRequirements {
-        doc /**Functional requirements discovered from documentation */
+        doc /*Functional requirements discovered from documentation */
     }
 
     // Non-functional requirements (to be populated by analysis)
     package NonFunctionalRequirements {
-        doc /**Non-functional requirements discovered from documentation */
+        doc /*Non-functional requirements discovered from documentation */
     }
 }
 `;
@@ -346,13 +334,14 @@ export function generateStructureTemplate(): string {
     import SysMLPrimitives::*;
     import SystemContext::*;
 
-    doc /**System Architecture. Module structure and organization discovered from codebase analysis. */
+    doc /*System Architecture. Module structure and organization discovered from codebase analysis. */
 
     // Architecture style (to be set by analysis)
     attribute architectureStyle : String;
 
-    // Base module definition with ports
-    part def Module {
+    // Base module definition - extends Part for standard library compatibility
+    part def Module :> Part {
+        doc /*Base module - aligns with Parts::Part */
         attribute path : FilePath;
         attribute responsibility : String;
         attribute layer : String [0..1];
@@ -360,40 +349,40 @@ export function generateStructureTemplate(): string {
 
     // Service module with standard ports
     part def ServiceModule :> Module {
-        doc /**Module that exposes a service interface */
+        doc /*Module that exposes a service interface */
         port api : ServicePort;
         port events : EventPort [0..1];
     }
 
     // Data module with database connectivity
     part def DataModule :> Module {
-        doc /**Module that manages data persistence */
+        doc /*Module that manages data persistence */
         port data : DataPort;
     }
 
     // Interface definitions for module contracts
     interface def ModuleInterface {
-        doc /**Contract between module provider and consumer */
+        doc /*Contract between module provider and consumer */
         end provider;
         end consumer;
     }
 
     interface def ServiceInterface {
-        doc /**Service contract with typed endpoints */
+        doc /*Service contract with typed endpoints */
         end server : ServicePort;
         end client : ~ServicePort;
     }
 
     // Connection patterns
     connection def ModuleConnection {
-        doc /**Standard connection between modules */
+        doc /*Standard connection between modules */
         end source;
         end target;
     }
 
     // System decomposition (to be populated by analysis)
     part def SystemDecomposition {
-        doc /**System broken down into modules */
+        doc /*System broken down into modules */
     }
 
     part decomposition : SystemDecomposition;
@@ -408,24 +397,24 @@ export function generateDataModelTemplate(): string {
   return `package DataModel {
     import SysMLPrimitives::*;
 
-    doc /**Data Model. Domain entities, data transfer objects, and enumerations. Data structures discovered from type definitions and schemas. */
+    doc /*Data Model. Domain entities, data transfer objects, and enumerations. Data structures discovered from type definitions and schemas. */
 
-    // Base entity with common attributes - use :> for specialization
-    item def BaseEntity {
-        doc /**Common base for all domain entities */
+    // Base entity with common attributes - extends Item for standard library compatibility
+    item def BaseEntity :> Item {
+        doc /*Common base for domain entities. Aligns with Items::Item. */
         attribute id : Identifier;
         attribute createdAt : DateTime;
         attribute updatedAt : DateTime;
     }
 
-    // Base DTO for API transfers
-    item def BaseDTO {
-        doc /**Common base for data transfer objects */
+    // Base DTO for API transfers - extends Item
+    item def BaseDTO :> Item {
+        doc /*Common base for data transfer objects. Aligns with Items::Item. */
     }
 
-    // Base event for domain events
-    item def BaseDomainEvent {
-        doc /**Common base for domain events */
+    // Base event for domain events - extends Item
+    item def BaseDomainEvent :> Item {
+        doc /*Common base for domain events. Aligns with Items::Item. */
         attribute eventId : Identifier;
         attribute timestamp : DateTime;
         attribute eventType : String;
@@ -433,29 +422,29 @@ export function generateDataModelTemplate(): string {
 
     // Relationship template for entity connections
     connection def EntityRelation {
-        doc /**Template for entity relationships */
+        doc /*Template for entity relationships */
         end source [1];
         end target [0..*];
     }
 
     // Entity definitions (to be populated by analysis)
     package Entities {
-        doc /**Domain entities - specialize from BaseEntity */
+        doc /*Domain entities - specialize from BaseEntity */
     }
 
     // Data transfer objects (to be populated by analysis)
     package DTOs {
-        doc /**Request/Response shapes - specialize from BaseDTO */
+        doc /*Request/Response shapes - specialize from BaseDTO */
     }
 
     // Events (to be populated by analysis)
     package Events {
-        doc /**Domain events - specialize from BaseDomainEvent */
+        doc /*Domain events - specialize from BaseDomainEvent */
     }
 
     // Enumerations (to be populated by analysis)
     package Enums {
-        doc /**Enumeration types */
+        doc /*Enumeration types */
     }
 }
 `;
@@ -470,11 +459,11 @@ export function generateBehaviorTemplate(): string {
     import DataModel::*;
     import SystemArchitecture::*;
 
-    doc /**System Behavior. Operations, state machines, and event handlers. Behavioral aspects of the system. */
+    doc /*System Behavior. Operations, state machines, and event handlers. Behavioral aspects of the system. */
 
     // State machine template with transitions
     state def EntityLifecycle {
-        doc /**Template for entity state machines */
+        doc /*Template for entity state machines */
 
         entry;
         state Initial;
@@ -490,7 +479,7 @@ export function generateBehaviorTemplate(): string {
 
     // Operation template with flow pattern
     action def Operation {
-        doc /**Template for system operations with data flow */
+        doc /*Template for system operations with data flow */
 
         in input;
         out output;
@@ -513,7 +502,7 @@ export function generateBehaviorTemplate(): string {
 
     // Event handler template
     action def EventHandler {
-        doc /**Template for event-driven operations */
+        doc /*Template for event-driven operations */
 
         in event;
 
@@ -528,17 +517,17 @@ export function generateBehaviorTemplate(): string {
 
     // Operations (to be populated by analysis)
     package Operations {
-        doc /**System operations discovered from handlers/controllers */
+        doc /*System operations discovered from handlers/controllers */
     }
 
     // State machines (to be populated by analysis)
     package StateMachines {
-        doc /**State machines discovered from code patterns */
+        doc /*State machines discovered from code patterns */
     }
 
     // Event handlers (to be populated by analysis)
     package EventHandlers {
-        doc /**Event handlers discovered from code */
+        doc /*Event handlers discovered from code */
     }
 }
 `;
@@ -553,7 +542,7 @@ export function generateVerificationTemplate(): string {
     import SystemRequirements::*;
     import SystemBehavior::*;
 
-    doc /**Verification. Test coverage and requirement traceability. */
+    doc /*Verification. Test coverage and requirement traceability. */
 
     // Test category enumeration
     enum def TestCategory {
@@ -584,7 +573,7 @@ export function generateVerificationTemplate(): string {
 
     // Test mappings (to be populated by analysis)
     package TestMappings {
-        doc /**Tests mapped to requirements and operations */
+        doc /*Tests mapped to requirements and operations */
     }
 }
 `;
@@ -599,7 +588,7 @@ export function generateAnalysisTemplate(): string {
     import SystemArchitecture::*;
     import SystemBehavior::*;
 
-    doc /**Analysis. Non-functional analysis and system properties. System analysis and quality attributes. */
+    doc /*Analysis. Non-functional analysis and system properties. System analysis and quality attributes. */
 
     // Performance analysis
     analysis def PerformanceProfile {
@@ -652,21 +641,21 @@ export function generateAnalysisTemplate(): string {
 
     // Performance constraint definitions
     constraint def ResponseTimeConstraint {
-        doc /**Response time must be within acceptable limit */
+        doc /*Response time must be within acceptable limit */
         in measured : Real;
         in limit : Real;
         measured <= limit
     }
 
     constraint def ThroughputConstraint {
-        doc /**Throughput must meet minimum requirement */
+        doc /*Throughput must meet minimum requirement */
         in actual : Real;
         in minimum : Real;
         actual >= minimum
     }
 
     constraint def AvailabilityConstraint {
-        doc /**Availability must meet SLA */
+        doc /*Availability must meet SLA */
         in uptime : Real;
         in target : Real;
         uptime >= target
@@ -674,21 +663,21 @@ export function generateAnalysisTemplate(): string {
 
     // Allocation definitions for traceability
     package BehaviorAllocations {
-        doc /**Maps behaviors to implementing modules */
+        doc /*Maps behaviors to implementing modules */
 
         allocation def OperationToModule :> BehaviorToModule {
-            doc /**Maps operations to their implementing modules */
+            doc /*Maps operations to their implementing modules */
         }
     }
 
     // Performance requirements
     package PerformanceConstraints {
-        doc /**Performance constraints and assertions */
+        doc /*Performance constraints and assertions */
     }
 
     // Analysis instances (to be populated by analysis)
     package AnalysisResults {
-        doc /**Concrete analysis results */
+        doc /*Concrete analysis results */
     }
 }
 `;
@@ -699,7 +688,7 @@ export function generateAnalysisTemplate(): string {
  */
 export function generateModelIndex(metadata: ProjectMetadata): string {
   return `package ${pathToIdentifier(metadata.name)}Model {
-    doc /**${escapeSysmlString(metadata.name)} - SysML v2 Model. Master index file importing all model packages. Generated: ${new Date().toISOString()}. Project Type: ${metadata.projectType}. Language: ${metadata.primaryLanguage}.${metadata.framework ? ` Framework: ${metadata.framework}.` : ""} */
+    doc /*${escapeSysmlString(metadata.name)} - SysML v2 Model. Master index file importing all model packages. Generated: ${new Date().toISOString()}. Project Type: ${metadata.projectType}. Language: ${metadata.primaryLanguage}.${metadata.framework ? ` Framework: ${metadata.framework}.` : ""} */
 
     // Import all model packages by their package names
     import SysMLPrimitives::*;
@@ -728,7 +717,7 @@ export function generateModelIndex(metadata: ProjectMetadata): string {
  * Generate all initial SysML files for a project.
  */
 export interface GeneratedFiles {
-  "_stdlib.sysml": string;
+  "SysMLPrimitives.sysml": string;
   "_project.sysml": string;
   "_model.sysml": string;
   "context/requirements.sysml": string;
@@ -742,7 +731,7 @@ export interface GeneratedFiles {
 
 export function generateInitialFiles(metadata: ProjectMetadata): GeneratedFiles {
   return {
-    "_stdlib.sysml": generateStdlib(),
+    "SysMLPrimitives.sysml": generateStdlib(),
     "_project.sysml": generateProjectFile(metadata),
     "_model.sysml": generateModelIndex(metadata),
     "context/requirements.sysml": generateRequirements(metadata),

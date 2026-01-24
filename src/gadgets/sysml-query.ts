@@ -7,7 +7,7 @@
 import { createGadget, z } from "llmist";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { runSysml2 } from "../lib/sysml/sysml2-cli.js";
+import { runSysml2, selectElements } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
 interface DefinitionInfo {
@@ -146,7 +146,14 @@ export const sysmlQuery = createGadget({
   name: "SysMLQuery",
   description: `Query the SysML model for entities, relationships, and cross-references.
 
-**Query Types:**
+**CLI Select Mode (PREFERRED):**
+Uses sysml2 CLI --select for semantic element selection:
+
+   SysMLQuery(select="DataModel::Entities::*")   // Direct children
+   SysMLQuery(select="DataModel::Entities::**")  // All descendants
+   SysMLQuery(select="UserService")              // Find by name
+
+**Legacy Query Types:**
 
 1. **Entity by name**: Find a specific definition
    SysMLQuery(query="UserService", type="entity")
@@ -162,18 +169,96 @@ export const sysmlQuery = createGadget({
    SysMLQuery(query="structure", type="package")
 
 **Examples:**
+- CLI select: SysMLQuery(select="SystemModules::*")
 - Find all services: SysMLQuery(query="part def", type="entity")
 - Find what uses UserData: SysMLQuery(query="UserData", type="usage")
 - List structure package: SysMLQuery(query="structure", type="package")`,
   schema: z.object({
     reason: z.string().describe(GADGET_REASON_DESCRIPTION),
-    query: z.string().describe("Search term: entity name, definition type (e.g., 'part def'), or package name"),
+    // CLI select mode (preferred)
+    select: z.string().optional()
+      .describe("CLI select pattern: 'Pkg::*' (direct children), 'Pkg::**' (all descendants), 'Element' (find by name)"),
+    // Legacy query mode
+    query: z.string().optional()
+      .describe("Search term: entity name, definition type (e.g., 'part def'), or package name"),
     type: z.enum(["entity", "relationship", "usage", "package"]).optional().default("entity")
       .describe("Query type: entity (find definitions), relationship (find specializations/connections), usage (find where something is used), package (list package contents)"),
     depth: z.number().optional().default(1)
       .describe("Relationship traversal depth (default: 1, max: 3)"),
   }),
-  execute: async ({ reason: _reason, query, type = "entity", depth = 1 }) => {
+  execute: async ({ reason: _reason, select, query, type = "entity", depth = 1 }) => {
+    // CLI select mode - use sysml2 --select directly
+    if (select) {
+      const sysmlDir = ".sysml";
+      const allFiles: string[] = [];
+
+      // Collect all .sysml files
+      async function collectFiles(dir: string): Promise<void> {
+        try {
+          const entries = await readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const fullPath = join(dir, entry.name);
+            if (entry.isDirectory()) {
+              await collectFiles(fullPath);
+            } else if (entry.name.endsWith(".sysml")) {
+              allFiles.push(fullPath);
+            }
+          }
+        } catch {
+          // Directory doesn't exist
+        }
+      }
+
+      await collectFiles(sysmlDir);
+
+      if (allFiles.length === 0) {
+        return "No SysML model found. Run `au sysml:ingest` first to generate the model.";
+      }
+
+      try {
+        const result = await selectElements(allFiles, [select], { format: "json" });
+
+        if (!result.success) {
+          return `Select query failed for pattern: ${select}\nRaw output: ${result.raw ?? "(none)"}`;
+        }
+
+        if (result.elements.length === 0 && result.relationships.length === 0) {
+          return `No elements found matching pattern: ${select}`;
+        }
+
+        const lines: string[] = [];
+        lines.push(`## Select results for "${select}":\n`);
+
+        if (result.elements.length > 0) {
+          lines.push(`### Elements (${result.elements.length}):\n`);
+          for (const elem of result.elements) {
+            lines.push(`- **${elem.type}** ${elem.name}`);
+            if (elem.id !== elem.name) {
+              lines.push(`  qualified: ${elem.id}`);
+            }
+            if (elem.parent) {
+              lines.push(`  parent: ${elem.parent}`);
+            }
+          }
+        }
+
+        if (result.relationships.length > 0) {
+          lines.push(`\n### Relationships (${result.relationships.length}):\n`);
+          for (const rel of result.relationships) {
+            lines.push(`- ${rel.source} --${rel.kind}--> ${rel.target}`);
+          }
+        }
+
+        return lines.join("\n");
+      } catch (err) {
+        return `Error running select query: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    // Legacy query mode - require query parameter
+    if (!query) {
+      return "Error: Must provide either 'select' (CLI mode) or 'query' (legacy mode) parameter";
+    }
     const { definitions, relationships, files } = await scanSysmlFiles();
 
     if (definitions.length === 0) {

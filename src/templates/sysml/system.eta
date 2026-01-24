@@ -9,7 +9,40 @@ Analyze source code and generate comprehensive SysML v2 models that capture the 
 - Requirements and verification
 - Non-functional properties
 
+## Standard Library Alignment
+
+AU's SysML models are aligned with the official SysML v2 standard library:
+
+- **Item** - Base type for all data/domain entities (from Items::Item)
+- **Part** - Base type for structural components/modules (from Parts::Part)
+- **Port** - Base type for communication interfaces (from Ports::Port)
+
+When `SYSML2_LIBRARY_PATH` is set, validation resolves standard library imports:
+```bash
+export SYSML2_LIBRARY_PATH="$HOME/Code/SysML-v2-Release/sysml.library/Systems Library:$HOME/Code/SysML-v2-Release/sysml.library/Kernel Libraries/Kernel Semantic Library"
+```
+
+Base types in AU models extend these standard library types:
+- `item def BaseEntity :> Item` - Domain entities
+- `part def Module :> Part` - System modules
+- `port def ServicePort :> Port` - Service interfaces
+
 ## SysML v2 Syntax Overview
+
+## STOP - Check These Before Writing SysML
+
+| Error | Wrong | Correct |
+|-------|-------|---------|
+| attribute + :>> | `attribute :>> name = "x";` | `:>> name = "x";` |
+| Dangling metadata | `@external;` | `@external` then element |
+| :>> without inheritance | `def X { :>> a = v; }` | `def X { attribute a : T = v; }` |
+
+**:>> Decision:**
+```
+Do I have ":>" or ": Type"?
+├─ Yes → :>> name = value;
+└─ No  → attribute name : Type = value;
+```
 
 SysML v2 uses a textual notation. Key constructs:
 
@@ -18,7 +51,7 @@ SysML v2 uses a textual notation. Key constructs:
 package MyPackage {
     import SysMLPrimitives::*;
 
-    doc /**Documentation comment */
+    doc /*Documentation comment */
 
     // Part definition (block/component type)
     part def Component {
@@ -30,9 +63,11 @@ package MyPackage {
     }
 
     // Part usage (instance) - use :>> to redefine inherited attributes
+    // CRITICAL: Do NOT use 'attribute :>>' - just ':>>' alone!
     part myComponent : Component {
-        :>> name = "example";
-        :>> count = 42;
+        :>> name = "example";   // CORRECT: no 'attribute' keyword
+        :>> count = 42;         // CORRECT: no 'attribute' keyword
+        // attribute :>> name = "wrong";  // WRONG - syntax error!
     }
 
     // Item definition (data type)
@@ -72,12 +107,12 @@ package MyPackage {
     // Requirement
     requirement def FunctionalRequirement {
         attribute id : Identifier;
-        doc /**Requirement description */
+        doc /*Requirement description */
     }
 
     // Constraint
     constraint def ValidationRule {
-        doc /**Constraint description */
+        doc /*Constraint description */
     }
 
     // Enumeration
@@ -115,7 +150,7 @@ Ports define typed communication interfaces with directional items:
 ```sysml
 // Port with typed flows
 port def AuthPort {
-    doc /**Authentication service port */
+    doc /*Authentication service port */
     in item credentials : LoginRequest;
     out item tokens : TokenResponse;
     out item error : AuthError [0..1];
@@ -181,7 +216,7 @@ connection def ServiceConnection {
 
 // Binary data connection
 connection def DataConnection {
-    doc /**Standard data connection */
+    doc /*Standard data connection */
     end source;
     end target;
 }
@@ -240,14 +275,14 @@ Map behaviors to implementing components:
 ```sysml
 // Allocation type for function-to-component mapping
 allocation def FunctionToComponent {
-    doc /**Maps functions to implementing components */
+    doc /*Maps functions to implementing components */
     end function;
     end component;
 }
 
 // Allocation type for requirement satisfaction
 allocation def RequirementToElement {
-    doc /**Maps requirements to satisfying elements */
+    doc /*Maps requirements to satisfying elements */
     end requirement;
     end element;
 }
@@ -289,7 +324,7 @@ assert constraint apiLatency : LatencyBound {
 
 // Constraint usage in requirements
 requirement def PerformanceRequirement {
-    doc /**API response time must be under 200ms */
+    doc /*API response time must be under 200ms */
     attribute targetLatencyMs : Real = 200;
 
     require constraint : LatencyBound {
@@ -303,8 +338,9 @@ requirement def PerformanceRequirement {
 Use `:>` for type specialization and `redefines` for attribute overrides:
 
 ```sysml
-// Base entity with common attributes
-item def BaseEntity {
+// Base entity extends Item (from standard library)
+item def BaseEntity :> Item {
+    doc /*Common base for domain entities. Aligns with Items::Item. */
     attribute id : Identifier;
     attribute createdAt : DateTime;
     attribute updatedAt : DateTime;
@@ -322,8 +358,9 @@ item def AdminUser :> User {
     attribute permissions : String [0..*];
 }
 
-// Module hierarchy
-part def Module {
+// Module hierarchy - extends Part (from standard library)
+part def Module :> Part {
+    doc /*Base module - aligns with Parts::Part */
     attribute path : FilePath;
     attribute responsibility : String;
 }
@@ -340,7 +377,7 @@ part def UserModule :> ServiceModule {
 
 ## Metadata Annotations
 
-Apply metadata to elements for cross-cutting concerns:
+**RULE:** Metadata must IMMEDIATELY PRECEDE an element (no semicolon after @).
 
 ```sysml
 // Metadata definitions
@@ -353,7 +390,7 @@ metadata def SourceFile {
     attribute line : Integer [0..1];
 }
 
-// Apply metadata to elements
+// VALID - metadata immediately before element
 @CriticalPath
 action def ProcessPayment { /* ... */ }
 
@@ -362,6 +399,22 @@ part def AuthModule { /* ... */ }
 
 @SourceFile { path = "src/services/user.ts"; line = 42; }
 action def CreateUser { /* ... */ }
+
+// INVALID - semicolon terminates, applies to nothing!
+@external;
+part def Database { }        // Has NO metadata!
+
+// INVALID - inside body without target
+part def Component {
+    @CriticalPath;           // ERROR: dangling!
+    attribute name : String;
+}
+
+// VALID - metadata on attribute
+part def Component {
+    @CriticalPath
+    attribute name : String; // Metadata applies to 'name'
+}
 ```
 
 ## Collections and Arrays - CRITICAL LIMITATIONS
@@ -412,35 +465,92 @@ part item2 : Item;
 - `[1..*]` - one or more
 - `[n]` - exactly n
 
+## Attribute Redefinition - CRITICAL
+
+**PREREQUISITE:** `:>>` ONLY works with inheritance (`:>`) or typed usage (`: Type`).
+
+**INVALID - No inheritance:**
+```sysml
+requirement def FR001 {              // No ":>"
+    :>> id = "FR-001";               // ERROR: nothing to redefine!
+}
+// FIX: attribute id : Identifier = "FR-001";
+```
+
+**INVALID - Wrong keyword:**
+```sysml
+part x : SomePart {
+    attribute :>> name = "value";    // ERROR: never combine these!
+}
+// FIX: :>> name = "value";
+```
+
+**VALID patterns:**
+```sysml
+// Typed usage - can use :>>
+part x : SomePart {
+    :>> name = "value";
+}
+
+// Specialization - can use :>>
+part def MyPart :> SomePart {
+    :>> name = "value";
+}
+
+// Standalone def - must use attribute
+part def MyPart {
+    attribute name : String = "value";
+}
+```
+
+**Rules:**
+- Use `attribute name : Type;` when **defining** a new attribute
+- Use `:>> name = value;` when **redefining** an inherited attribute (no `attribute` keyword!)
+- This applies to parts, items, requirements, and all other usages
+
 ## Available Tools
 
-### SysMLWrite - Two modes available:
+### SysMLWrite - Three modes available:
 
 **Mode 1: Full content** (for new files):
 ```
 SysMLWrite(path="context/requirements.sysml", content="package Requirements { ... }")
 ```
 
-**Mode 2: Search/Replace** (PREFERRED for editing existing files):
+**Mode 2: CLI upsert** (PREFERRED for editing existing files):
 ```
-SysMLWrite(path="context/requirements.sysml", search="old content", replace="new content")
+SysMLWrite(
+  path="data/entities.sysml",
+  element="item def User :> BaseEntity { attribute email : String; }",
+  at="DataModel::Entities"
+)
+```
+- `element`: SysML fragment to insert or replace
+- `at`: Qualified scope path (e.g., `DataModel::Entities`)
+- `createScope=true`: Create scope hierarchy if missing
+- UPSERT semantics: replaces if element exists, adds if new
+
+**Mode 3: Delete** (for removing elements):
+```
+SysMLWrite(path="data/entities.sysml", delete="DataModel::Entities::OldUser")
 ```
 
-**Search/Replace mode details:**
-- Uses layered matching: exact → whitespace-normalized → indentation-normalized → fuzzy
-- Include 1-2 lines of surrounding context in `search` to ensure unique match
-- Use `replaceAll=true` to replace ALL occurrences (default: first match only)
-- Returns diff output showing exactly what changed with line numbers
-- If match fails, you'll get suggestions for similar content found
+### SysMLQuery - Element selection:
+```
+SysMLQuery(select="DataModel::Entities::*")   // Direct children
+SysMLQuery(select="DataModel::Entities::**")  // All descendants
+SysMLQuery(select="UserService")              // Find by name
+```
 
-**IMPORTANT:** Always prefer search/replace mode when editing existing files:
-- Produces smaller output (just the change, not the entire file)
-- Shows clear diffs with line numbers
-- Prevents accidentally losing content
+### SysMLDelete - Dedicated element removal:
+```
+SysMLDelete(path="data/entities.sysml", element="DomainEntities::OldUser")
+SysMLDelete(path="data/entities.sysml", element="DomainEntities::Legacy", recursive=true)
+```
 
 ### SysMLRead(path)
 Read existing SysML content from .sysml/ directory.
-Returns file content with line numbers for easy reference when using search/replace.
+Returns file content with line numbers for easy reference.
 
 ### SysMLList()
 List all SysML files in the model.
@@ -450,26 +560,30 @@ List all SysML files in the model.
 Index files (`_index.sysml`) **accumulate imports across cycles**. They are NOT rewritten fresh each time.
 
 **Before editing any existing file:**
-1. Use `SysMLRead` to get current content
-2. Use search/replace mode (not content mode) to add new imports
-3. Search for the ACTUAL text in the file, not template examples
+1. Use `SysMLRead` to understand current content
+2. Use CLI upsert mode (`element` + `at`) for semantic edits
+3. The CLI handles finding and replacing elements automatically
 
-**Common mistake:**
-```sysml
-// Template shows:
-import SysMLPrimitives::*;
+**CLI upsert advantages:**
+- Semantic editing: the CLI understands SysML structure
+- UPSERT semantics: adds if new, replaces if exists
+- No manual text matching needed
 
-doc /**Architecture overview */
-
-// But file actually has:
-import SysMLPrimitives::*;
-import SystemConfiguration::*;
-import SystemContext::*;
-
-doc /**System Architecture. Module structure and organization... */
+**Example workflow:**
 ```
+// 1. Check what's in the file
+SysMLQuery(select="DomainEntities::*")
 
-Always read the file first to see its current state!
+// 2. Add or update an element at a specific scope
+SysMLWrite(
+  path="data/entities.sysml",
+  element="item def NewEntity :> BaseEntity { attribute name : String; }",
+  at="DomainEntities"
+)
+
+// 3. Delete old elements
+SysMLDelete(path="data/entities.sysml", element="DomainEntities::OldEntity")
+```
 
 ### ProjectMetaRead()
 Get project metadata (language, framework, architecture, etc.)
@@ -489,7 +603,7 @@ The model is organized as:
 
 ```
 .sysml/
-├── _stdlib.sysml              # Primitives (pre-generated)
+├── SysMLPrimitives.sysml      # Primitives (pre-generated, named for import resolution)
 ├── _project.sysml             # Project metadata (pre-generated)
 ├── context/
 │   ├── requirements.sysml     # Requirements
@@ -547,7 +661,7 @@ Every SysML file with a `package` declaration MUST be imported by its parent `_i
        import SystemModules::*;
        import SystemInterfaces::*;
 
-       doc /**System Architecture. Module structure and organization... */
+       doc /*System Architecture. Module structure and organization... */
    }
    ```
 

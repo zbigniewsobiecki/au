@@ -62,12 +62,12 @@ const SYSML_DIR = ".sysml";
  * Cycle 0 is special: it discovers the repository and creates a manifest.
  */
 const CYCLE_SYSML_PATTERNS: Record<number, string[]> = {
-  0: ["_stdlib.sysml", "_project.sysml"],  // Cycle 0: Discovery - no prior SysML output
-  1: ["_stdlib.sysml", "_project.sysml"],  // Primitives only
-  2: ["_stdlib.sysml", "_project.sysml", "context/**/*.sysml"],  // + Cycle 1 output
-  3: ["_stdlib.sysml", "_project.sysml", "context/**/*.sysml", "structure/**/*.sysml"],  // + Cycle 2
-  4: ["_stdlib.sysml", "_project.sysml", "context/**/*.sysml", "structure/**/*.sysml", "data/**/*.sysml"],  // + Cycle 3
-  5: ["_stdlib.sysml", "_project.sysml", "context/**/*.sysml", "structure/**/*.sysml", "data/**/*.sysml", "behavior/**/*.sysml"],  // + Cycle 4
+  0: ["SysMLPrimitives.sysml", "_project.sysml"],  // Cycle 0: Discovery - no prior SysML output
+  1: ["SysMLPrimitives.sysml", "_project.sysml"],  // Primitives only
+  2: ["SysMLPrimitives.sysml", "_project.sysml", "context/**/*.sysml"],  // + Cycle 1 output
+  3: ["SysMLPrimitives.sysml", "_project.sysml", "context/**/*.sysml", "structure/**/*.sysml"],  // + Cycle 2
+  4: ["SysMLPrimitives.sysml", "_project.sysml", "context/**/*.sysml", "structure/**/*.sysml", "data/**/*.sysml"],  // + Cycle 3
+  5: ["SysMLPrimitives.sysml", "_project.sysml", "context/**/*.sysml", "structure/**/*.sysml", "data/**/*.sysml", "behavior/**/*.sysml"],  // + Cycle 4
   6: ["**/*.sysml"],  // Full model for final analysis
 };
 

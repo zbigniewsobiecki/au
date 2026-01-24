@@ -10,14 +10,16 @@ import { createGadget, z } from "llmist";
 import { writeFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as Diff from "diff";
-import { validateSysml, checkDuplicatesInFile, formatSemanticIssues } from "../lib/sysml/validator.js";
 import {
-  findMatch,
-  findAllMatches,
-  applyReplacement,
-  formatDiff,
-  type MatchResult,
-} from "../lib/sysml/matcher.js";
+  validateSysml,
+  checkDuplicatesInFile,
+  checkSemanticIssuesWithSysml2,
+  formatSemanticIssues,
+} from "../lib/sysml/validator.js";
+import {
+  setElement,
+  deleteElements,
+} from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
 export interface SysMLWriteResult {
@@ -26,10 +28,6 @@ export interface SysMLWriteResult {
   oldBytes: number;
   newBytes: number;
   diffLines: Array<{ type: "add" | "del" | "ctx"; line: string }> | null;
-  /** For search/replace mode: the matching strategy used */
-  strategy?: string;
-  /** For search/replace mode: formatted diff output */
-  diffOutput?: string;
 }
 
 /**
@@ -89,53 +87,72 @@ export const sysmlWrite = createGadget({
   maxConcurrent: 1,
   description: `Write SysML v2 content to the .sysml/ directory.
 
-**Two modes:**
+**Three modes:**
 
-1. **Full content mode** (for new files or complete rewrites):
+1. **Full content mode** (for new files):
    SysMLWrite(path="context/requirements.sysml", content="package SystemRequirements { ... }")
 
-2. **Search/Replace mode** (for targeted edits - PREFERRED for existing files):
-   SysMLWrite(path="context/requirements.sysml", search="old text", replace="new text")
+2. **CLI upsert mode** (PREFERRED for editing existing files):
+   SysMLWrite(
+     path="data/entities.sysml",
+     element="item def User :> BaseEntity { attribute email : String; }",
+     at="DataModel::Entities"
+   )
+   - element: SysML fragment to insert or replace
+   - at: Qualified scope path (e.g., "DataModel::Entities")
+   - createScope=true: Create scope hierarchy if missing
+   - UPSERT semantics: replaces if element exists, adds if new
 
-**Search/Replace mode details:**
-- Uses layered matching: exact → whitespace-normalized → indentation-normalized → fuzzy
-- Provide enough context in 'search' to uniquely identify the location
-- Use replaceAll=true to replace ALL occurrences (default: replace first match only)
-- Returns nice diff output showing the change with line numbers
+3. **CLI delete mode** (for removing elements):
+   SysMLWrite(path="data/entities.sysml", delete="DataModel::Entities::OldUser")
 
 **Tips:**
-- Always use search/replace for edits (smaller output, clearer diffs)
-- Include 1-2 lines of surrounding context in search to ensure unique match
-- If match fails, re-read the file with SysMLRead to get current content`,
+- Use CLI upsert mode (element + at) for semantic edits on existing files
+- Use content mode only for creating new files
+- Use createScope=true if parent scope doesn't exist yet`,
   schema: z.object({
     reason: z.string().describe(GADGET_REASON_DESCRIPTION),
     path: z
       .string()
       .describe("File path relative to .sysml/ (e.g., 'context/requirements.sysml')"),
+
     // Mode 1: Full content (for new files)
     content: z
       .string()
       .optional()
-      .describe("Full SysML v2 content to write (use for new files or complete rewrites)"),
-    // Mode 2: Search/Replace (for edits)
-    search: z
+      .describe("Full SysML v2 content to write (use for new files)"),
+
+    // Mode 2: CLI upsert (for edits)
+    element: z
       .string()
       .optional()
-      .describe("Content to find in the existing file (for search/replace mode)"),
-    replace: z
+      .describe("SysML fragment to upsert (e.g., 'item def User { attribute name : String; }')"),
+    at: z
       .string()
       .optional()
-      .describe("Content to replace the search match with (for search/replace mode)"),
-    replaceAll: z
+      .describe("Scope path where element should be placed (e.g., 'DataModel::Entities')"),
+    createScope: z
       .boolean()
       .optional()
-      .describe("Replace ALL occurrences instead of just the first (default: false)"),
+      .describe("Create scope hierarchy if it doesn't exist (default: false)"),
+
+    // Mode 3: CLI delete
+    delete: z
+      .string()
+      .optional()
+      .describe("Element path to delete (e.g., 'DataModel::Entities::OldUser')"),
+
+    // Common options
+    dryRun: z
+      .boolean()
+      .optional()
+      .describe("Preview changes without writing (default: false)"),
     validate: z
       .boolean()
       .optional()
       .describe("Whether to validate SysML syntax before writing (default: true)"),
   }),
-  execute: async ({ reason: _reason, path, content, search, replace, replaceAll = false, validate = true }) => {
+  execute: async ({ reason: _reason, path, content, element, at, createScope = false, delete: deletePattern, dryRun = false, validate = true }) => {
     // Ensure path ends with .sysml
     if (!path.endsWith(".sysml")) {
       return `Error: File path must end with .sysml extension`;
@@ -158,19 +175,79 @@ To fix count mismatches:
     const fullPath = join(".sysml", path);
 
     // Determine mode
-    const isSearchReplace = search !== undefined && replace !== undefined;
+    const isCliUpsert = element !== undefined && at !== undefined;
+    const isCliDelete = deletePattern !== undefined;
     const isFullContent = content !== undefined;
 
+    // Count active modes
+    const activeModes = [isCliUpsert, isCliDelete, isFullContent].filter(Boolean).length;
+
     // Validate mode selection
-    if (!isSearchReplace && !isFullContent) {
-      return `Error: Must provide either 'content' (full content mode) or 'search'+'replace' (search/replace mode)`;
+    if (activeModes === 0) {
+      return `Error: Must provide one of:
+- 'content' (full content mode for new files)
+- 'element' + 'at' (CLI upsert mode for edits)
+- 'delete' (CLI delete mode)`;
     }
 
-    if (isSearchReplace && isFullContent) {
-      return `Error: Cannot use both modes. Use either 'content' OR 'search'+'replace', not both.`;
+    if (activeModes > 1) {
+      return `Error: Cannot use multiple modes. Choose one of: content, element+at, or delete`;
     }
 
-    // Read existing content if file exists
+    // Mode 2: CLI upsert - use sysml2 --set --at
+    if (isCliUpsert) {
+      try {
+        const result = await setElement(fullPath, element!, at!, {
+          createScope,
+          dryRun,
+        });
+
+        if (!result.success) {
+          const errors = result.diagnostics
+            .filter((d) => d.severity === "error")
+            .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
+            .join("\n");
+          return `path=${fullPath} status=error mode=upsert\n\nCLI upsert failed:\n${errors || "Unknown error"}`;
+        }
+
+        const actionDesc = result.replaced > 0 ? "replaced" : "added";
+        const dryRunNote = dryRun ? " (dry run)" : "";
+        return `path=${fullPath} status=success mode=upsert${dryRunNote}
+Element ${actionDesc} at scope: ${at}
+Added: ${result.added}, Replaced: ${result.replaced}`;
+      } catch (err) {
+        return `path=${fullPath} status=error mode=upsert\n\nError: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    // Mode 3: CLI delete - use sysml2 --delete
+    if (isCliDelete) {
+      try {
+        const result = await deleteElements(fullPath, [deletePattern!], { dryRun });
+
+        if (!result.success) {
+          const errors = result.diagnostics
+            .filter((d) => d.severity === "error")
+            .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
+            .join("\n");
+          return `path=${fullPath} status=error mode=delete\n\nCLI delete failed:\n${errors || "Unknown error"}`;
+        }
+
+        const dryRunNote = dryRun ? " (dry run)" : "";
+        if (result.deleted === 0) {
+          return `path=${fullPath} status=success mode=delete${dryRunNote}
+Element not found: ${deletePattern}
+(Nothing was deleted)`;
+        }
+        return `path=${fullPath} status=success mode=delete${dryRunNote}
+Deleted: ${result.deleted} element(s) matching: ${deletePattern}`;
+      } catch (err) {
+        return `path=${fullPath} status=error mode=delete\n\nError: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    // Mode 1: Full content mode - for creating new files
+    // Read existing content if file exists (for diff computation)
     let existingContent = "";
     let oldBytes = 0;
     let isNew = true;
@@ -180,78 +257,10 @@ To fix count mismatches:
       oldBytes = Buffer.byteLength(existingContent, "utf-8");
       isNew = false;
     } catch {
-      // File doesn't exist
-      if (isSearchReplace) {
-        return `Error: Cannot use search/replace on non-existent file: ${fullPath}\nUse 'content' parameter to create a new file.`;
-      }
+      // File doesn't exist - this is expected for new files
     }
 
-    let newContent: string;
-    let strategy: string | undefined;
-    let diffOutput: string | undefined;
-
-    if (isSearchReplace) {
-      // Search/Replace mode
-      const searchResult = replaceAll
-        ? findAllMatches(existingContent, search!)
-        : [findMatch(existingContent, search!)].filter((m): m is MatchResult => m.found);
-
-      if (!replaceAll) {
-        // Single match mode
-        const match = findMatch(existingContent, search!);
-
-        if (!match.found) {
-          // Return detailed error with suggestions
-          return `ERROR: Search content NOT FOUND in ${fullPath}\n\nYour search:\n\`\`\`\n${search}\n\`\`\`\n\n${(match as { message: string }).message}`;
-        }
-
-        // Now TypeScript knows match.found is true, so it's a MatchResult
-        const successMatch = match as MatchResult;
-
-        // Apply the replacement
-        newContent = applyReplacement(existingContent, successMatch, replace!);
-        strategy = successMatch.strategy;
-
-        // Generate nice diff output
-        diffOutput = formatDiff(existingContent, newContent, successMatch, replace!, 2);
-      } else {
-        // Replace all mode
-        const matches = findAllMatches(existingContent, search!);
-
-        if (matches.length === 0) {
-          const noMatch = findMatch(existingContent, search!);
-          if (!noMatch.found) {
-            return `ERROR: Search content NOT FOUND in ${fullPath}\n\nYour search:\n\`\`\`\n${search}\n\`\`\`\n\n${(noMatch as { message: string }).message}`;
-          }
-          return `ERROR: No matches found for replaceAll in ${fullPath}`;
-        }
-
-        if (matches.length === 1) {
-          // Just one match, apply it
-          newContent = applyReplacement(existingContent, matches[0], replace!);
-          strategy = matches[0].strategy;
-          diffOutput = formatDiff(existingContent, newContent, matches[0], replace!, 2);
-        } else {
-          // Multiple matches - apply in reverse order to preserve indices
-          newContent = existingContent;
-          const reversedMatches = [...matches].reverse();
-
-          for (const match of reversedMatches) {
-            newContent = applyReplacement(newContent, {
-              ...match,
-              startIndex: match.startIndex - (existingContent.length - newContent.length),
-              endIndex: match.endIndex - (existingContent.length - newContent.length),
-            }, replace!);
-          }
-
-          strategy = matches[0].strategy;
-          diffOutput = `Replaced ${matches.length} occurrences at lines: ${matches.map(m => `${m.startLine}-${m.endLine}`).join(", ")}`;
-        }
-      }
-    } else {
-      // Full content mode
-      newContent = content!;
-    }
+    const newContent = content!;
 
     // Validate SysML syntax if requested
     if (validate) {
@@ -261,16 +270,16 @@ To fix count mismatches:
           .filter((i) => i.severity === "error")
           .map((i) => `  Line ${i.line}:${i.column}: ${i.message}`)
           .join("\n");
-
-        if (isSearchReplace) {
-          return `path=${fullPath} status=error\n\nSysML validation failed:\n${errors}\n\nReplacement would have been:\n${diffOutput}`;
-        }
         return `Error: Invalid SysML syntax:\n${errors}`;
       }
     }
 
-    // Check for semantic issues (duplicates)
-    const semanticIssues = checkDuplicatesInFile(newContent);
+    // Check for semantic issues (duplicates) using sysml2, with fallback to regex
+    let semanticIssues = await checkSemanticIssuesWithSysml2(newContent);
+    if (semanticIssues.length === 0) {
+      // Fallback to regex-based check if sysml2 didn't find issues or isn't available
+      semanticIssues = checkDuplicatesInFile(newContent);
+    }
     let semanticWarnings = "";
     if (semanticIssues.length > 0) {
       semanticWarnings = `\n⚠ Semantic warnings:\n${formatSemanticIssues(semanticIssues, path)}`;
@@ -288,9 +297,9 @@ To fix count mismatches:
     const newBytes = Buffer.byteLength(newContent, "utf-8");
     const marker: "new" | "upd" = isNew ? "new" : "upd";
 
-    // Compute diff lines for full content mode
+    // Compute diff lines for updates
     let diffLines: SysMLWriteResult["diffLines"] = null;
-    if (!isNew && existingContent !== newContent && !isSearchReplace) {
+    if (!isNew && existingContent !== newContent) {
       diffLines = computeDiffLines(existingContent, newContent, 1);
     }
 
@@ -302,20 +311,6 @@ To fix count mismatches:
       newBytes,
       diffLines,
     };
-
-    if (strategy) {
-      result.strategy = strategy;
-    }
-    if (diffOutput) {
-      result.diffOutput = diffOutput;
-    }
-
-    // For search/replace mode, return a more readable format
-    if (isSearchReplace) {
-      const statusLine = `path=${fullPath} status=success strategy=${strategy}`;
-      const validLine = validate ? "\n✓ Valid SysML" : "";
-      return `${statusLine}\n\n${diffOutput}${validLine}${semanticWarnings}`;
-    }
 
     // DEBUG: Check why output is so large
     const jsonResult = JSON.stringify(result);

@@ -19,7 +19,7 @@
 - `<%= pattern %>`
 <% } %>
 
-Include `// Source: <filepath>` comments to track which files have been covered.
+Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track coverage.
 <% } %>
 
 ### Files to Analyze
@@ -62,12 +62,13 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import SystemInterfaces::*;
        import SystemConnections::*;
 
-       doc /**Architecture: {style} */
+       doc /*Architecture: {style} */
 
        attribute architectureStyle : String = "{layered|hexagonal|modular}";
 
-       // Module definition template
-       part def Module {
+       // Module definition - extends Part for standard library compatibility
+       part def Module :> Part {
+           doc /*Base module - aligns with Parts::Part */
            attribute path : FilePath;
            attribute responsibility : String;
            attribute layer : String [0..1];
@@ -94,12 +95,13 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import SystemArchitecture::*;
        import SystemInterfaces::*;
 
-       doc /**System module decomposition with typed ports */
+       doc /*System module decomposition with typed ports */
 
        // Use specialization :> for module types
+       // NOTE: Use ':>>' alone to redefine attributes - NOT 'attribute :>>'!
        part def AuthModule :> ServiceModule {
-           doc /**Authentication and authorization module */
-           :>> path = "src/auth";
+           doc /*Authentication and authorization module */
+           :>> path = "src/auth";           // CORRECT - no 'attribute' keyword
            :>> responsibility = "Authentication and authorization";
            :>> layer = "service";
 
@@ -109,7 +111,7 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        }
 
        part def UserModule :> ServiceModule {
-           doc /**User management module */
+           doc /*User management module */
            :>> path = "src/users";
            :>> responsibility = "User management";
            :>> layer = "service";
@@ -119,7 +121,7 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        }
 
        part def ApiGateway :> Module {
-           doc /**API gateway and routing */
+           doc /*API gateway and routing */
            :>> path = "src/api";
            :>> responsibility = "Request routing and validation";
            :>> layer = "presentation";
@@ -140,24 +142,40 @@ Include `// Source: <filepath>` comments to track which files have been covered.
    }
    ```
 
+### Module Errors to Avoid
+
+```sysml
+// ERROR 1: attribute :>>
+part def Bad :> ServiceModule {
+    attribute :>> path = "x";    // WRONG!
+}
+// FIX: :>> path = "x";
+
+// ERROR 2: :>> without inheritance
+part def Standalone {            // No ":>"
+    :>> path = "x";              // WRONG!
+}
+// FIX: attribute path : FilePath = "x";
+```
+
    **structure/interfaces.sysml** - Define module interfaces with ports:
    ```sysml
    package SystemInterfaces {
        import SysMLPrimitives::*;
 
-       doc /**Module interface definitions with typed ports */
+       doc /*Module interface definitions with typed ports */
 
        // Port definitions for module communication contracts
        // Use 'in item' and 'out item' for typed data flow
        port def AuthPort {
-           doc /**Authentication service port */
+           doc /*Authentication service port */
            in item credentials : LoginRequest;
            out item tokens : TokenResponse;
            out item error : AuthError [0..1];
        }
 
        port def UserServicePort {
-           doc /**User management service port */
+           doc /*User management service port */
            in item createUser : CreateUserRequest;
            in item updateUser : UpdateUserRequest;
            out item user : User;
@@ -165,20 +183,20 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        }
 
        port def DataPort {
-           doc /**Generic data access port */
+           doc /*Generic data access port */
            in item query [0..*];
            out item results [0..*];
        }
 
        // Interface definitions connect provider and consumer ports
        interface def AuthInterface {
-           doc /**Authentication contract between client and server */
+           doc /*Authentication contract between client and server */
            end provider : AuthPort;
            end consumer : ~AuthPort;  // Conjugated (directions flipped)
        }
 
        interface def ServiceInterface {
-           doc /**Generic service contract */
+           doc /*Generic service contract */
            end server : ServicePort;
            end client : ~ServicePort;
        }
@@ -192,17 +210,17 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import SystemModules::*;
        import SystemInterfaces::*;
 
-       doc /**Module connections and wiring */
+       doc /*Module connections and wiring */
 
        // Named connection types
        connection def ServiceConnection {
-           doc /**Service-to-service connection */
+           doc /*Service-to-service connection */
            end client;
            end server;
        }
 
        connection def DataConnection {
-           doc /**Data access connection */
+           doc /*Data access connection */
            end source;
            end target;
        }
@@ -294,7 +312,7 @@ This cycle focuses ONLY on architectural structure. Data models, behaviors, etc.
 <% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
 **Source File Coverage**:
 - [ ] All files matching source patterns have been processed
-- [ ] SysML definitions include `// Source: <filepath>` comments
+- [ ] SysML definitions include `@SourceFile { path = "<filepath>"; }` metadata
 <% } %>
 
 - [ ] All major directories mapped to modules

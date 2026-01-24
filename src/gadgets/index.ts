@@ -13,6 +13,7 @@ export { fileViewerNextFileSet, setCoverageContext, getCoverageContext } from ".
 export { sysmlWrite, sysmlRead, sysmlList } from "./sysml-write.js";
 export type { SysMLWriteResult } from "./sysml-write.js";
 export { sysmlQuery } from "./sysml-query.js";
+export { sysmlDelete } from "./sysml-delete.js";
 export { finishSysmlFix } from "./sysml-fix-gadget.js";
 export { verifyFinding, resetCollectedFindings, getCollectedFindings } from "./verify-finding.js";
 export type { VerificationFinding, FindingCategory, FindingDomain } from "./verify-finding.js";

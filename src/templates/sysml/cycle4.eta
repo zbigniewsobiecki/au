@@ -19,7 +19,7 @@
 - `<%= pattern %>`
 <% } %>
 
-Include `// Source: <filepath>` comments to track which files have been covered.
+Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track coverage.
 <% } %>
 
 ### Files to Analyze
@@ -69,7 +69,7 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import EntityStateMachines::*;
        import EventHandlers::*;
 
-       doc /**System behavioral model */
+       doc /*System behavioral model */
    }
    ```
 
@@ -85,13 +85,13 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import SysMLPrimitives::*;
        import DataModel::*;
 
-       doc /**System operations/actions with explicit data flows */
+       doc /*System operations/actions with explicit data flows */
 
        // User registration operation with full flow specification
        // Action bodies use 'first' for control flow (NOT 'transition'!)
        // Use 'flow from X to Y' for data flow between steps
        action def RegisterUser {
-           doc /**Register a new user account */
+           doc /*Register a new user account */
 
            in request : CreateUserRequest;
            out response : UserResponse;
@@ -99,33 +99,33 @@ Include `// Source: <filepath>` comments to track which files have been covered.
 
            // Define action steps with typed inputs/outputs
            action validateInput {
-               doc /**Validate email format and password strength */
+               doc /*Validate email format and password strength */
                in data : CreateUserRequest;
                out validated : CreateUserRequest;
                out validationError : ValidationError [0..1];
            }
 
            action checkExistingEmail {
-               doc /**Verify email is not already registered */
+               doc /*Verify email is not already registered */
                in userData : CreateUserRequest;
                out checkedData : CreateUserRequest;
                out duplicateError : DuplicateError [0..1];
            }
 
            action hashPassword {
-               doc /**Securely hash the password */
+               doc /*Securely hash the password */
                in userData : CreateUserRequest;
                out securedData : SecuredUserData;
            }
 
            action createUser {
-               doc /**Persist user to database */
+               doc /*Persist user to database */
                in data : SecuredUserData;
                out user : User;
            }
 
            action generateTokens {
-               doc /**Generate JWT access and refresh tokens */
+               doc /*Generate JWT access and refresh tokens */
                in user : User;
                out tokens : TokenResponse;
            }
@@ -151,7 +151,7 @@ Include `// Source: <filepath>` comments to track which files have been covered.
 
        // Authentication operation with flows
        action def Login {
-           doc /**Authenticate user and issue tokens */
+           doc /*Authenticate user and issue tokens */
 
            in credentials : LoginRequest;
            out tokens : TokenResponse;
@@ -197,32 +197,32 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import SysMLPrimitives::*;
        import DataModel::*;
 
-       doc /**Entity state machines */
+       doc /*Entity state machines */
 
        // Order lifecycle
        // State machines use 'transition first X then Y' keyword
        // In action bodies, use just 'first X then Y' instead
        state def OrderLifecycle {
-           doc /**Order processing state machine */
+           doc /*Order processing state machine */
 
            state Pending {
-               doc /**Order created, awaiting processing */
+               doc /*Order created, awaiting processing */
            }
 
            state Processing {
-               doc /**Order is being prepared */
+               doc /*Order is being prepared */
            }
 
            state Shipped {
-               doc /**Order has been shipped */
+               doc /*Order has been shipped */
            }
 
            state Delivered {
-               doc /**Order delivered to customer */
+               doc /*Order delivered to customer */
            }
 
            state Cancelled {
-               doc /**Order was cancelled */
+               doc /*Order was cancelled */
            }
 
            // Transitions: 'transition name? first Source then Target;'
@@ -253,10 +253,10 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import SysMLPrimitives::*;
        import DataModel::*;
 
-       doc /**Event handlers */
+       doc /*Event handlers */
 
        action def OnUserCreated {
-           doc /**Handle user creation event */
+           doc /*Handle user creation event */
 
            in event : UserCreatedEvent;
 
@@ -268,7 +268,7 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        }
 
        action def OnOrderShipped {
-           doc /**Handle order shipped event */
+           doc /*Handle order shipped event */
 
            in event : OrderShippedEvent;
 

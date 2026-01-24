@@ -117,7 +117,7 @@ Store patterns in `manifest.cycles[N].sourceFiles`:
 - Use glob patterns for groups: `src/models/**/*.ts`
 - Use literal paths for specific files: `prisma/schema.prisma`
 
-**IMPORTANT**: These source file patterns will be used for validation - the system will verify that SysML files include `// Source: <path>` comments for each covered file.
+**IMPORTANT**: These source file patterns will be used for validation - the system will verify that SysML files include `@SourceFile { path = "<filepath>"; }` metadata for each covered file.
 
 ---
 

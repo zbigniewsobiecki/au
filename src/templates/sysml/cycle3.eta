@@ -18,7 +18,7 @@
 - `<%= pattern %>`
 <% } %>
 
-Include `// Source: <filepath>` comments in your SysML output to track coverage.
+Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track coverage.
 Before finishing, verify you have covered ALL matching files.
 <% } %>
 
@@ -96,7 +96,7 @@ If Protobuf files are present:
        import DataTransferObjects::*;
        import DomainEnums::*;
 
-       doc /**Data structures discovered from {sources} */
+       doc /*Data structures discovered from {sources} */
    }
    ```
 
@@ -106,11 +106,11 @@ If Protobuf files are present:
        import SysMLPrimitives::*;
        import DataModel::*;
 
-       doc /**Core domain entities using specialization hierarchy */
+       doc /*Core domain entities using specialization hierarchy */
 
        // Base entity is defined in DataModel - specialize with :>
+       @SourceFile { path = "src/models/user.ts"; }
        item def User :> BaseEntity {
-           // Source: src/models/user.ts
            attribute email : String;
            attribute name : String;
            attribute role : UserRole;
@@ -118,23 +118,23 @@ If Protobuf files are present:
        }
 
        // Further specialization
+       @SourceFile { path = "src/models/admin.ts"; }
        item def AdminUser :> User {
-           // Source: src/models/admin.ts
            redefines role : UserRole = UserRole::Admin;
            attribute permissions : String [0..*];
            attribute department : String;
        }
 
+       @SourceFile { path = "prisma/schema.prisma"; }
        item def Order :> BaseEntity {
-           // Source: prisma/schema.prisma (Order model)
            attribute userId : Identifier;
            attribute total : Real;
            attribute status : OrderStatus;
            attribute items : OrderItem [1..*];
        }
 
+       @SourceFile { path = "prisma/schema.prisma"; }
        item def OrderItem {
-           // Source: prisma/schema.prisma (OrderItem model)
            attribute productId : Identifier;
            attribute quantity : Integer;
            attribute unitPrice : Real;
@@ -142,20 +142,20 @@ If Protobuf files are present:
 
        // Relationships between entities using connection
        connection def UserOrders {
-           doc /**User has many orders */
+           doc /*User has many orders */
            end user : User [1];
            end orders : Order [0..*];
        }
 
        connection def OrderItems {
-           doc /**Order contains line items */
+           doc /*Order contains line items */
            end order : Order [1];
            end items : OrderItem [1..*];
        }
    }
    ```
 
-   **IMPORTANT**: Include `// Source: <filepath>` comments in your definitions to track where each entity came from. This helps with verification and traceability.
+   **IMPORTANT**: Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track where each entity came from. This helps with verification and traceability.
 
    **data/dtos.sysml** - Add DTOs:
    ```sysml
@@ -163,7 +163,7 @@ If Protobuf files are present:
        import SysMLPrimitives::*;
        import DomainEntities::*;
 
-       doc /**API request/response structures */
+       doc /*API request/response structures */
 
        item def CreateUserRequest {
            @required;
@@ -185,7 +185,7 @@ If Protobuf files are present:
    package DomainEnums {
        import SysMLPrimitives::*;
 
-       doc /**Domain enumerations */
+       doc /*Domain enumerations */
 
        enum def UserStatus {
            Active;
@@ -210,7 +210,7 @@ If Protobuf files are present:
        import SysMLPrimitives::*;
        import DomainEntities::*;
 
-       doc /**Domain events */
+       doc /*Domain events */
 
        event def UserCreated {
            attribute timestamp : DateTime;
@@ -259,9 +259,12 @@ If a source field is named `state`, rename to `stateProvince` or `status` in Sys
 
 **Entity Specialization** - Use `:>` to inherit from base types:
 ```sysml
-// All domain entities inherit from BaseEntity (in DataModel)
+// BaseEntity extends Item for standard library compatibility (defined in DataModel)
+// item def BaseEntity :> Item { id, createdAt, updatedAt }
+
+// All domain entities inherit from BaseEntity
 item def {Entity} :> BaseEntity {
-    // BaseEntity provides: id, createdAt, updatedAt
+    // BaseEntity provides: id, createdAt, updatedAt (and Item inheritance)
     attribute {field} : {Type};
 }
 
@@ -276,7 +279,7 @@ item def {SpecializedEntity} :> {Entity} {
 ```sysml
 // One-to-many relationship
 connection def {EntityA}{EntityB}s {
-    doc /**{EntityA} has many {EntityB}s */
+    doc /*{EntityA} has many {EntityB}s */
     end {entityA} : {EntityA} [1];
     end {entityB}s : {EntityB} [0..*];
 }
@@ -355,7 +358,7 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 <% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
 **SOURCE FILE COVERAGE VERIFICATION**:
 - [ ] All files matching source patterns have been processed
-- [ ] Each SysML definition includes `// Source: <filepath>` comments
+- [ ] Each SysML definition includes `@SourceFile { path = "<filepath>"; }` metadata
 - [ ] No source files are missing from coverage
 <% } %>
 
@@ -369,7 +372,7 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 - [ ] Events captured with **specialization** (`:> BaseDomainEvent`) if event-driven
 - [ ] Output is limited to `data/` directory only
 
-**Verification**: Ensure your SysML files include `// Source:` comments for every source file you processed. The validation system will check these comments against the manifest's sourceFiles patterns.
+**Verification**: Ensure your SysML files include `@SourceFile { path = "<filepath>"; }` metadata for every source file you processed. The validation system will check this metadata against the manifest's sourceFiles patterns.
 
 <% if (it.isIterative) { %>
 ### File Selection Priority for Data Extraction

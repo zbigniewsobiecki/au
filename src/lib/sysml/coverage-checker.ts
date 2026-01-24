@@ -53,18 +53,18 @@ export interface CoverageContext {
 }
 
 /**
- * Scan all .sysml files and extract paths from `// Source:` comments.
- * These comments indicate which source files have been documented.
+ * Scan all .sysml files and extract paths from `@SourceFile` metadata.
+ * This metadata indicates which source files have been documented.
  */
 export async function findCoveredFiles(sysmlDir: string = SYSML_DIR): Promise<Set<string>> {
   const coveredFiles = new Set<string>();
 
-  // Pattern to match `// Source: <filepath>` comments
+  // Pattern to match `@SourceFile { path = "<filepath>"; }` metadata
   // Supports various formats:
-  // - `// Source: src/controllers/user.ts`
-  // - `// Source: src/controllers/user.controller.ts`
+  // - `@SourceFile { path = "src/controllers/user.ts"; }`
+  // - `@SourceFile { path = "src/controllers/user.controller.ts"; line = 42; }`
   // - Multiple sources on separate lines
-  const sourcePattern = /\/\/\s*Source:\s*(.+?)(?:\s*$|\s*\/\/)/gm;
+  const metadataPattern = /@SourceFile\s*\{\s*path\s*=\s*"([^"]+)"/g;
 
   async function scanDir(dir: string): Promise<void> {
     try {
@@ -79,16 +79,16 @@ export async function findCoveredFiles(sysmlDir: string = SYSML_DIR): Promise<Se
           try {
             const content = await readFile(fullPath, "utf-8");
 
-            // Find all `// Source:` comments
+            // Find all `@SourceFile` metadata
             let match;
-            while ((match = sourcePattern.exec(content)) !== null) {
+            while ((match = metadataPattern.exec(content)) !== null) {
               const sourcePath = match[1].trim();
               if (sourcePath) {
                 coveredFiles.add(sourcePath);
               }
             }
             // Reset regex lastIndex for next file
-            sourcePattern.lastIndex = 0;
+            metadataPattern.lastIndex = 0;
           } catch {
             // Skip unreadable files
           }
