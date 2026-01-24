@@ -19,7 +19,7 @@
 - `<%= pattern %>`
 <% } %>
 
-Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track coverage.
+Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definition to track coverage.
 <% } %>
 
 ### Files to Analyze

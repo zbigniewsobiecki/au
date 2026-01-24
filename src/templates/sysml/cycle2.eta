@@ -19,7 +19,7 @@
 - `<%= pattern %>`
 <% } %>
 
-Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track coverage.
+Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definition to track coverage.
 <% } %>
 
 ### Files to Analyze
@@ -312,7 +312,7 @@ This cycle focuses ONLY on architectural structure. Data models, behaviors, etc.
 <% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
 **Source File Coverage**:
 - [ ] All files matching source patterns have been processed
-- [ ] SysML definitions include `@SourceFile { path = "<filepath>"; }` metadata
+- [ ] SysML definitions include `@SourceFile { :>> path = "<filepath>"; }` metadata
 <% } %>
 
 - [ ] All major directories mapped to modules

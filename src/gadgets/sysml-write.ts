@@ -12,7 +12,6 @@ import { dirname, join } from "node:path";
 import * as Diff from "diff";
 import {
   validateSysml,
-  checkDuplicatesInFile,
   checkSemanticIssuesWithSysml2,
   formatSemanticIssues,
 } from "../lib/sysml/validator.js";
@@ -207,7 +206,7 @@ To fix count mismatches:
             .filter((d) => d.severity === "error")
             .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
             .join("\n");
-          return `path=${fullPath} status=error mode=upsert\n\nCLI upsert failed:\n${errors || "Unknown error"}`;
+          return `path=${fullPath} status=error mode=upsert\n\nCLI upsert failed:\n${errors || result.stderr || "Unknown error"}`;
         }
 
         const actionDesc = result.replaced > 0 ? "replaced" : "added";
@@ -230,7 +229,7 @@ Added: ${result.added}, Replaced: ${result.replaced}`;
             .filter((d) => d.severity === "error")
             .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
             .join("\n");
-          return `path=${fullPath} status=error mode=delete\n\nCLI delete failed:\n${errors || "Unknown error"}`;
+          return `path=${fullPath} status=error mode=delete\n\nCLI delete failed:\n${errors || result.stderr || "Unknown error"}`;
         }
 
         const dryRunNote = dryRun ? " (dry run)" : "";
@@ -274,12 +273,8 @@ Deleted: ${result.deleted} element(s) matching: ${deletePattern}`;
       }
     }
 
-    // Check for semantic issues (duplicates) using sysml2, with fallback to regex
-    let semanticIssues = await checkSemanticIssuesWithSysml2(newContent);
-    if (semanticIssues.length === 0) {
-      // Fallback to regex-based check if sysml2 didn't find issues or isn't available
-      semanticIssues = checkDuplicatesInFile(newContent);
-    }
+    // Check for semantic issues (duplicates) using sysml2
+    const semanticIssues = await checkSemanticIssuesWithSysml2(newContent);
     let semanticWarnings = "";
     if (semanticIssues.length > 0) {
       semanticWarnings = `\n⚠ Semantic warnings:\n${formatSemanticIssues(semanticIssues, path)}`;

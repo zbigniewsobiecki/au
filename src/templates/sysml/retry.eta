@@ -16,21 +16,21 @@ You **MUST**:
 
 1. Read and analyze EACH of the files listed above
 2. Add appropriate SysML definitions for entities, types, operations, etc. found in each file
-3. **CRITICAL**: Include `@SourceFile { path = "<filepath>"; }` metadata before each SysML definition to track which files have been covered
+3. **CRITICAL**: Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each SysML definition to track which files have been covered
 
 ## SysML Source Metadata Format
 
 Every SysML definition must include source metadata indicating which file(s) it documents:
 
 ```sysml
-@SourceFile { path = "src/controllers/user.controller.ts"; }
+@SourceFile { :>> path = "src/controllers/user.controller.ts"; }
 action def CreateUser {
     doc /*Create a new user account */
     in request : CreateUserRequest;
     out response : UserResponse;
 }
 
-@SourceFile { path = "src/services/auth.service.ts"; }
+@SourceFile { :>> path = "src/services/auth.service.ts"; }
 action def AuthenticateUser {
     doc /*Authenticate user credentials */
     in credentials : LoginRequest;
