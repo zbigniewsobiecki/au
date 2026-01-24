@@ -148,8 +148,8 @@ export function generateStdlib(): string {
     }
 
     // ========== METADATA ==========
-    // Usage: @SourceFile { path = "src/file.ts"; line = 42; }
-    // Or prefix: #SourceFile { path = "src/file.ts"; }
+    // Usage: @SourceFile { :>> path = "src/file.ts"; :>> line = 42; }
+    // Or prefix: #SourceFile { :>> path = "src/file.ts"; }
     metadata def SourceFile {
         attribute path : FilePath;
         attribute line : Integer;
@@ -216,7 +216,7 @@ export function generateProjectFile(metadata: ProjectMetadata): string {
     import SysMLPrimitives::*;
 
     doc /*Project Metadata. Auto-discovered from ${escapeSysmlString(metadata.manifestFile ?? "codebase analysis")}. Project: ${escapeSysmlString(metadata.name)} */
-    comment /** META: ${metaJson} */
+    comment /* META: ${metaJson} */
 
     // Project identification
     attribute projectName : String = "${escapeSysmlString(metadata.name)}";

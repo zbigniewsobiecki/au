@@ -18,7 +18,7 @@
 - `<%= pattern %>`
 <% } %>
 
-Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track coverage.
+Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definition to track coverage.
 Before finishing, verify you have covered ALL matching files.
 <% } %>
 
@@ -109,7 +109,7 @@ If Protobuf files are present:
        doc /*Core domain entities using specialization hierarchy */
 
        // Base entity is defined in DataModel - specialize with :>
-       @SourceFile { path = "src/models/user.ts"; }
+       @SourceFile { :>> path = "src/models/user.ts"; }
        item def User :> BaseEntity {
            attribute email : String;
            attribute name : String;
@@ -118,14 +118,14 @@ If Protobuf files are present:
        }
 
        // Further specialization
-       @SourceFile { path = "src/models/admin.ts"; }
+       @SourceFile { :>> path = "src/models/admin.ts"; }
        item def AdminUser :> User {
            redefines role : UserRole = UserRole::Admin;
            attribute permissions : String [0..*];
            attribute department : String;
        }
 
-       @SourceFile { path = "prisma/schema.prisma"; }
+       @SourceFile { :>> path = "prisma/schema.prisma"; }
        item def Order :> BaseEntity {
            attribute userId : Identifier;
            attribute total : Real;
@@ -133,7 +133,7 @@ If Protobuf files are present:
            attribute items : OrderItem [1..*];
        }
 
-       @SourceFile { path = "prisma/schema.prisma"; }
+       @SourceFile { :>> path = "prisma/schema.prisma"; }
        item def OrderItem {
            attribute productId : Identifier;
            attribute quantity : Integer;
@@ -155,7 +155,7 @@ If Protobuf files are present:
    }
    ```
 
-   **IMPORTANT**: Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track where each entity came from. This helps with verification and traceability.
+   **IMPORTANT**: Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definition to track where each entity came from. This helps with verification and traceability.
 
    **data/dtos.sysml** - Add DTOs:
    ```sysml
@@ -358,7 +358,7 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 <% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
 **SOURCE FILE COVERAGE VERIFICATION**:
 - [ ] All files matching source patterns have been processed
-- [ ] Each SysML definition includes `@SourceFile { path = "<filepath>"; }` metadata
+- [ ] Each SysML definition includes `@SourceFile { :>> path = "<filepath>"; }` metadata
 - [ ] No source files are missing from coverage
 <% } %>
 
@@ -372,7 +372,7 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 - [ ] Events captured with **specialization** (`:> BaseDomainEvent`) if event-driven
 - [ ] Output is limited to `data/` directory only
 
-**Verification**: Ensure your SysML files include `@SourceFile { path = "<filepath>"; }` metadata for every source file you processed. The validation system will check this metadata against the manifest's sourceFiles patterns.
+**Verification**: Ensure your SysML files include `@SourceFile { :>> path = "<filepath>"; }` metadata for every source file you processed. The validation system will check this metadata against the manifest's sourceFiles patterns.
 
 <% if (it.isIterative) { %>
 ### File Selection Priority for Data Extraction

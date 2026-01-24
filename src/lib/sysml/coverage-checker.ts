@@ -59,12 +59,13 @@ export interface CoverageContext {
 export async function findCoveredFiles(sysmlDir: string = SYSML_DIR): Promise<Set<string>> {
   const coveredFiles = new Set<string>();
 
-  // Pattern to match `@SourceFile { path = "<filepath>"; }` metadata
+  // Pattern to match `@SourceFile { :>> path = "<filepath>"; }` metadata
   // Supports various formats:
-  // - `@SourceFile { path = "src/controllers/user.ts"; }`
-  // - `@SourceFile { path = "src/controllers/user.controller.ts"; line = 42; }`
+  // - `@SourceFile { :>> path = "src/controllers/user.ts"; }`
+  // - `@SourceFile { :>> path = "src/controllers/user.controller.ts"; :>> line = 42; }`
+  // - Also supports legacy syntax without :>> for backward compatibility
   // - Multiple sources on separate lines
-  const metadataPattern = /@SourceFile\s*\{\s*path\s*=\s*"([^"]+)"/g;
+  const metadataPattern = /@SourceFile\s*\{\s*(?::>>\s*)?path\s*=\s*"([^"]+)"/g;
 
   async function scanDir(dir: string): Promise<void> {
     try {

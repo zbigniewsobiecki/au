@@ -163,6 +163,7 @@ export interface SetResult {
   added: number;
   replaced: number;
   diagnostics: Sysml2Diagnostic[];
+  stderr?: string; // Raw stderr for general errors without line numbers
 }
 
 export interface DeleteResult {
@@ -170,6 +171,7 @@ export interface DeleteResult {
   modifiedFile: string;
   deleted: number;
   diagnostics: Sysml2Diagnostic[];
+  stderr?: string; // Raw stderr for general errors without line numbers
 }
 
 export interface Sysml2MultiResult {
@@ -429,86 +431,93 @@ export async function setElement(
   const tmpFile = join(tmpdir(), `sysml2-fragment-${Date.now()}.sysml`);
   await writeFile(tmpFile, fragment, "utf-8");
 
-  try {
-    const args = ["--color=never", ...getLibraryPathArgs()];
+  const args = ["--color=never", ...getLibraryPathArgs()];
 
-    // Add set options
-    args.push("--set", tmpFile);
-    args.push("--at", scope);
+  // Add set options
+  args.push("--set", tmpFile);
+  args.push("--at", scope);
 
-    if (options?.createScope) {
-      args.push("--create-scope");
-    }
+  if (options?.createScope) {
+    args.push("--create-scope");
+  }
 
-    if (options?.dryRun) {
-      args.push("--dry-run");
-    }
+  if (options?.dryRun) {
+    args.push("--dry-run");
+  }
 
-    args.push("-f", "json");
-    args.push(targetFile);
+  args.push("-f", "json");
+  args.push(targetFile);
 
-    return new Promise((resolve, reject) => {
-      const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
-
-      let stdout = "";
-      let stderr = "";
-
-      proc.stdout.on("data", (data) => {
-        stdout += data;
-      });
-      proc.stderr.on("data", (data) => {
-        stderr += data;
-      });
-
-      proc.on("close", (code) => {
-        const diagnostics = parseDiagnosticOutput(stderr);
-        const success = code === 0;
-
-        // Try to parse JSON output for details
-        let added = 0;
-        let replaced = 0;
-
-        if (stdout.trim()) {
-          try {
-            const json = JSON.parse(stdout);
-            added = json.added ?? 0;
-            replaced = json.replaced ?? 0;
-          } catch {
-            // CLI may not output JSON for set operations
-            // Infer success from exit code
-            if (success) {
-              added = 1; // Assume one element was added
-            }
-          }
-        }
-
-        resolve({
-          success,
-          modifiedFile: targetFile,
-          added,
-          replaced,
-          diagnostics,
-        });
-      });
-
-      proc.on("error", (err) => {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          reject(new Error(`sysml2 not found in PATH. Install sysml2 globally.`));
-        } else {
-          reject(err);
-        }
-      });
-
-      proc.stdin.end();
-    });
-  } finally {
-    // Cleanup temp file
+  // Helper to cleanup temp file
+  const cleanup = async () => {
     try {
       await unlink(tmpFile);
     } catch {
       // Ignore cleanup errors
     }
-  }
+  };
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data) => {
+      stdout += data;
+    });
+    proc.stderr.on("data", (data) => {
+      stderr += data;
+    });
+
+    proc.on("close", async (code) => {
+      // Cleanup temp file after process completes
+      await cleanup();
+
+      const diagnostics = parseDiagnosticOutput(stderr);
+      const success = code === 0;
+
+      // Try to parse JSON output for details
+      let added = 0;
+      let replaced = 0;
+
+      if (stdout.trim()) {
+        try {
+          const json = JSON.parse(stdout);
+          added = json.added ?? 0;
+          replaced = json.replaced ?? 0;
+        } catch {
+          // CLI may not output JSON for set operations
+          // Infer success from exit code
+          if (success) {
+            added = 1; // Assume one element was added
+          }
+        }
+      }
+
+      resolve({
+        success,
+        modifiedFile: targetFile,
+        added,
+        replaced,
+        diagnostics,
+        stderr: stderr.trim() || undefined,
+      });
+    });
+
+    proc.on("error", async (err) => {
+      // Cleanup temp file on error
+      await cleanup();
+
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`sysml2 not found in PATH. Install sysml2 globally.`));
+      } else {
+        reject(err);
+      }
+    });
+
+    proc.stdin.end();
+  });
 }
 
 /**
@@ -576,6 +585,7 @@ export async function deleteElements(
         modifiedFile: targetFile,
         deleted,
         diagnostics,
+        stderr: stderr.trim() || undefined,
       });
     });
 

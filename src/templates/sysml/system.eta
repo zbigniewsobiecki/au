@@ -377,7 +377,7 @@ part def UserModule :> ServiceModule {
 
 ## Metadata Annotations
 
-**RULE:** Parameterless metadata REQUIRES semicolon before an element. Metadata with body `{ }` does NOT.
+**RULE:** Parameterless metadata REQUIRES semicolon before an element. Metadata with body uses `:>>` for attribute redefinitions.
 
 ```sysml
 // Metadata definitions
@@ -397,8 +397,8 @@ action def ProcessPayment { /* ... */ }
 @external;
 part def Database { /* ... */ }
 
-// VALID - metadata with body (no semicolon needed, body terminates it)
-@SourceFile { path = "src/services/user.ts"; line = 42; }
+// VALID - metadata with body (uses :>> to redefine attributes)
+@SourceFile { :>> path = "src/services/user.ts"; :>> line = 42; }
 action def CreateUser { /* ... */ }
 
 // INVALID - parameterless metadata WITHOUT semicolon!
