@@ -93,7 +93,7 @@
 
        doc /**Requirements extracted from {sources} */
 
-       requirement def FR001 : DiscoveredRequirement {
+       requirement def FR001 :> DiscoveredRequirement {
            :>> id = "FR-001";
            :>> source = "README.md";
            doc /**{requirement text} */
