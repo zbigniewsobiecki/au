@@ -45,13 +45,13 @@ const documentSchema = z.object({
   sourcePaths: z.array(z.string()).optional()
     .describe("Source files to read for validation (e.g., package.json, config files). All documents are validated against source."),
   mustCoverPaths: z.array(z.string()).optional()
-    .describe("AU paths that MUST be covered in this document (used for coverage tracking)"),
+    .describe("SysML paths that MUST be covered in this document (used for coverage tracking)"),
   validationFiles: z.array(z.string()).optional()
     .describe("Specific source files to read for fact-checking (frameworks, versions, commands)"),
   includeDiagram: z.enum(["none", "architecture", "sequence", "entity", "state", "flow"]).optional()
     .describe("Type of D2 diagram to include"),
   coverageTarget: z.string().optional()
-    .describe("AU path pattern this document should cover"),
+    .describe("SysML path pattern this document should cover"),
 });
 
 /**
@@ -93,10 +93,10 @@ export const docPlan = createGadget({
 
 ## Optional Fields
 - sourcePaths: files to validate against (package.json is always read)
-- mustCoverPaths: AU paths that MUST be covered (for coverage tracking)
+- mustCoverPaths: SysML paths that MUST be covered (for coverage tracking)
 - validationFiles: specific files for fact-checking (frameworks, versions)
 - includeDiagram: architecture/sequence/entity/state/flow
-- coverageTarget: AU path pattern this document covers
+- coverageTarget: SysML path pattern this document covers
 
 Also provide directoryDescriptions for each category used.`,
   examples: [
