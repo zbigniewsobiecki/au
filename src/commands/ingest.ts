@@ -27,6 +27,7 @@ import {
 import {
   checkCycleCoverage,
   formatCoverageResult,
+  CYCLE_OUTPUT_DIRS,
   type CoverageResult,
 } from "../lib/sysml/index.js";
 import { parsePathList } from "../lib/command-utils.js";
@@ -1190,6 +1191,7 @@ export default class Ingest extends Command {
   /**
    * Run a retry phase to cover missing files from a cycle.
    * This is called when post-cycle validation shows incomplete coverage.
+   * Uses an iterative loop that continues until coverage threshold is met or maxIterations reached.
    */
   private async runCycleRetry(
     client: LLMist,
@@ -1207,8 +1209,8 @@ export default class Ingest extends Command {
     initialCoverage: CoverageResult
   ): Promise<CycleState> {
     const cycle = state.currentCycle;
-    const maxRetryAttempts = 3;
-    let missingFiles = [...initialCoverage.missingFiles];
+    const batchSize = flags["max-files-per-turn"];
+    const totalMissing = initialCoverage.missingFiles.length;
 
     const retryState: CycleState = {
       cycle,
@@ -1219,148 +1221,98 @@ export default class Ingest extends Command {
       filesWritten: 0,
     };
 
+    // Iteration state for retry phase
+    const iterState = {
+      readFiles: new Set<string>(),
+      currentBatch: initialCoverage.missingFiles.slice(0, batchSize),
+      turnCount: 0,
+      maxTurns: flags["max-iterations"],
+    };
+
     if (flags.verbose) {
       console.log();
       console.log(`\x1b[33m━━━ Cycle ${cycle} Retry Phase ━━━\x1b[0m`);
-      console.log(`\x1b[2m   Missing files: ${missingFiles.length}\x1b[0m`);
+      console.log(`\x1b[2m   Missing files: ${totalMissing}\x1b[0m`);
     }
 
     // Read existing model for context
     const existingModel = await readExistingModel(cycle);
     const systemPrompt = render("sysml/system", {});
 
-    for (let attempt = 1; attempt <= maxRetryAttempts && missingFiles.length > 0; attempt++) {
+    let done = false;
+    while (!done && iterState.turnCount < iterState.maxTurns) {
+      iterState.turnCount++;
+
       if (flags.verbose) {
-        console.log(`\x1b[2m   Retry attempt ${attempt}/${maxRetryAttempts}: ${missingFiles.length} files remaining\x1b[0m`);
+        console.log(`\x1b[2m   Retry turn ${iterState.turnCount}/${iterState.maxTurns}: ${iterState.currentBatch.length} files in batch\x1b[0m`);
       }
+
+      // Run validation to get semantic errors
+      let validationErrors: Sysml2MultiDiagnostic[] = [];
+      try {
+        const validation = await validateModelFull(".sysml");
+        validationErrors = validation.semanticErrors;
+      } catch {
+        // sysml2 not available - skip validation
+      }
+
+      // Get the cycle's output directory
+      const cycleOutputDir = CYCLE_OUTPUT_DIRS[cycle] || "context";
 
       // Create focused retry prompt
       const retryPrompt = render("sysml/retry", {
         cycle,
-        missingFiles: missingFiles.slice(0, 30), // Show first 30 missing files
-        totalMissing: missingFiles.length,
+        cycleOutputDir,
+        missingFiles: iterState.currentBatch.slice(0, 30),
+        totalMissing,
         existingModel,
       });
 
-      // Read contents of missing files in batches
-      const batchSize = flags["max-files-per-turn"];
-      const fileBatch = missingFiles.slice(0, batchSize);
-      const fileContents = await readFileContents(fileBatch);
-
+      // Read contents of current batch
+      const fileContents = await readFileContents(iterState.currentBatch);
       const userMessage = `${retryPrompt}\n\n## Files to Document\n\n${fileContents}`;
 
-      // Run retry turn
-      const textState = createTextBlockState();
+      // Run retry turn with iterative support
+      const turnResult = await this.runRetryTurn(
+        client,
+        systemPrompt,
+        userMessage,
+        iterState,
+        retryState,
+        flags,
+        out,
+        validationErrors,
+        totalMissing,
+        cycleOutputDir
+      );
 
-      let builder = new AgentBuilder(client)
-        .withModel(flags.model)
-        .withSystem(systemPrompt)
-        .withMaxIterations(Math.min(flags["max-iterations"], 30))
-        .withGadgets(
-          sysmlCreate,
-          sysmlWrite,
-          sysmlRead,
-          sysmlList,
-          readFiles,
-          readDirs
-        )
-        .withTextOnlyHandler("terminate");
+      // Track read files
+      for (const file of iterState.currentBatch) {
+        iterState.readFiles.add(file);
+      }
 
-      builder = configureBuilder(builder, out, flags.rpm, flags.tpm);
+      // Check if LLM requested more files
+      if (turnResult.nextFiles.length === 0) {
+        // Re-check coverage
+        const coverage = await checkCycleCoverage(cycle, ".");
 
-      const agent = builder.ask(userMessage);
-
-      // Track usage
-      let turnInputTokens = 0;
-      let turnOutputTokens = 0;
-      let turnCachedTokens = 0;
-      let turnCost = 0;
-
-      const tree = agent.getTree();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tree.onAll((event: any) => {
-        if (event.type === "llm_call_complete") {
-          if (event.usage) {
-            turnInputTokens = event.usage.inputTokens || 0;
-            turnOutputTokens = event.usage.outputTokens || 0;
-            turnCachedTokens = event.usage.cachedInputTokens || 0;
-            retryState.inputTokens += turnInputTokens;
-            retryState.outputTokens += turnOutputTokens;
-            retryState.cachedTokens += turnCachedTokens;
-          }
-          if (event.cost) {
-            turnCost = event.cost;
-            retryState.cost += turnCost;
-          }
-
-          if (flags.verbose) {
-            const inputStr = formatTokens(turnInputTokens);
-            const outputStr = formatTokens(turnOutputTokens);
-            const costStr = turnCost >= 0.01
-              ? `$${turnCost.toFixed(3)}`
-              : `$${turnCost.toFixed(4)}`;
-            console.log(`\x1b[2m   ⤷ Retry turn: ${inputStr} in · ${outputStr} out · ${costStr}\x1b[0m`);
-          }
+        if (flags.verbose) {
+          console.log(`\x1b[2m   After turn ${iterState.turnCount}: ${coverage.coveragePercent}% coverage, ${coverage.missingFiles.length} files remaining\x1b[0m`);
         }
-      });
 
-      // Stream events
-      for await (const event of agent.run()) {
-        if (event.type === "text") {
-          if (flags.verbose) {
-            textState.inTextBlock = true;
-            out.thinkingChunk(event.content);
-          }
-        } else if (event.type === "gadget_call") {
-          if (flags.verbose) {
-            endTextBlock(textState, out);
-            const params = event.call.parameters as Record<string, unknown>;
-            out.gadgetCall(event.call.gadgetName, params);
-          }
-        } else if (event.type === "gadget_result") {
-          const result = event.result;
-
-          if (flags.verbose) {
-            endTextBlock(textState, out);
-          }
-
-          if (result.gadgetName === "SysMLWrite") {
-            if (result.error) {
-              out.gadgetError(result.gadgetName, result.error);
-            } else if (result.result) {
-              retryState.filesWritten++;
-
-              // Parse the path from result (format: "path=... status=...")
-              const pathMatch = result.result.match(/^path=(\S+)/);
-              const writtenPath = pathMatch ? pathMatch[1] : result.result.split("\n")[0];
-
-              if (flags.verbose) {
-                console.log(`${chalk.green("   ✓")} ${writtenPath}`);
-              } else {
-                console.log(`  Wrote: ${writtenPath}`);
-              }
-            }
-          } else if (flags.verbose) {
-            out.gadgetResult(result.gadgetName);
-          }
+        if (coverage.coveragePercent >= flags["coverage-threshold"]) {
+          done = true;
+        } else if (coverage.missingFiles.length === 0) {
+          // All files are actually covered - exit
+          done = true;
+        } else {
+          // Re-show the same missing files, they still need coverage
+          // Don't filter by readFiles - the LLM may not have written metadata correctly
+          iterState.currentBatch = coverage.missingFiles.slice(0, batchSize);
         }
-      }
-
-      if (flags.verbose) {
-        endTextBlock(textState, out);
-      }
-
-      // Re-check coverage after retry attempt
-      const newCoverage = await checkCycleCoverage(cycle, ".");
-      missingFiles = newCoverage.missingFiles;
-
-      if (flags.verbose) {
-        console.log(`\x1b[2m   After attempt ${attempt}: ${newCoverage.coveragePercent}% coverage, ${missingFiles.length} files remaining\x1b[0m`);
-      }
-
-      // If coverage threshold is met, stop retrying
-      if (newCoverage.coveragePercent >= flags["coverage-threshold"]) {
-        break;
+      } else {
+        // LLM requested specific files
+        iterState.currentBatch = turnResult.nextFiles.slice(0, batchSize);
       }
     }
 
@@ -1375,6 +1327,191 @@ export default class Ingest extends Command {
     }
 
     return retryState;
+  }
+
+  /**
+   * Run a single turn within the retry phase.
+   * Similar to runSingleCycleTurn but optimized for retry scenarios.
+   */
+  private async runRetryTurn(
+    client: LLMist,
+    systemPrompt: string,
+    userMessage: string,
+    iterState: { readFiles: Set<string>; currentBatch: string[]; turnCount: number; maxTurns: number },
+    retryState: CycleState,
+    flags: {
+      model: string;
+      verbose: boolean;
+      rpm: number;
+      tpm: number;
+      "max-iterations": number;
+    },
+    out: Output,
+    validationErrors: Sysml2MultiDiagnostic[],
+    totalMissing: number,
+    cycleOutputDir: string
+  ): Promise<{ nextFiles: string[]; turns: number }> {
+    const textState = createTextBlockState();
+    let nextFiles: string[] = [];
+
+    // Single turn with limited iterations
+    const maxTurnIterations = Math.min(flags["max-iterations"], 30);
+
+    // Get current coverage for trailing message
+    let stillMissingCount = totalMissing - iterState.readFiles.size;
+    const unreadFiles: string[] = [];
+    try {
+      const coverage = await checkCycleCoverage(retryState.cycle, ".");
+      stillMissingCount = coverage.missingFiles.length;
+      unreadFiles.push(...coverage.missingFiles.filter(f => !iterState.readFiles.has(f)));
+    } catch {
+      // Ignore coverage check errors
+    }
+
+    let builder = new AgentBuilder(client)
+      .withModel(flags.model)
+      .withSystem(systemPrompt)
+      .withMaxIterations(maxTurnIterations)
+      .withGadgets(
+        sysmlCreate,
+        sysmlWrite,
+        sysmlRead,
+        sysmlList,
+        readFiles,
+        readDirs,
+        fileViewerNextFileSet
+      );
+      // Note: No .withTextOnlyHandler("terminate") - let the LLM keep trying
+
+    builder = configureBuilder(builder, out, flags.rpm, flags.tpm)
+      .withTrailingMessage(() => {
+        return render("sysml/retry-trailing", {
+          iteration: iterState.turnCount,
+          maxIterations: iterState.maxTurns,
+          cycleOutputDir,
+          readCount: iterState.readFiles.size,
+          remainingFiles: iterState.currentBatch.length,
+          totalMissing,
+          stillMissing: stillMissingCount,
+          unreadFiles: unreadFiles.slice(0, 20),
+          validationErrors,
+        });
+      });
+
+    const agent = builder.ask(userMessage);
+
+    // Track usage
+    let turnCount = 0;
+    let turnInputTokens = 0;
+    let turnOutputTokens = 0;
+    let turnCachedTokens = 0;
+    let turnCost = 0;
+
+    const tree = agent.getTree();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tree.onAll((event: any) => {
+      if (event.type === "llm_call_complete") {
+        turnCount++;
+        if (event.usage) {
+          turnInputTokens = event.usage.inputTokens || 0;
+          turnOutputTokens = event.usage.outputTokens || 0;
+          turnCachedTokens = event.usage.cachedInputTokens || 0;
+          retryState.inputTokens += turnInputTokens;
+          retryState.outputTokens += turnOutputTokens;
+          retryState.cachedTokens += turnCachedTokens;
+        }
+        if (event.cost) {
+          turnCost = event.cost;
+          retryState.cost += turnCost;
+        }
+
+        if (flags.verbose) {
+          const inputStr = formatTokens(turnInputTokens);
+          const outputStr = formatTokens(turnOutputTokens);
+          const cachedStr = turnCachedTokens > 0
+            ? ` (${formatTokens(turnCachedTokens)} cached)`
+            : "";
+          const costStr = turnCost >= 0.01
+            ? `$${turnCost.toFixed(3)}`
+            : `$${turnCost.toFixed(4)}`;
+          console.log(`\x1b[2m   ⤷ Retry ${iterState.turnCount}.${turnCount}: ${inputStr} in · ${outputStr} out${cachedStr} · ${costStr}\x1b[0m`);
+        }
+      }
+    });
+
+    // Stream events
+    for await (const event of agent.run()) {
+      if (event.type === "text") {
+        if (flags.verbose) {
+          textState.inTextBlock = true;
+          out.thinkingChunk(event.content);
+        }
+      } else if (event.type === "gadget_call") {
+        if (flags.verbose) {
+          endTextBlock(textState, out);
+          const params = event.call.parameters as Record<string, unknown>;
+          out.gadgetCall(event.call.gadgetName, params);
+        }
+      } else if (event.type === "gadget_result") {
+        const result = event.result;
+
+        if (flags.verbose) {
+          endTextBlock(textState, out);
+        }
+
+        if (result.gadgetName === "SysMLWrite" || result.gadgetName === "SysMLCreate") {
+          if (result.error) {
+            out.gadgetError(result.gadgetName, result.error);
+          } else if (result.result) {
+            retryState.filesWritten++;
+
+            // Parse the path from result (format: "path=... status=...")
+            const pathMatch = result.result.match(/^path=(\S+)/);
+            const modeMatch = result.result.match(/mode=(\w+)/);
+            const deltaMatch = result.result.match(/delta=([+-]?\d+ bytes)/);
+            const writtenPath = pathMatch ? pathMatch[1] : result.result.split("\n")[0];
+            let mode = modeMatch ? modeMatch[1] : "";
+            if (!mode && result.gadgetName === "SysMLCreate") {
+              mode = result.result?.includes("Reset package") ? "reset" : "create";
+            }
+            const delta = deltaMatch ? deltaMatch[1] : null;
+
+            if (flags.verbose) {
+              const modeStr = mode === "create" ? chalk.yellow("[new]") : mode === "reset" ? chalk.magenta("[reset]") : mode === "upsert" ? chalk.blue("[set]") : mode === "delete" ? chalk.red("[del]") : "";
+              const deltaStr = delta ? (delta.startsWith("-") ? chalk.red(` (${delta})`) : chalk.dim(` (${delta})`)) : "";
+              console.log(`${chalk.green("   ✓")} ${writtenPath} ${modeStr}${deltaStr}`);
+            } else {
+              console.log(`  Wrote: ${writtenPath}`);
+            }
+          }
+        } else if (result.gadgetName === "FileViewerNextFileSet") {
+          // Parse next files from the gadget call parameters
+          const params = result.parameters as { paths?: string };
+          nextFiles = parsePathList(params?.paths ?? "");
+
+          if (flags.verbose) {
+            if (nextFiles.length > 0) {
+              console.log(`\x1b[2m   → Next batch: ${nextFiles.length} files\x1b[0m`);
+            } else {
+              console.log(`\x1b[2m   → Batch complete, checking coverage\x1b[0m`);
+            }
+          }
+
+          // If LLM signals completion (empty paths), break out of event loop
+          if (nextFiles.length === 0) {
+            break;
+          }
+        } else if (flags.verbose) {
+          out.gadgetResult(result.gadgetName);
+        }
+      }
+    }
+
+    if (flags.verbose) {
+      endTextBlock(textState, out);
+    }
+
+    return { nextFiles, turns: turnCount };
   }
 
   /**
