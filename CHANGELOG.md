@@ -1,3 +1,48 @@
+## [2.0.0](https://github.com/zbigniewsobiecki/au/compare/v1.6.0...v2.0.0) (2026-01-25)
+
+### ⚠ BREAKING CHANGES
+
+* AU format (.au files) is no longer supported. SysML v2 is now
+the only model representation.
+
+## Removed
+- AU core libraries (au-yaml.ts, au-paths.ts, validator.ts)
+- AU gadgets (AURead, AUUpdate, AUList)
+- AU subagent
+- AU commands (old ingest, ingest2, update)
+- AU templates (ingest/, ingest2/, update/)
+- Progress tracker and dependency graph (AU-specific)
+
+## Added
+- SysML subagent with AskAboutCodebase gadget
+- New dump command for SysML model export
+
+## Changed
+- Renamed sysml-ingest → ingest
+- Moved sysml/validate → validate
+- Moved sysml/stats → stats
+- document command: --au-only → --model-only, uses SysML
+- docs-feedback: migrated to SysML gadgets
+- All templates updated to reference SysML
+- file-filter: now ignores .sysml/ instead of .au files
+- command-utils: selectReadGadgets uses modelOnly parameter
+
+## Migration
+Users should run `au ingest` to generate SysML model from their codebase.
+The `au dump` command now outputs SysML format.
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+### Features
+
+* complete AU to SysML migration - remove AU format entirely ([4ab5691](https://github.com/zbigniewsobiecki/au/commit/4ab569178cef7523d2bebf84c699a44f9f14d913))
+* **sysml:** enhance templates with full SysML v2 language support ([b2e407f](https://github.com/zbigniewsobiecki/au/commit/b2e407f14859b9122ace137009f804ae97a07675))
+
+### Bug Fixes
+
+* **sysml:** correct metadata syntax rules and stdlib names ([4298bb7](https://github.com/zbigniewsobiecki/au/commit/4298bb715689faf527efcffb4a736ce3138e6752))
+* **templates:** use :> for requirement specialization ([980bf10](https://github.com/zbigniewsobiecki/au/commit/980bf103ccd1e2c5ae343a9cd80275cf20573b6a))
+
 ## [1.6.0](https://github.com/zbigniewsobiecki/au/compare/v1.5.0...v1.6.0) (2026-01-23)
 
 ### Features
