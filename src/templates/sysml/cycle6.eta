@@ -66,7 +66,7 @@
    **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
    If modifying an existing index:
    1. First use `SysMLRead("analysis/_index.sysml")` to see current content
-   2. Then use search/replace mode to ADD new imports after existing ones
+   2. Then use SysMLWrite with `element` + `at` to upsert imports
    3. Do NOT assume the file matches these examples - it may already have other imports
 
    **analysis/performance.sysml** - Add performance analysis:

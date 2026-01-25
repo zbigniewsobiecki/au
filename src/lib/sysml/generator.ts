@@ -202,6 +202,276 @@ export function generateStdlib(): string {
         in maxVal : Real;
         value >= minVal and value <= maxVal
     }
+
+    // ========== APPLICATION COMPONENTS ==========
+    abstract part def Application :> Part {
+        doc /*Base for all application types */
+        attribute name : String;
+        attribute version : String [0..1];
+    }
+
+    part def WebApplication :> Application {
+        doc /*Full-stack web application */
+        part frontend : Frontend [0..1];
+        part backend : Backend [0..1];
+        part database : Database [0..*];
+    }
+
+    part def Frontend :> Part {
+        doc /*Client-side application (SPA, SSR, static) */
+        attribute framework : String;
+        attribute port : Integer [0..1];
+        port api : ~HTTPPort;
+    }
+
+    part def Backend :> Part {
+        doc /*Server-side application */
+        attribute framework : String;
+        attribute port : Integer [0..1];
+        port api : HTTPPort;
+        port db : ~DatabasePort;
+    }
+
+    part def APIServer :> Backend {
+        doc /*REST/GraphQL API server */
+        attribute basePath : String [0..1];
+    }
+
+    part def Worker :> Part {
+        doc /*Background worker process */
+        attribute queue : String [0..1];
+        port tasks : ~MessagePort;
+    }
+
+    // ========== DATABASE & STORAGE ==========
+    abstract part def Database :> Part {
+        doc /*Base for all database types */
+        attribute name : String [0..1];
+        attribute purpose : String [0..1];
+        attribute host : String [0..1];
+        attribute port : Integer [0..1];
+        attribute connectionString : String [0..1];
+        port connection : DatabasePort;
+    }
+
+    part def PostgreSQL :> Database {
+        doc /*PostgreSQL database */
+    }
+
+    part def MySQL :> Database {
+        doc /*MySQL database */
+    }
+
+    part def MongoDB :> Database {
+        doc /*MongoDB database */
+    }
+
+    part def Redis :> Part {
+        doc /*Redis cache/store */
+        attribute host : String [0..1];
+        attribute port : Integer [0..1];
+        port connection : CachePort;
+    }
+
+    part def S3Storage :> Part {
+        doc /*S3-compatible object storage */
+        attribute bucket : String;
+        attribute region : String [0..1];
+        port storage : StoragePort;
+    }
+
+    // ========== EXTERNAL INTEGRATIONS ==========
+    abstract part def ExternalService :> Part {
+        doc /*Third-party service integration */
+        attribute provider : String;
+        attribute apiKey : String [0..1];
+    }
+
+    part def AuthProvider :> ExternalService {
+        doc /*Authentication provider (Auth0, Clerk, etc.) */
+        port auth : AuthPort;
+    }
+
+    part def PaymentProvider :> ExternalService {
+        doc /*Payment processing (Stripe, etc.) */
+        port payments : PaymentPort;
+    }
+
+    part def EmailProvider :> ExternalService {
+        doc /*Email service (Mailgun, SendGrid, etc.) */
+        port email : EmailPort;
+    }
+
+    part def StorageProvider :> ExternalService {
+        doc /*File storage service */
+        port storage : StoragePort;
+    }
+
+    // ========== SERVICE PORTS ==========
+    port def HTTPPort :> ServicePort {
+        doc /*HTTP/REST API port */
+        attribute basePath : String [0..1];
+        attribute port : Integer [0..1];
+        in item request : HTTPRequest [0..*];
+        out item response : HTTPResponse [0..*];
+    }
+
+    port def WebSocketPort :> Port {
+        doc /*WebSocket connection port */
+        in item inMessage : Message [0..*];
+        out item outMessage : Message [0..*];
+    }
+
+    port def DatabasePort :> Port {
+        doc /*Database connection port */
+        in item query : Query [0..*];
+        out item result : QueryResult [0..*];
+    }
+
+    port def CachePort :> Port {
+        doc /*Cache connection port */
+        in item cacheKey [0..*];
+        out item cacheValue [0..1];
+    }
+
+    port def MessagePort :> Port {
+        doc /*Message queue port */
+        in item inMessage : Message [0..*];
+        out item acknowledgement [0..1];
+    }
+
+    port def AuthPort :> Port {
+        doc /*Authentication port */
+        in item credentials : Credentials;
+        out item token : AuthToken [0..1];
+        out item error : AuthError [0..1];
+    }
+
+    port def PaymentPort :> Port {
+        doc /*Payment processing port */
+        in item paymentRequest : PaymentRequest;
+        out item paymentResult : PaymentResult;
+    }
+
+    port def EmailPort :> Port {
+        doc /*Email sending port */
+        in item email : EmailMessage;
+        out item result : DeliveryResult;
+    }
+
+    port def StoragePort :> Port {
+        doc /*File storage port */
+        in item file : FileData;
+        out item fileUrl [0..1];
+    }
+
+    // ========== API ITEM TYPES ==========
+    item def HTTPRequest :> DTO {
+        doc /*HTTP request */
+        attribute method : String;
+        attribute path : String;
+        attribute headers : JSON [0..1];
+        attribute body : JSON [0..1];
+    }
+
+    item def HTTPResponse :> DTO {
+        doc /*HTTP response */
+        attribute statusCode : Integer;
+        attribute headers : JSON [0..1];
+        attribute body : JSON [0..1];
+    }
+
+    item def Message :> Item {
+        doc /*Generic message */
+        attribute payload : JSON;
+        attribute timestamp : DateTime;
+    }
+
+    item def Query :> Item {
+        doc /*Database query */
+        attribute sql : String [0..1];
+        attribute params : JSON [0..1];
+    }
+
+    item def QueryResult :> Item {
+        doc /*Database query result */
+        attribute rows : JSON;
+        attribute rowCount : Integer;
+    }
+
+    item def Credentials :> DTO {
+        doc /*Authentication credentials */
+        attribute email : String [0..1];
+        attribute password : String [0..1];
+        attribute token : String [0..1];
+    }
+
+    item def AuthToken :> DTO {
+        doc /*Authentication token */
+        attribute accessToken : String;
+        attribute refreshToken : String [0..1];
+        attribute expiresAt : DateTime [0..1];
+    }
+
+    item def AuthError :> DTO {
+        doc /*Authentication error */
+        attribute code : String;
+        attribute message : String;
+    }
+
+    item def PaymentRequest :> DTO {
+        doc /*Payment request */
+        attribute amount : Real;
+        attribute currency : String;
+        attribute customerId : String [0..1];
+    }
+
+    item def PaymentResult :> DTO {
+        doc /*Payment result */
+        attribute success : Boolean;
+        attribute transactionId : String [0..1];
+        attribute error : String [0..1];
+    }
+
+    item def EmailMessage :> DTO {
+        doc /*Email message */
+        attribute recipient : String;
+        attribute subject : String;
+        attribute bodyText : String;
+        attribute sender : String [0..1];
+    }
+
+    item def DeliveryResult :> DTO {
+        doc /*Delivery result */
+        attribute delivered : Boolean;
+        attribute messageId : String [0..1];
+    }
+
+    item def FileData :> DTO {
+        doc /*File data for storage */
+        attribute name : String;
+        attribute contentType : String [0..1];
+        attribute size : Integer [0..1];
+    }
+
+    // ========== CONNECTION DEFINITIONS ==========
+    connection def APIConnection :> ServiceBinding {
+        doc /*Frontend to Backend API connection */
+        end client : ~HTTPPort;
+        end server : HTTPPort;
+    }
+
+    connection def DatabaseConnection {
+        doc /*Application to Database connection */
+        end app : ~DatabasePort;
+        end db : DatabasePort;
+    }
+
+    connection def CacheConnection {
+        doc /*Application to Cache connection */
+        end app : ~CachePort;
+        end cache : CachePort;
+    }
 }
 `;
 }

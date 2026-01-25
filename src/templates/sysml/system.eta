@@ -29,15 +29,62 @@ Base types in AU models extend these standard library types:
 
 ## SysML v2 Syntax Overview
 
-## STOP - Check These Before Writing SysML
+## ⚠️ CRITICAL SYNTAX ERRORS - READ BEFORE WRITING
+
+### ERROR 1: Value After Definition Name
+```sysml
+// WRONG - Cannot assign value to a 'def'!
+requirement def FR001 :> Base = "source.ts" {
+                             ^^^^^^^^^^^^ SYNTAX ERROR
+}
+
+// CORRECT - Values go INSIDE the body with :>>
+requirement def FR001 :> Base {
+    :>> source = "source.ts";
+}
+```
+
+### ERROR 2: Combining 'attribute' with ':>>'
+```sysml
+// WRONG
+part x : Type {
+    attribute :>> name = "value";  // NEVER combine these!
+}
+
+// CORRECT
+part x : Type {
+    :>> name = "value";
+}
+```
+
+### ERROR 3: :>> Without Inheritance
+```sysml
+// WRONG - No base type to redefine from!
+requirement def FR001 {
+    :>> id = "FR-001";  // ERROR: nothing to redefine!
+}
+
+// CORRECT - Either inherit OR use attribute
+requirement def FR001 :> DiscoveredRequirement {  // Has base type
+    :>> id = "FR-001";  // Now :>> works
+}
+
+// OR standalone with attribute
+requirement def FR001 {
+    attribute id : Identifier = "FR-001";  // Define attribute directly
+}
+```
+
+### Quick Reference Table
 
 | Error | Wrong | Correct |
 |-------|-------|---------|
+| Value after def | `def X :> Y = "v" { }` | `def X :> Y { :>> attr = "v"; }` |
 | attribute + :>> | `attribute :>> name = "x";` | `:>> name = "x";` |
-| Dangling metadata | `@external;` | `@external` then element |
+| Dangling metadata | `@external;` (alone) | `@external;` then element |
 | :>> without inheritance | `def X { :>> a = v; }` | `def X { attribute a : T = v; }` |
 
-**:>> Decision:**
+**:>> Decision Tree:**
 ```
 Do I have ":>" or ": Type"?
 ├─ Yes → :>> name = value;
@@ -486,6 +533,16 @@ part x : SomePart {
 // FIX: :>> name = "value";
 ```
 
+**INVALID - Value after definition name:**
+```sysml
+requirement def FR001 :> Base = "value" {  // ERROR: can't assign to def!
+}
+// FIX: Put values INSIDE the body:
+requirement def FR001 :> Base {
+    :>> source = "value";
+}
+```
+
 **VALID patterns:**
 ```sysml
 // Typed usage - can use :>>
@@ -509,16 +566,151 @@ part def MyPart {
 - Use `:>> name = value;` when **redefining** an inherited attribute (no `attribute` keyword!)
 - This applies to parts, items, requirements, and all other usages
 
+## Defining Types vs Using Types (CRITICAL)
+
+### The Golden Rule
+**Define a type (`part def`, `item def`) BEFORE you can use it as a type annotation.**
+
+### Decision Tree: Do I Need a New Type?
+
+```
+Want to create something new?
+├─ Will it be reused or specialized?
+│   └─ YES → Define a type first: `part def MyThing :> BaseType { ... }`
+│            Then instantiate: `part myThing : MyThing;`
+│
+├─ Is it a one-off instance of an existing type?
+│   └─ YES → Just instantiate: `part myThing : ExistingType { ... }`
+│
+└─ Does a stdlib type already fit?
+    └─ YES → Use it: `part db : PostgreSQL;`
+```
+
+### Type Definition Patterns
+
+**CORRECT - Define type, then use it:**
+```sysml
+// Step 1: Define the type
+part def AuthModule :> Module {
+    attribute authProvider : String;
+}
+
+// Step 2: Instantiate the type
+part authModule : AuthModule {
+    :>> authProvider = "jwt";
+}
+```
+
+**WRONG - Using undefined type:**
+```sysml
+part authModule : AuthModule {  // ERROR: AuthModule is undefined!
+    attribute authProvider : String = "jwt";
+}
+```
+
+**WRONG - Using a part name as a type:**
+```sysml
+// If you defined this:
+part eslintConfig : Module { :>> name = "eslint"; }
+
+// You CANNOT do this:
+part myLinter : eslintConfig;  // ERROR: eslintConfig is a part, not a type!
+
+// CORRECT:
+part myLinter : Module { :>> name = "my-eslint"; }
+```
+
+### When to Define Custom Types
+
+| Scenario | Action |
+|----------|--------|
+| Multiple instances with same structure | Define `part def` first |
+| Specialized behavior/attributes | Define `part def :> BaseType` |
+| One-off component | Use existing type directly |
+| Stdlib type fits | Use stdlib (`PostgreSQL`, `Module`, etc.) |
+
+## Cross-Package Type References
+
+### Import Before Use
+Types from other packages must be imported before use:
+
+```sysml
+package SystemStructure {
+    import SysMLPrimitives::*;
+    import DomainEntities::*;  // Import to use types from DomainEntities
+
+    part def UserService :> Module {
+        // Can now use User from DomainEntities
+        item userData : User;
+    }
+}
+```
+
+### Qualified References
+Use fully qualified names when importing specific types:
+
+```sysml
+import DomainEntities::User;      // Import specific type
+import DomainEntities::*;          // Import all public members
+```
+
+### Common Error: Undefined Type from Other Package
+
+```
+error[E3001]: undefined type 'DomainEntities::User'
+```
+
+**Fix:** Ensure the package is imported in your package declaration:
+```sysml
+package MyPackage {
+    import DomainEntities::*;  // Add this!
+    // Now DomainEntities types are visible
+}
+```
+
+### Parts Are NOT Types
+
+**WRONG:**
+```sysml
+// In structure/config.sysml:
+part workspace : Module { :>> name = "workspace"; }
+
+// In structure/_index.sysml:
+part system : SystemDecomposition {
+    part ws : workspace;  // ERROR: 'workspace' is a part, not a type!
+}
+```
+
+**CORRECT:**
+```sysml
+// Option 1: Reference the part directly
+part system : SystemDecomposition {
+    // Reference existing part, don't re-instantiate
+}
+
+// Option 2: Define a type if you need multiple instances
+part def WorkspaceConfig :> Module { ... }
+part workspace1 : WorkspaceConfig;
+part workspace2 : WorkspaceConfig;
+```
+
 ## Available Tools
 
-### SysMLWrite - Three modes available:
-
-**Mode 1: Full content** (for new files):
+### SysMLCreate - Create new files:
 ```
-SysMLWrite(path="context/requirements.sysml", content="package Requirements { ... }")
-```
+SysMLCreate(path="context/boundaries.sysml", package="SystemContext")
+→ Creates: package SystemContext { }
 
-**Mode 2: CLI upsert** (PREFERRED for editing existing files):
+SysMLCreate(path="data/entities.sysml", package="Entities", content="item def User { attribute name : String; }")
+→ Creates: package Entities { item def User { attribute name : String; } }
+```
+- Use for ALL new files
+- `content`: Optional initial elements to include in package
+- `force=true`: Reset a corrupted file (overwrites existing)
+
+### SysMLWrite - Modify existing files (two modes):
+
+**Mode 1: CLI upsert** (for adding/updating elements):
 ```
 SysMLWrite(
   path="data/entities.sysml",
@@ -530,8 +722,9 @@ SysMLWrite(
 - `at`: Qualified scope path (e.g., `DataModel::Entities`)
 - `createScope=true`: Create scope hierarchy if missing
 - UPSERT semantics: replaces if element exists, adds if new
+- ATOMIC: On failure, file is restored to original state
 
-**Mode 3: Delete** (for removing elements):
+**Mode 2: Delete** (for removing elements):
 ```
 SysMLWrite(path="data/entities.sysml", delete="DataModel::Entities::OldUser")
 ```
@@ -572,17 +765,24 @@ Index files (`_index.sysml`) **accumulate imports across cycles**. They are NOT 
 
 **Example workflow:**
 ```
-// 1. Check what's in the file
+// 1. Create a new file with initial content
+SysMLCreate(
+  path="data/entities.sysml",
+  package="DomainEntities",
+  content="item def User :> BaseEntity { attribute name : String; }"
+)
+
+// 2. Check what's in the file
 SysMLQuery(select="DomainEntities::*")
 
-// 2. Add or update an element at a specific scope
+// 3. Add or update an element at a specific scope
 SysMLWrite(
   path="data/entities.sysml",
-  element="item def NewEntity :> BaseEntity { attribute name : String; }",
+  element="item def NewEntity :> BaseEntity { attribute email : String; }",
   at="DomainEntities"
 )
 
-// 3. Delete old elements
+// 4. Delete old elements
 SysMLDelete(path="data/entities.sysml", element="DomainEntities::OldEntity")
 ```
 
@@ -631,6 +831,97 @@ The model is organized as:
 └── _model.sysml               # Master index (pre-generated)
 ```
 
+## Using Standard Library Types
+
+SysMLPrimitives provides ready-to-use types for common components. Use these instead of defining your own for standard patterns.
+
+**Application Parts:**
+- `WebApplication` - Full-stack web app with frontend, backend, database parts
+- `Frontend` - Client-side app (SPA, SSR, static) with framework attribute
+- `Backend` - Server-side app with framework and port attributes
+- `APIServer` - REST/GraphQL API server (extends Backend)
+- `Worker` - Background worker process with queue attribute
+
+**Database/Storage:**
+- `PostgreSQL`, `MySQL`, `MongoDB` - Database types (extend Database)
+- `Redis` - Cache/store with host and port
+- `S3Storage` - Object storage with bucket and region
+
+**External Services:**
+- `AuthProvider` - Auth service (Auth0, Clerk, etc.)
+- `PaymentProvider` - Payment processing (Stripe, etc.)
+- `EmailProvider` - Email service (Mailgun, SendGrid, etc.)
+- `StorageProvider` - File storage service
+
+**Service Ports:**
+- `HTTPPort`, `WebSocketPort` - Web communication ports
+- `DatabasePort`, `CachePort` - Data storage ports
+- `AuthPort`, `PaymentPort`, `EmailPort`, `StoragePort` - Service integration ports
+
+**Connections:**
+- `APIConnection` - Frontend to Backend API connection
+- `DatabaseConnection` - App to Database connection
+- `CacheConnection` - App to Cache connection
+
+**Example - Model a full-stack app:**
+```sysml
+part myApp : WebApplication {
+    :>> name = "MyApp";
+
+    part :>> frontend : Frontend {
+        :>> framework = "react";
+        :>> port = 3000;
+    }
+
+    part :>> backend : APIServer {
+        :>> framework = "express";
+        :>> port = 3010;
+    }
+
+    part db : PostgreSQL;
+
+    connection apiConn : APIConnection connect
+        frontend.api to backend.api;
+
+    connection dbConn : DatabaseConnection connect
+        backend.db to db.connection;
+}
+```
+
+## Defining Custom Types
+
+When stdlib types don't fit, define your own by specializing base types:
+
+**Custom Service Module:**
+```sysml
+part def PaymentService :> Backend {
+    doc /* Custom payment processing service */
+    :>> framework = "fastify";
+
+    port stripeApi : ~PaymentPort;
+    port webhooks : HTTPPort;
+
+    attribute supportedCurrencies : String [1..*];
+}
+```
+
+**Custom Entity:**
+```sysml
+item def Order :> Entity {
+    attribute customerId : Identifier;
+    attribute items : OrderItem [1..*];
+    attribute total : Real;
+    attribute status : OrderStatus;
+}
+
+enum def OrderStatus {
+    Pending; Processing; Shipped; Delivered; Cancelled;
+}
+```
+
+**IMPORTANT:** Define types BEFORE referencing them. If upserting fails with
+"undefined type", create the type first in a separate upsert call.
+
 ## Guidelines
 
 1. **Be language-agnostic**: Adapt to what you discover, don't assume specific frameworks
@@ -638,8 +929,8 @@ The model is organized as:
 3. **Include documentation**: Add `doc` comments explaining each element
 4. **Cross-reference properly**: Use imports to connect packages
 5. **Validate before writing**: The SysMLWrite gadget validates syntax by default
-6. **Use search/replace for edits**: When editing existing files, use search/replace mode instead of rewriting the entire file
-7. **Read before editing**: Always use SysMLRead to get current content and line numbers before making edits
+6. **Use upserts for edits**: When editing existing files, use SysMLWrite with `element` + `at` for semantic upserts
+7. **Read before editing**: Always use SysMLRead to get current content before making edits
 
 ## Package Linking (CRITICAL)
 
@@ -689,7 +980,7 @@ Before creating a new file, check `SysMLList()` to see existing packages.
 Before creating any SysML element:
 
 1. **Check before creating**: Use `SysMLRead` to verify if an element already exists
-2. **Update don't recreate**: If a duplicate is found, use search/replace to update it instead of recreating
+2. **Update don't recreate**: If a duplicate is found, use SysMLWrite with `element` + `at` to upsert it instead of recreating
 3. **Single location per entity**: Never define the same entity in multiple files
 
 **Common duplicates to avoid:**

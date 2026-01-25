@@ -40,6 +40,52 @@
 *Use FileDiscover to find relevant files*
 <% } %>
 
+### ⚠️ CRITICAL SYNTAX ERRORS - CHECK BEFORE WRITING
+
+**ERROR 1: Value After Definition Name**
+```sysml
+// WRONG - Cannot assign value to a 'def'!
+requirement def FR001 :> Base = "source.ts" {
+                             ^^^^^^^^^^^^ SYNTAX ERROR
+}
+
+// CORRECT - Values go INSIDE the body with :>>
+requirement def FR001 :> Base {
+    :>> source = "source.ts";
+}
+```
+
+**ERROR 2: Combining 'attribute' with ':>>'**
+```sysml
+// WRONG
+part x : Type {
+    attribute :>> name = "value";  // NEVER combine these!
+}
+
+// CORRECT
+part x : Type {
+    :>> name = "value";
+}
+```
+
+**ERROR 3: :>> Without Inheritance**
+```sysml
+// WRONG - No base type to redefine from!
+requirement def FR001 {
+    :>> id = "FR-001";  // ERROR: nothing to redefine!
+}
+
+// CORRECT - Either inherit OR use attribute
+requirement def FR001 :> DiscoveredRequirement {  // Has base type
+    :>> id = "FR-001";  // Now :>> works
+}
+
+// OR standalone with attribute
+requirement def FR001 {
+    attribute id : Identifier = "FR-001";  // Define attribute directly
+}
+```
+
 ### Your Tasks
 
 1. **Read key files**:
@@ -124,6 +170,17 @@ requirement def FR001 :> DiscoveredRequirement {
 ```sysml
 requirement def FR001 {          // No ":>"
     :>> id = "FR-001";           // WRONG! Use 'attribute id : T = v;'
+}
+```
+
+**ERROR - value after definition name:**
+```sysml
+requirement def FR001 :> DiscoveredRequirement = "README.md" {  // WRONG!
+    // Cannot assign value to a 'def' - values go INSIDE the body
+}
+// CORRECT:
+requirement def FR001 :> DiscoveredRequirement {
+    :>> source = "README.md";    // Value assigned to attribute inside body
 }
 ```
 

@@ -10,6 +10,49 @@
 **Framework**: <%= it.metadata.framework || "none" %>
 <% } %>
 
+### Type Definition Strategy
+
+**Before writing ANY parts, decide what types you need:**
+
+1. **Scan stdlib first** - Can you use `Module`, `Backend`, `Frontend`, `APIServer`?
+2. **Define custom types** - Only if stdlib doesn't fit
+3. **Then instantiate** - Create parts using your types
+
+**Example workflow:**
+```sysml
+package SystemStructure {
+    import SysMLPrimitives::*;
+
+    // Step 1: Define custom types (if needed)
+    part def ConfigModule :> Module {
+        attribute configFormat : String;
+    }
+
+    // Step 2: Instantiate using types
+    part eslintConfig : ConfigModule {
+        :>> name = "eslint-config";
+        :>> configFormat = "js";
+    }
+
+    part tsConfig : ConfigModule {
+        :>> name = "typescript-config";
+        :>> configFormat = "json";
+    }
+}
+```
+
+**WRONG - Using a part name as a type:**
+```sysml
+// If you defined this:
+part eslintConfig : Module { :>> name = "eslint"; }
+
+// You CANNOT do this:
+part myLinter : eslintConfig;  // ERROR: eslintConfig is a part, not a type!
+
+// CORRECT:
+part myLinter : Module { :>> name = "my-eslint"; }
+```
+
 <% if (it.sourceFiles && it.sourceFiles.length > 0) { %>
 ### SOURCE FILES TO COVER (from Cycle 0 Manifest)
 
@@ -85,7 +128,7 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
    **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
    If modifying an existing index:
    1. First use `SysMLRead("structure/_index.sysml")` to see current content
-   2. Then use search/replace mode to ADD new imports after existing ones
+   2. Then use SysMLWrite with `element` + `at` to upsert imports
    3. Do NOT assume the file matches these examples - it may already have other imports
 
    **structure/modules.sysml** - Add discovered modules with ports:

@@ -32,7 +32,7 @@ When fixing SysML issues, **always verify against actual source code**:
 1. **Read the SysML file**: Use SysMLRead to get the current content with line numbers
 2. **Read the source code**: Use ReadFiles/RipGrep to get the actual code the SysML represents
 3. **Compare and understand**: Identify discrepancies between SysML and actual code
-4. **Fix the issue**: Use SysMLWrite with search/replace for targeted edits
+4. **Fix the issue**: Use SysMLWrite (element+at) for upserts, or SysMLCreate (force=true) to reset corrupted files
 
 ## Issue-Specific Fix Guidance
 
@@ -43,7 +43,8 @@ When fixing SysML issues, **always verify against actual source code**:
   - Unbalanced braces { }
   - Incorrect keyword usage (e.g., `part def` not `partdef`)
   - Missing quotes around string values
-- Use search/replace to fix only the problematic section
+- If file is severely corrupted: Use SysMLCreate with force=true to reset it, then re-add content
+- For minor fixes: Use SysMLWrite to upsert corrected elements
 
 ### Missing References (imports/specializations)
 - Missing import: Add `import PackageName::*;` at the top of the file
@@ -167,21 +168,26 @@ package MyPackage {
 Read a SysML file with line numbers.
 - `path`: Path relative to .sysml/ (e.g., "data/entities.sysml")
 
-### SysMLWrite
-Write or edit a SysML file.
-- For edits: Use `search` and `replace` parameters (preferred)
-- For batch edits (same pattern): Use `replaceAll=true` to replace ALL occurrences at once
-- For new files: Use `content` parameter
+### SysMLCreate
+Create new SysML files.
+- `path`: Path relative to .sysml/
+- `package`: Package name to create
+- `content`: Optional initial content (elements inside the package)
+- `force=true`: Reset a corrupted file (overwrites existing)
 
-**EFFICIENCY**: When fixing multiple similar issues (e.g., renaming from camelCase to PascalCase),
-use `replaceAll=true` or make multiple SysMLWrite calls in a single turn to avoid wasting iterations.
+### SysMLWrite
+Modify existing SysML files (atomic - rolls back on failure).
+- For upserts: Use `element` + `at` parameters
+- For deletes: Use `delete` parameter
+
+**EFFICIENCY**: Make multiple SysMLWrite/SysMLCreate calls in a single turn to avoid wasting iterations.
 
 ### SysMLList
 List all SysML files with summaries.
 
 ### SysMLQuery
 Query the SysML model for specific elements.
-- `query`: Natural language query (e.g., "find all item defs", "what imports Module?")
+- `select`: Element path pattern (e.g., "DomainEntities::*", "UserService")
 
 ### ReadFiles
 Read source code files for context.
@@ -202,33 +208,55 @@ Signal that fixing is complete.
 
 ## Examples
 
-### Fix a syntax error:
+### Fix a syntax error (reset corrupted file):
 ```
 SysMLRead(path: "data/entities.sysml")
-# Found: Line 15 has missing semicolon
-SysMLWrite(path: "data/entities.sysml", search: "attribute name : String", replace: "attribute name : String;")
+# Found: Line 15 has syntax error, file is corrupted
+SysMLCreate(path: "data/entities.sysml", package: "DomainEntities", force: true)
+# Then re-add content via SysMLWrite upserts
 ```
 
-### Fix missing entity attributes (read source first):
+### Fix missing entity (read source first):
 ```
 SysMLRead(path: "data/entities.sysml")
-ReadFiles(paths: "src/models/User.ts\nsrc/models/Order.ts")
-# Found: User has 7 attributes but SysML only has 5. Missing: createdAt, updatedAt
-SysMLWrite(path: "data/entities.sysml", search: "attribute email : String;\n  }", replace: "attribute email : String;\n    attribute createdAt : DateTime;\n    attribute updatedAt : DateTime;\n  }")
+ReadFiles(paths: "src/models/User.ts")
+# Found: User entity missing createdAt, updatedAt attributes
+SysMLWrite(
+  path: "data/entities.sysml",
+  element: "item def User :> BaseEntity { attribute name : String; attribute email : String; attribute createdAt : DateTime; attribute updatedAt : DateTime; }",
+  at: "DomainEntities"
+)
 ```
 
-### Fix enum values (verify against source):
+### Add missing enum (verify against source):
 ```
 SysMLRead(path: "data/enums.sysml")
 RipGrep(pattern: "enum Status", path: "src")
 ReadFiles(paths: "src/types/status.ts")
-# Found: Source has PENDING, ACTIVE, COMPLETED, CANCELLED but SysML missing CANCELLED
-SysMLWrite(path: "data/enums.sysml", search: "enum completed;\n  }", replace: "enum completed;\n    enum cancelled;\n  }")
+# Found: Source has PENDING, ACTIVE, COMPLETED, CANCELLED
+SysMLWrite(
+  path: "data/enums.sysml",
+  element: "enum def Status { enum pending; enum active; enum completed; enum cancelled; }",
+  at: "DomainEnums"
+)
+```
+
+### Create missing file:
+```
+# Manifest expects data/entities.sysml but it doesn't exist
+ReadFiles(paths: "src/models/User.ts\nsrc/models/Order.ts")
+# Found: 2 entities with their attributes
+SysMLCreate(
+  path: "data/entities.sysml",
+  package: "DomainEntities",
+  content: "item def User { attribute name : String; }\nitem def Order { attribute total : Real; }"
+)
 ```
 
 ## Summary
 
 - **Read source code first** - verify against actual codebase before fixing
 - Read the SysML file to understand current state
-- Use search/replace for targeted edits
+- Use SysMLCreate for new files or to reset corrupted files (force=true)
+- Use SysMLWrite with element+at for upserts
 - Call FinishSysmlFix when all issues are fixed
