@@ -7,7 +7,7 @@
 import { createGadget, z } from "llmist";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { runSysml2, selectElements } from "../lib/sysml/sysml2-cli.js";
+import { selectElements } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
 interface DefinitionInfo {
@@ -77,6 +77,7 @@ function isDefinitionType(type: string): boolean {
 
 /**
  * Scan all SysML files and extract their definitions using sysml2 JSON output.
+ * Uses batched CLI call instead of per-file parsing for performance.
  */
 async function scanSysmlFiles(): Promise<{
   definitions: DefinitionInfo[];
@@ -87,7 +88,9 @@ async function scanSysmlFiles(): Promise<{
   const definitions: DefinitionInfo[] = [];
   const relationships: RelationshipInfo[] = [];
   const files: { path: string; content: string }[] = [];
+  const allFilePaths: string[] = [];
 
+  // First pass: collect all file paths and contents
   async function scanDir(dir: string, prefix: string = ""): Promise<void> {
     try {
       const entries = await readdir(dir, { withFileTypes: true });
@@ -95,41 +98,15 @@ async function scanSysmlFiles(): Promise<{
         const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
         const fullPath = join(dir, entry.name);
 
-        if (entry.isDirectory()) {
+        if (entry.isDirectory() && entry.name !== ".debug") {
           await scanDir(fullPath, relativePath);
         } else if (entry.name.endsWith(".sysml")) {
           try {
             const content = await readFile(fullPath, "utf-8");
             files.push({ path: relativePath, content });
-
-            // Use sysml2 -f json for semantic model
-            const result = await runSysml2(content, { json: true });
-
-            // Extract definitions from elements
-            for (const elem of result.elements) {
-              if (isDefinitionType(elem.type)) {
-                definitions.push({
-                  name: elem.name,
-                  type: mapElementType(elem.type),
-                  file: relativePath,
-                  qualifiedName: elem.id,
-                });
-              }
-            }
-
-            // Extract relationships
-            for (const rel of result.relationships) {
-              if (rel.kind === "specializes" || rel.kind === "Specialization") {
-                relationships.push({
-                  source: rel.source,
-                  target: rel.target,
-                  type: "specializes",
-                  file: relativePath,
-                });
-              }
-            }
+            allFilePaths.push(fullPath);
           } catch {
-            // Skip files that can't be parsed
+            // Skip files that can't be read
           }
         }
       }
@@ -139,6 +116,38 @@ async function scanSysmlFiles(): Promise<{
   }
 
   await scanDir(sysmlDir);
+
+  // Second pass: parse all files in ONE CLI call using selectElements
+  if (allFilePaths.length > 0) {
+    try {
+      const result = await selectElements(allFilePaths, ["**"], { format: "json" });
+
+      for (const elem of result.elements) {
+        if (isDefinitionType(elem.type)) {
+          definitions.push({
+            name: elem.name,
+            type: mapElementType(elem.type),
+            file: elem.parent?.split("::")[0] ?? "unknown",
+            qualifiedName: elem.id,
+          });
+        }
+      }
+
+      for (const rel of result.relationships) {
+        if (rel.kind === "specializes" || rel.kind === "Specialization") {
+          relationships.push({
+            source: rel.source,
+            target: rel.target,
+            type: "specializes",
+            file: "model",
+          });
+        }
+      }
+    } catch {
+      // Fall back to content-only mode if CLI fails
+    }
+  }
+
   return { definitions, relationships, files };
 }
 
@@ -192,13 +201,13 @@ Uses sysml2 CLI --select for semantic element selection:
       const sysmlDir = ".sysml";
       const allFiles: string[] = [];
 
-      // Collect all .sysml files
+      // Collect all .sysml files (skip .debug directory)
       async function collectFiles(dir: string): Promise<void> {
         try {
           const entries = await readdir(dir, { withFileTypes: true });
           for (const entry of entries) {
             const fullPath = join(dir, entry.name);
-            if (entry.isDirectory()) {
+            if (entry.isDirectory() && entry.name !== ".debug") {
               await collectFiles(fullPath);
             } else if (entry.name.endsWith(".sysml")) {
               allFiles.push(fullPath);

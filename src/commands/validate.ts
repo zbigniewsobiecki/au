@@ -453,7 +453,7 @@ export default class Validate extends Command {
           const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
           const fullPath = join(dir, entry.name);
 
-          if (entry.isDirectory()) {
+          if (entry.isDirectory() && entry.name !== ".debug") {
             await scanDir(fullPath, relativePath);
           } else if (entry.name.endsWith(".sysml") && !entry.name.startsWith("_")) {
             files.push(relativePath);

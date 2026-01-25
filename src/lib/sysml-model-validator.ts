@@ -5,7 +5,7 @@
 
 import { readFile, readdir, stat, access } from "node:fs/promises";
 import { join } from "node:path";
-import { validateSysml, type ValidationResult } from "./sysml/validator.js";
+import { validateModelFull } from "./sysml/sysml2-cli.js";
 import { loadManifest, type Manifest } from "../gadgets/manifest-write.js";
 import fg from "fast-glob";
 
@@ -149,7 +149,7 @@ function extractDefinedNames(content: string): Set<string> {
 
   // Various def types
   const defMatches = content.matchAll(
-    /(?:item|part|enum|action|state|requirement|interface|port|attribute|analysis|verification|metadata|constraint)\s+def\s+(\w+)/g
+    /(?:item|part|enum|action|state|requirement|interface|port|attribute|analysis|verification|metadata|constraint|connection|allocation)\s+def\s+(\w+)/g
   );
   for (const match of defMatches) {
     names.add(match[1]);
@@ -402,31 +402,30 @@ export class SysMLModelValidator {
     const sysmlFiles = await scanSysmlFiles(basePath);
     result.totalFileCount = sysmlFiles.length;
 
-    // Validate syntax of each file
-    for (const file of sysmlFiles) {
-      const fullPath = join(basePath, SYSML_DIR, file);
-      try {
-        const content = await readFile(fullPath, "utf-8");
-        const validationResult = await validateSysml(content);
+    // Validate syntax using batch validation (single sysml2 invocation)
+    const sysmlDirPath = join(basePath, SYSML_DIR);
+    const absoluteFiles = sysmlFiles.map(f => join(sysmlDirPath, f));
+    const validationResult = await validateModelFull(sysmlDirPath, absoluteFiles);
 
-        if (!validationResult.valid) {
-          const errors = validationResult.issues
-            .filter((i) => i.severity === "error")
-            .map((i) => `Line ${i.line}:${i.column}: ${i.message}`);
+    // Map diagnostics to SyntaxError format
+    for (const diag of validationResult.syntaxErrors) {
+      // Extract relative file path from diagnostic
+      const relativeFile = diag.file.startsWith(sysmlDirPath)
+        ? diag.file.slice(sysmlDirPath.length + 1)
+        : diag.file;
 
-          if (errors.length > 0) {
-            result.syntaxErrors.push({ file, errors });
-          }
-        } else {
-          result.validFileCount++;
-        }
-      } catch (error) {
+      const existingError = result.syntaxErrors.find(e => e.file === relativeFile);
+      if (existingError) {
+        existingError.errors.push(`Line ${diag.line}:${diag.column}: ${diag.message}`);
+      } else {
         result.syntaxErrors.push({
-          file,
-          errors: [`Failed to read: ${error instanceof Error ? error.message : String(error)}`],
+          file: relativeFile,
+          errors: [`Line ${diag.line}:${diag.column}: ${diag.message}`],
         });
       }
     }
+
+    result.validFileCount = sysmlFiles.length - result.syntaxErrors.length;
 
     // Collect file contents for count validation and reference checking
     const fileContents: Map<string, string> = new Map();
@@ -490,8 +489,14 @@ export class SysMLModelValidator {
 
       if (expectedFiles.length === 0) continue;
 
+      // Normalize paths for comparison (remove leading ./)
+      const normalizedCoveredFiles = new Set(
+        [...coveredFiles].map(f => f.replace(/^\.\//, ''))
+      );
+      const normalizedExpectedFiles = expectedFiles.map(f => f.replace(/^\.\//, ''));
+
       // Find which files are not covered
-      const uncoveredFiles = expectedFiles.filter(f => !coveredFiles.has(f));
+      const uncoveredFiles = normalizedExpectedFiles.filter(f => !normalizedCoveredFiles.has(f));
 
       if (uncoveredFiles.length > 0) {
         result.fileCoverageMismatches.push({
@@ -507,14 +512,14 @@ export class SysMLModelValidator {
 
   /**
    * Extract source file references from SysML content.
-   * Looks for @SourceFile { path = "<path>"; } metadata.
+   * Looks for @SourceFile { :>> path = "<path>"; } metadata.
    */
   private findCoveredFiles(fileContents: Map<string, string>): Set<string> {
     const covered = new Set<string>();
 
     for (const [, content] of fileContents) {
-      // Match @SourceFile { path = "<path>"; } metadata
-      const sourceMatches = content.matchAll(/@SourceFile\s*\{\s*path\s*=\s*"([^"]+)"/g);
+      // Match @SourceFile { :>> path = "<path>"; } metadata
+      const sourceMatches = content.matchAll(/@SourceFile\s*\{\s*:>>\s*path\s*=\s*"([^"]+)"/g);
       for (const match of sourceMatches) {
         const sourcePath = match[1].trim();
         if (sourcePath) {
@@ -577,6 +582,11 @@ export class SysMLModelValidator {
 
       // Skip index files (subdirectory/_index.sysml)
       if (file.endsWith("/_index.sysml") || file === "_index.sysml") {
+        continue;
+      }
+
+      // Skip .debug/ directory (debug history files)
+      if (file.startsWith(".debug/")) {
         continue;
       }
 

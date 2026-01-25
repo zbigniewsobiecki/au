@@ -3,7 +3,7 @@ import { LLMist } from "llmist";
 import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { loadManifest, readDirs, setCoverageContext } from "../gadgets/index.js";
+import { loadManifest, readDirs, setCoverageContext, syncManifestOutputs } from "../gadgets/index.js";
 import {
   checkCycleCoverage,
   CYCLE_OUTPUT_DIRS,
@@ -222,6 +222,12 @@ export default class Ingest extends Command {
 
         // Clear coverage context after cycle completes
         setCoverageContext(null);
+
+        // Sync manifest with actual outputs from this cycle
+        const syncResult = await syncManifestOutputs(cycle, ".");
+        if (syncResult.added.length > 0 && flags.verbose) {
+          console.log(`\x1b[2m   Registered ${syncResult.added.length} new output files in manifest\x1b[0m`);
+        }
 
         state.cycleHistory.push(cycleResult);
 
