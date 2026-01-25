@@ -1,3 +1,9 @@
+## [2.1.0](https://github.com/zbigniewsobiecki/au/compare/v2.0.2...v2.1.0) (2026-01-25)
+
+### Features
+
+* **sysml:** display colored diffs and improve ingest robustness ([58c6ee5](https://github.com/zbigniewsobiecki/au/commit/58c6ee58c281a230f83fd71544a4c7253198d448))
+
 ## [2.0.2](https://github.com/zbigniewsobiecki/au/compare/v2.0.1...v2.0.2) (2026-01-25)
 
 ### Bug Fixes
