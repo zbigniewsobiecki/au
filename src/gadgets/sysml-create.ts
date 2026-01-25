@@ -10,6 +10,11 @@ import { dirname, join } from "node:path";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 import { runSysml2 } from "../lib/sysml/sysml2-cli.js";
 import { generateColoredDiff } from "../lib/diff-utils.js";
+import {
+  isDebugEnabled,
+  writeEditDebug,
+  type EditDebugMetadata,
+} from "../lib/edit-debug.js";
 
 /** Format byte delta as "+N bytes" or "-N bytes" */
 function formatByteDelta(before: number, after: number): string {
@@ -85,6 +90,19 @@ Package ${pkgName} already exists (no changes needed)`;
       originalBytes = Buffer.byteLength(originalContent, "utf-8");
     }
 
+    // Prepare debug metadata
+    const debugEnabled = isDebugEnabled();
+    const baseDebugMetadata: Partial<EditDebugMetadata> = debugEnabled
+      ? {
+          timestamp: new Date().toISOString(),
+          operation: "create",
+          gadget: "SysMLCreate",
+          path: fullPath,
+          bytesOriginal: originalBytes,
+          dryRun: false,
+        }
+      : {};
+
     // Create directory if needed
     const dir = dirname(fullPath);
     if (dir && dir !== ".") {
@@ -128,6 +146,28 @@ Package ${pkgName} already exists (no changes needed)`;
             })
             .join("\n\n");
 
+          // Debug logging for syntax error
+          if (debugEnabled) {
+            writeEditDebug({
+              metadata: {
+                ...baseDebugMetadata,
+                status: "error",
+                bytesResult: originalBytes,
+                byteDelta: 0,
+                errorMessage: parseErrors[0]?.message || "Syntax error",
+                diagnostics: parseErrors.map((d) => ({
+                  severity: d.severity,
+                  message: d.message,
+                  line: d.line,
+                  column: d.column,
+                })),
+              } as EditDebugMetadata,
+              original: originalContent,
+              fragment: content || `package ${pkgName} {}`,
+              result: originalContent,
+            }).catch(() => {});
+          }
+
           return `path=${fullPath} status=error (syntax error)
 
 INVALID SYSML SYNTAX - refusing to write corrupted file.
@@ -147,6 +187,21 @@ Fix the syntax errors and try again.`;
 
     const newBytes = Buffer.byteLength(finalContent, "utf-8");
     const delta = formatByteDelta(originalBytes, newBytes);
+
+    // Debug logging for successful create
+    if (debugEnabled) {
+      writeEditDebug({
+        metadata: {
+          ...baseDebugMetadata,
+          status: "success",
+          bytesResult: newBytes,
+          byteDelta: newBytes - originalBytes,
+        } as EditDebugMetadata,
+        original: originalContent,
+        fragment: content || `package ${pkgName} {}`,
+        result: finalContent,
+      }).catch(() => {});
+    }
 
     // Generate diff for force overwrite cases (shows what was replaced)
     let diffOutput = "";
