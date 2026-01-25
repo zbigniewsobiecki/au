@@ -15,12 +15,20 @@ export interface ValidationIssue {
 export interface ValidationResult {
   valid: boolean;
   issues: ValidationIssue[];
+  /** Raw stderr from sysml2 CLI - use this for unfiltered error output */
+  rawStderr?: string;
+  /** Raw stdout from sysml2 CLI */
+  rawStdout?: string;
 }
 
 /**
  * Validate SysML v2 content using sysml2 CLI.
+ *
+ * @param content - SysML source text to validate
  */
-export async function validateSysml(content: string): Promise<ValidationResult> {
+export async function validateSysml(
+  content: string
+): Promise<ValidationResult> {
   try {
     const result = await runSysml2(content);
 
@@ -31,9 +39,21 @@ export async function validateSysml(content: string): Promise<ValidationResult> 
       severity: d.severity === "error" ? "error" : "warning",
     }));
 
+    // Handle case where sysml2 failed but no structured diagnostics
+    if (!result.success && issues.length === 0) {
+      issues.push({
+        line: 1,
+        column: 1,
+        message: result.stderr || "Unknown parse error (no details from sysml2)",
+        severity: "error",
+      });
+    }
+
     return {
       valid: result.success,
       issues,
+      rawStdout: result.stdout,
+      rawStderr: result.stderr,
     };
   } catch (error) {
     // sysml2 not available - return valid with info message
@@ -129,7 +149,9 @@ export function formatSemanticError(diag: Sysml2Diagnostic): string {
  * @param content - SysML source text to validate
  * @returns Promise resolving to semantic issues found
  */
-export async function checkSemanticIssuesWithSysml2(content: string): Promise<SemanticIssue[]> {
+export async function checkSemanticIssuesWithSysml2(
+  content: string
+): Promise<SemanticIssue[]> {
   try {
     const result = await runSysml2(content);
     const issues: SemanticIssue[] = [];

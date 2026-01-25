@@ -47,31 +47,22 @@ export interface Sysml2Result {
   relationships: Sysml2Relationship[];
   diagnostics: Sysml2Diagnostic[];
   success: boolean;
+  stdout?: string; // Raw stdout from sysml2
+  stderr?: string; // Raw stderr from sysml2
 }
 
 /**
- * Get library path arguments from SYSML2_LIBRARY_PATH environment variable.
- * Format: colon-separated paths like PATH, e.g., "/path/to/lib1:/path/to/lib2"
+ * Get library path arguments for sysml2 CLI.
  *
- * Also automatically includes the project's .sysml/ directory if it exists,
- * so imports like `import SysMLPrimitives::*` resolve to the project's SysMLPrimitives.sysml.
+ * Uses only the project's .sysml/ directory which contains our self-contained
+ * stdlib (SysMLPrimitives.sysml). This resolves imports like `import SysMLPrimitives::*`.
+ *
+ * Note: We intentionally do NOT use SYSML2_LIBRARY_PATH environment variable.
+ * The official SysML v2 Release library has internal validation errors that
+ * break our workflow. Our self-contained stdlib works correctly.
  */
 function getLibraryPathArgs(): string[] {
-  const args: string[] = [];
-
-  // Always include the project's .sysml/ directory first (highest priority)
-  // This allows project-specific stdlib to override external libraries
-  args.push("-I", ".sysml");
-
-  // Add paths from SYSML2_LIBRARY_PATH environment variable
-  const libraryPath = process.env.SYSML2_LIBRARY_PATH;
-  if (libraryPath) {
-    for (const p of libraryPath.split(":").filter(Boolean)) {
-      args.push("-I", p);
-    }
-  }
-
-  return args;
+  return ["-I", ".sysml"];
 }
 
 /**
@@ -108,7 +99,7 @@ export async function runSysml2(
       if (options?.json && stdout.trim()) {
         try {
           const json = JSON.parse(stdout);
-          resolve({ ...json, diagnostics, success });
+          resolve({ ...json, diagnostics, success, stdout: stdout || undefined, stderr: stderr || undefined });
         } catch {
           resolve({
             meta: { version: "1.0", source: "<stdin>" },
@@ -116,6 +107,8 @@ export async function runSysml2(
             relationships: [],
             diagnostics,
             success: false,
+            stdout: stdout || undefined,
+            stderr: stderr || undefined,
           });
         }
       } else {
@@ -125,6 +118,8 @@ export async function runSysml2(
           relationships: [],
           diagnostics,
           success,
+          stdout: stdout || undefined,
+          stderr: stderr || undefined,
         });
       }
     });
@@ -159,6 +154,8 @@ export interface SelectResult {
 
 export interface SetResult {
   success: boolean;
+  exitCode: number;           // 0=success, 1=parse error, 2=semantic error
+  syntaxValid: boolean;       // true if exit code != 1 (syntax is parseable)
   modifiedFile: string;
   added: number;
   replaced: number;
@@ -421,7 +418,7 @@ export async function setElement(
   targetFile: string,
   fragment: string,
   scope: string,
-  options?: { createScope?: boolean; dryRun?: boolean }
+  options?: { createScope?: boolean; dryRun?: boolean; parseOnly?: boolean }
 ): Promise<SetResult> {
   // Write fragment to a temporary file
   const { writeFile, unlink } = await import("node:fs/promises");
@@ -443,6 +440,10 @@ export async function setElement(
 
   if (options?.dryRun) {
     args.push("--dry-run");
+  }
+
+  if (options?.parseOnly) {
+    args.push("--parse-only");
   }
 
   args.push("-f", "json");
@@ -497,6 +498,8 @@ export async function setElement(
 
       resolve({
         success,
+        exitCode: code ?? -1,
+        syntaxValid: code !== 1,  // Parse errors are exit code 1
         modifiedFile: targetFile,
         added,
         replaced,
@@ -586,6 +589,99 @@ export async function deleteElements(
         deleted,
         diagnostics,
         stderr: stderr.trim() || undefined,
+      });
+    });
+
+    proc.on("error", (err) => {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`sysml2 not found in PATH. Install sysml2 globally.`));
+      } else {
+        reject(err);
+      }
+    });
+
+    proc.stdin.end();
+  });
+}
+
+/**
+ * Validation result from full model validation.
+ * Separates syntax errors (exit code 1) from semantic errors (exit code 2).
+ */
+export interface ValidationResult {
+  success: boolean;
+  exitCode: number;
+  syntaxErrors: Sysml2MultiDiagnostic[];   // From exit code 1
+  semanticErrors: Sysml2MultiDiagnostic[]; // From exit code 2 (E3001, E3004, etc.)
+}
+
+/**
+ * Run full validation on all SysML files in a directory.
+ * Returns structured result separating syntax from semantic errors.
+ *
+ * Exit codes:
+ * - 0: Success (no errors)
+ * - 1: Parse/syntax errors
+ * - 2: Semantic errors (undefined types, duplicate definitions, etc.)
+ *
+ * @param sysmlDir - Directory containing SysML files (default: ".sysml")
+ * @returns Promise resolving to validation result with categorized errors
+ */
+export async function validateModelFull(sysmlDir: string = ".sysml"): Promise<ValidationResult> {
+  const fg = await import("fast-glob");
+
+  // Find all .sysml files in directory
+  const files = await fg.default(`${sysmlDir}/**/*.sysml`, {
+    onlyFiles: true,
+    ignore: ["**/node_modules/**"],
+  });
+
+  if (files.length === 0) {
+    return {
+      success: true,
+      exitCode: 0,
+      syntaxErrors: [],
+      semanticErrors: [],
+    };
+  }
+
+  // Run sysml2 on all files (full validation, not parse-only)
+  const args = ["--color=never", ...getLibraryPathArgs(), ...files];
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
+
+    let stderr = "";
+
+    proc.stderr.on("data", (data) => {
+      stderr += data;
+    });
+
+    proc.on("close", (code) => {
+      const diagnostics = parseMultiFileDiagnosticOutput(stderr);
+
+      // Categorize errors by code prefix
+      // Syntax errors: no code (parse errors) or E1xxx/E2xxx
+      // Semantic errors: E3xxx (undefined types, duplicate definitions, etc.)
+      const syntaxErrors: Sysml2MultiDiagnostic[] = [];
+      const semanticErrors: Sysml2MultiDiagnostic[] = [];
+
+      for (const diag of diagnostics) {
+        if (diag.severity === "error") {
+          // E3xxx are semantic errors (E3001=undefined ref, E3004=duplicate, etc.)
+          if (diag.code && diag.code.startsWith("E3")) {
+            semanticErrors.push(diag);
+          } else {
+            syntaxErrors.push(diag);
+          }
+        }
+      }
+
+      resolve({
+        success: code === 0,
+        exitCode: code ?? -1,
+        syntaxErrors,
+        semanticErrors,
       });
     });
 

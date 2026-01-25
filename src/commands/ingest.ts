@@ -1,11 +1,12 @@
 import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import fg from "fast-glob";
 import chalk from "chalk";
 
 import {
+  sysmlCreate,
   sysmlWrite,
   sysmlRead,
   sysmlList,
@@ -22,7 +23,6 @@ import {
   enumerateDirectories,
   fileViewerNextFileSet,
   setCoverageContext,
-  type SysMLWriteResult,
 } from "../gadgets/index.js";
 import {
   checkCycleCoverage,
@@ -48,6 +48,7 @@ import {
   SCHEMA_PRIORITY_PATTERNS,
   type ProjectMetadata,
 } from "../lib/sysml/index.js";
+import { runSysml2Multi, validateModelFull, type Sysml2MultiDiagnostic } from "../lib/sysml/sysml2-cli.js";
 import micromatch from "micromatch";
 
 const TOTAL_CYCLES = 6;  // Cycles 1-6 (Cycle 0 is special discovery cycle)
@@ -761,6 +762,13 @@ export default class Ingest extends Command {
       if (!flags["skip-init"]) {
         out.info("Generating initial SysML model structure...");
         await this.generateInitialModel(state.metadata, out, flags.verbose);
+
+        // Validate initial files before continuing
+        const validationPassed = await this.validateInitialModel(out, flags.verbose);
+        if (!validationPassed) {
+          out.error("Initial SysML files have validation errors. Fix these before continuing.");
+          return;
+        }
       }
 
       // Run cycles
@@ -873,6 +881,71 @@ export default class Ingest extends Command {
     }
 
     out.success(`Created ${Object.keys(files).length} initial SysML files`);
+  }
+
+  private async validateInitialModel(
+    out: Output,
+    verbose: boolean
+  ): Promise<boolean> {
+    // Collect all .sysml files recursively
+    const files: string[] = [];
+
+    const collectFiles = async (dir: string): Promise<void> => {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await collectFiles(fullPath);
+        } else if (entry.name.endsWith(".sysml")) {
+          files.push(fullPath);
+        }
+      }
+    };
+
+    try {
+      await collectFiles(SYSML_DIR);
+    } catch {
+      // Directory doesn't exist yet
+      return true;
+    }
+
+    if (files.length === 0) {
+      return true;
+    }
+
+    if (verbose) {
+      console.log(`● Validating ${files.length} initial SysML files...`);
+    }
+
+    try {
+      const result = await runSysml2Multi(files);
+
+      if (!result.success) {
+        const errors = result.diagnostics.filter(d => d.severity === "error");
+
+        if (errors.length > 0) {
+          out.error(`Validation failed with ${errors.length} error(s):`);
+          for (const err of errors.slice(0, 10)) {
+            console.log(`  ${err.file}:${err.line}:${err.column}: ${err.message}`);
+          }
+          if (errors.length > 10) {
+            console.log(`  ... and ${errors.length - 10} more errors`);
+          }
+          return false;
+        }
+      }
+
+      if (verbose) {
+        out.success("Initial SysML files validated successfully");
+      }
+      return true;
+    } catch (err) {
+      // sysml2 not available - skip validation with warning
+      if (verbose) {
+        console.log(`⚠ Skipping validation: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      return true;
+    }
   }
 
   private async runCycle(
@@ -1184,6 +1257,7 @@ export default class Ingest extends Command {
         .withSystem(systemPrompt)
         .withMaxIterations(Math.min(flags["max-iterations"], 30))
         .withGadgets(
+          sysmlCreate,
           sysmlWrite,
           sysmlRead,
           sysmlList,
@@ -1256,15 +1330,9 @@ export default class Ingest extends Command {
             } else if (result.result) {
               retryState.filesWritten++;
 
-              // Parse the path from result
-              let writtenPath: string;
-              try {
-                const parsed: SysMLWriteResult = JSON.parse(result.result);
-                writtenPath = parsed.path;
-              } catch {
-                const pathMatch = result.result.match(/Wrote (.+?) \[/);
-                writtenPath = pathMatch ? pathMatch[1] : result.result;
-              }
+              // Parse the path from result (format: "path=... status=...")
+              const pathMatch = result.result.match(/^path=(\S+)/);
+              const writtenPath = pathMatch ? pathMatch[1] : result.result.split("\n")[0];
 
               if (flags.verbose) {
                 console.log(`${chalk.green("   ✓")} ${writtenPath}`);
@@ -1346,11 +1414,22 @@ export default class Ingest extends Command {
     const allCycleFiles = await getFilesForCycle(cycle, language, 100);  // Get up to 100 potential files
     const unreadFiles = allCycleFiles.filter(f => !iterState.readFiles.has(f));
 
+    // Run full model validation before turn to get semantic errors from previous writes
+    // This surfaces errors incrementally so the agent can fix them in subsequent iterations
+    let validationErrors: Sysml2MultiDiagnostic[] = [];
+    try {
+      const validation = await validateModelFull(".sysml");
+      validationErrors = validation.semanticErrors;
+    } catch {
+      // sysml2 not available - skip validation
+    }
+
     let builder = new AgentBuilder(client)
       .withModel(flags.model)
       .withSystem(systemPrompt)
       .withMaxIterations(maxTurnIterations)
       .withGadgets(
+        sysmlCreate,
         sysmlWrite,
         sysmlRead,
         sysmlList,
@@ -1371,6 +1450,7 @@ export default class Ingest extends Command {
           readCount: iterState.readFiles.size,
           expectedCount,
           unreadFiles: unreadFiles.slice(0, 20),  // Show first 20 unread files
+          validationErrors,  // Pass semantic errors from pre-turn validation
         });
       });
 
@@ -1444,56 +1524,36 @@ export default class Ingest extends Command {
           endTextBlock(textState, out);
         }
 
-        if (result.gadgetName === "SysMLWrite") {
+        if (result.gadgetName === "SysMLWrite" || result.gadgetName === "SysMLCreate") {
           if (result.error) {
             out.gadgetError(result.gadgetName, result.error);
           } else if (result.result) {
             cycleState.filesWritten++;
 
-            // Parse structured result
-            let writtenPath: string;
-            let diffLines: SysMLWriteResult["diffLines"] = null;
-            let marker: "new" | "upd" | "" = "";
-
-            try {
-              const parsed: SysMLWriteResult = JSON.parse(result.result);
-              writtenPath = parsed.path;
-              marker = parsed.marker;
-              diffLines = parsed.diffLines;
-            } catch {
-              // Fallback for legacy format
-              const pathMatch = result.result.match(/Wrote (.+?) \[/);
-              writtenPath = pathMatch ? pathMatch[1] : result.result;
+            // Parse path from result (format: "path=... status=... mode=... delta=...")
+            const pathMatch = result.result.match(/^path=(\S+)/);
+            const modeMatch = result.result.match(/mode=(\w+)/);
+            const deltaMatch = result.result.match(/delta=([+-]?\d+ bytes)/);
+            const writtenPath = pathMatch ? pathMatch[1] : result.result.split("\n")[0];
+            let mode = modeMatch ? modeMatch[1] : "";
+            if (!mode && result.gadgetName === "SysMLCreate") {
+              mode = result.result?.includes("Reset package") ? "reset" : "create";
             }
+            const delta = deltaMatch ? deltaMatch[1] : null;
 
-            // Extract entities from written content for cross-turn tracking
-            const params = result.parameters as { path?: string; content?: string };
-            if (params?.content && params?.path) {
-              const newEntities = extractEntitiesFromSysml(params.content, params.path);
+            // Extract entities from element content for cross-turn tracking (set mode only)
+            const params = result.parameters as { path?: string; element?: string };
+            if (params?.element && params?.path) {
+              const newEntities = extractEntitiesFromSysml(params.element, params.path);
               iterState.createdEntities.push(...newEntities);
             }
 
             summary.push(`Wrote ${writtenPath}`);
 
             if (flags.verbose) {
-              const markerStr = marker === "new" ? chalk.yellow("[new]") : marker === "upd" ? chalk.blue("[upd]") : "";
-              console.log(`${chalk.green("   ✓")} ${writtenPath} ${markerStr}`);
-
-              // Show diff if available
-              if (diffLines && diffLines.length > 0) {
-                for (const { type, line } of diffLines.slice(0, 30)) {
-                  if (type === "add") {
-                    console.log(chalk.green(`     +${line}`));
-                  } else if (type === "del") {
-                    console.log(chalk.red(`     -${line}`));
-                  } else {
-                    console.log(chalk.dim(`      ${line}`));
-                  }
-                }
-                if (diffLines.length > 30) {
-                  console.log(chalk.dim(`     ... ${diffLines.length - 30} more lines`));
-                }
-              }
+              const modeStr = mode === "create" ? chalk.yellow("[new]") : mode === "reset" ? chalk.magenta("[reset]") : mode === "upsert" ? chalk.blue("[set]") : mode === "delete" ? chalk.red("[del]") : "";
+              const deltaStr = delta ? (delta.startsWith("-") ? chalk.red(` (${delta})`) : chalk.dim(` (${delta})`)) : "";
+              console.log(`${chalk.green("   ✓")} ${writtenPath} ${modeStr}${deltaStr}`);
             } else {
               console.log(`  Wrote: ${writtenPath}`);
             }

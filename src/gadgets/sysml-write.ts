@@ -1,97 +1,37 @@
 /**
  * SysML Write Gadget
- * Writes SysML v2 packages to the .sysml/ directory.
+ * Modifies existing SysML v2 files in the .sysml/ directory.
  * Supports two modes:
- * 1. Full content mode: Write entire file content (for new files)
- * 2. Search/Replace mode: Find and replace specific content (for edits)
+ * 1. Set mode: Upsert elements into existing files via CLI (atomic)
+ * 2. Delete mode: Remove elements from files via CLI
+ *
+ * For creating new files, use SysMLCreate gadget.
  */
 
 import { createGadget, z } from "llmist";
-import { writeFile, mkdir, readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import * as Diff from "diff";
-import {
-  validateSysml,
-  checkSemanticIssuesWithSysml2,
-  formatSemanticIssues,
-} from "../lib/sysml/validator.js";
+import { writeFile, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import {
   setElement,
   deleteElements,
 } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
-export interface SysMLWriteResult {
-  path: string;
-  marker: "new" | "upd";
-  oldBytes: number;
-  newBytes: number;
-  diffLines: Array<{ type: "add" | "del" | "ctx"; line: string }> | null;
-}
-
-/**
- * Filter diff lines to only show changes with surrounding context.
- */
-function filterWithContext(
-  lines: Array<{ type: "add" | "del" | "ctx"; line: string }>,
-  contextLines: number
-): Array<{ type: "add" | "del" | "ctx"; line: string }> {
-  if (lines.length === 0) return [];
-
-  // Mark which indices should be included (changes + context)
-  const include = new Array(lines.length).fill(false);
-
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].type !== "ctx") {
-      // Mark this line and surrounding context
-      for (let j = Math.max(0, i - contextLines); j <= Math.min(lines.length - 1, i + contextLines); j++) {
-        include[j] = true;
-      }
-    }
-  }
-
-  return lines.filter((_, i) => include[i]);
-}
-
-/**
- * Compute diff lines between old and new content.
- */
-function computeDiffLines(
-  oldContent: string,
-  newContent: string,
-  contextLines: number = 1
-): Array<{ type: "add" | "del" | "ctx"; line: string }> {
-  const changes = Diff.diffLines(oldContent, newContent);
-  const diffLines: Array<{ type: "add" | "del" | "ctx"; line: string }> = [];
-
-  for (const change of changes) {
-    const lines = change.value.split("\n").filter((l, i, arr) => i < arr.length - 1 || l !== "");
-    for (const line of lines) {
-      if (change.added) {
-        diffLines.push({ type: "add", line });
-      } else if (change.removed) {
-        diffLines.push({ type: "del", line });
-      } else {
-        diffLines.push({ type: "ctx", line });
-      }
-    }
-  }
-
-  // Filter to only show changes + context
-  return filterWithContext(diffLines, contextLines);
+/** Format byte delta as "+N bytes" or "-N bytes" */
+function formatByteDelta(before: number, after: number): string {
+  const delta = after - before;
+  const sign = delta >= 0 ? "+" : "";
+  return `${sign}${delta} bytes`;
 }
 
 export const sysmlWrite = createGadget({
   name: "SysMLWrite",
   maxConcurrent: 1,
-  description: `Write SysML v2 content to the .sysml/ directory.
+  description: `Modify existing SysML v2 files in the .sysml/ directory.
 
-**Three modes:**
+**Two modes:**
 
-1. **Full content mode** (for new files):
-   SysMLWrite(path="context/requirements.sysml", content="package SystemRequirements { ... }")
-
-2. **CLI upsert mode** (PREFERRED for editing existing files):
+1. **SET mode** (upsert elements - atomic):
    SysMLWrite(
      path="data/entities.sysml",
      element="item def User :> BaseEntity { attribute email : String; }",
@@ -101,27 +41,21 @@ export const sysmlWrite = createGadget({
    - at: Qualified scope path (e.g., "DataModel::Entities")
    - createScope=true: Create scope hierarchy if missing
    - UPSERT semantics: replaces if element exists, adds if new
+   - ATOMIC: On failure, file is restored to original state
 
-3. **CLI delete mode** (for removing elements):
+2. **DELETE mode** (remove elements):
    SysMLWrite(path="data/entities.sysml", delete="DataModel::Entities::OldUser")
 
-**Tips:**
-- Use CLI upsert mode (element + at) for semantic edits on existing files
-- Use content mode only for creating new files
-- Use createScope=true if parent scope doesn't exist yet`,
+**To create new files, use SysMLCreate:**
+   SysMLCreate(path="...", package="PackageName")
+   SysMLCreate(path="...", package="PackageName", force=true)  // reset corrupted`,
   schema: z.object({
     reason: z.string().describe(GADGET_REASON_DESCRIPTION),
     path: z
       .string()
       .describe("File path relative to .sysml/ (e.g., 'context/requirements.sysml')"),
 
-    // Mode 1: Full content (for new files)
-    content: z
-      .string()
-      .optional()
-      .describe("Full SysML v2 content to write (use for new files)"),
-
-    // Mode 2: CLI upsert (for edits)
+    // Mode 1: CLI upsert (for edits)
     element: z
       .string()
       .optional()
@@ -135,7 +69,7 @@ export const sysmlWrite = createGadget({
       .optional()
       .describe("Create scope hierarchy if it doesn't exist (default: false)"),
 
-    // Mode 3: CLI delete
+    // Mode 2: CLI delete
     delete: z
       .string()
       .optional()
@@ -146,12 +80,8 @@ export const sysmlWrite = createGadget({
       .boolean()
       .optional()
       .describe("Preview changes without writing (default: false)"),
-    validate: z
-      .boolean()
-      .optional()
-      .describe("Whether to validate SysML syntax before writing (default: true)"),
   }),
-  execute: async ({ reason: _reason, path, content, element, at, createScope = false, delete: deletePattern, dryRun = false, validate = true }) => {
+  execute: async ({ reason: _reason, path, element, at, createScope = false, delete: deletePattern, dryRun = false }) => {
     // Ensure path ends with .sysml
     if (!path.endsWith(".sysml")) {
       return `Error: File path must end with .sysml extension`;
@@ -176,51 +106,110 @@ To fix count mismatches:
     // Determine mode
     const isCliUpsert = element !== undefined && at !== undefined;
     const isCliDelete = deletePattern !== undefined;
-    const isFullContent = content !== undefined;
 
     // Count active modes
-    const activeModes = [isCliUpsert, isCliDelete, isFullContent].filter(Boolean).length;
+    const activeModes = [isCliUpsert, isCliDelete].filter(Boolean).length;
 
     // Validate mode selection
     if (activeModes === 0) {
       return `Error: Must provide one of:
-- 'content' (full content mode for new files)
-- 'element' + 'at' (CLI upsert mode for edits)
-- 'delete' (CLI delete mode)`;
+- 'element' + 'at' (upsert element into existing file)
+- 'delete' (delete element from file)
+
+To create new files, use SysMLCreate instead.`;
     }
 
     if (activeModes > 1) {
-      return `Error: Cannot use multiple modes. Choose one of: content, element+at, or delete`;
+      return `Error: Cannot use multiple modes. Choose one of: element+at or delete`;
     }
 
-    // Mode 2: CLI upsert - use sysml2 --set --at
+    // Mode 1: CLI upsert - use sysml2 --set --at (atomic)
     if (isCliUpsert) {
+      // Check if file exists - CLI upsert requires existing file to parse
+      const fileExists = await stat(fullPath).then(() => true).catch(() => false);
+
+      if (!fileExists) {
+        return `path=${fullPath} status=error mode=upsert
+
+File does not exist. Create it first:
+  SysMLCreate(path="${path}", package="PackageName")`;
+      }
+
+      // Read original content before modification (for atomic rollback)
+      const originalContent = await readFile(fullPath, "utf-8");
+
       try {
         const result = await setElement(fullPath, element!, at!, {
           createScope,
           dryRun,
+          parseOnly: true,  // Only check syntax, allow semantic issues
         });
 
-        if (!result.success) {
-          const errors = result.diagnostics
-            .filter((d) => d.severity === "error")
+        // Only fail on syntax errors (exit code 1), allow semantic errors (exit code 2)
+        if (!result.syntaxValid) {
+          // ATOMIC ROLLBACK: Restore original content on syntax errors
+          await writeFile(fullPath, originalContent, "utf-8");
+
+          const errorDiags = result.diagnostics.filter((d) => d.severity === "error");
+
+          // Show parse error details with context
+          const parseErrors = errorDiags.filter((d) => !d.code || !d.code.startsWith("E3"));
+          if (parseErrors.length > 0) {
+            const firstError = parseErrors[0];
+            // Try to read the modified file to show the error in context
+            let context = "";
+            try {
+              const modifiedContent = await readFile(fullPath, "utf-8");
+              const lines = modifiedContent.split("\n");
+              const badLine = lines[firstError.line - 1] || "";
+              const lineNumWidth = String(firstError.line).length;
+              const pointer = " ".repeat(lineNumWidth + 3 + firstError.column - 1) + "^";
+              context = `\n${firstError.line} | ${badLine}\n${pointer}`;
+            } catch {
+              // Couldn't read modified file, just show error without context
+            }
+
+            return `path=${fullPath} status=error mode=upsert (rolled back)
+
+SYNTAX ERROR - the fragment could not be parsed.
+
+Line ${firstError.line}:${firstError.column}: ${firstError.message}${context}
+
+Check the element syntax and try again.`;
+          }
+
+          // Default: show all errors
+          const errors = errorDiags
             .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
             .join("\n");
-          return `path=${fullPath} status=error mode=upsert\n\nCLI upsert failed:\n${errors || result.stderr || "Unknown error"}`;
+          return `path=${fullPath} status=error mode=upsert (rolled back)\n\nSyntax error:\n${errors || result.stderr || "Unknown error"}`;
         }
 
         const actionDesc = result.replaced > 0 ? "replaced" : "added";
         const dryRunNote = dryRun ? " (dry run)" : "";
-        return `path=${fullPath} status=success mode=upsert${dryRunNote}
+
+        // Get new file size for delta calculation
+        const newContent = await readFile(fullPath, "utf-8");
+        const originalBytes = Buffer.byteLength(originalContent, "utf-8");
+        const newBytes = Buffer.byteLength(newContent, "utf-8");
+        const delta = formatByteDelta(originalBytes, newBytes);
+
+        return `path=${fullPath} status=success mode=upsert${dryRunNote} delta=${delta}
 Element ${actionDesc} at scope: ${at}
 Added: ${result.added}, Replaced: ${result.replaced}`;
       } catch (err) {
-        return `path=${fullPath} status=error mode=upsert\n\nError: ${err instanceof Error ? err.message : String(err)}`;
+        // ATOMIC ROLLBACK: Restore original content on exception
+        await writeFile(fullPath, originalContent, "utf-8");
+        return `path=${fullPath} status=error mode=upsert (rolled back)\n\nError: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
 
-    // Mode 3: CLI delete - use sysml2 --delete
+    // Mode 2: CLI delete - use sysml2 --delete
     if (isCliDelete) {
+      // Read original content for size tracking
+      const originalContent = await readFile(fullPath, "utf-8");
+      const originalBytes = Buffer.byteLength(originalContent, "utf-8");
+
       try {
         const result = await deleteElements(fullPath, [deletePattern!], { dryRun });
 
@@ -234,116 +223,25 @@ Added: ${result.added}, Replaced: ${result.replaced}`;
 
         const dryRunNote = dryRun ? " (dry run)" : "";
         if (result.deleted === 0) {
-          return `path=${fullPath} status=success mode=delete${dryRunNote}
+          return `path=${fullPath} status=success mode=delete${dryRunNote} delta=+0 bytes
 Element not found: ${deletePattern}
 (Nothing was deleted)`;
         }
-        return `path=${fullPath} status=success mode=delete${dryRunNote}
+
+        // Get new file size for delta calculation
+        const newContent = await readFile(fullPath, "utf-8");
+        const newBytes = Buffer.byteLength(newContent, "utf-8");
+        const delta = formatByteDelta(originalBytes, newBytes);
+
+        return `path=${fullPath} status=success mode=delete${dryRunNote} delta=${delta}
 Deleted: ${result.deleted} element(s) matching: ${deletePattern}`;
       } catch (err) {
         return `path=${fullPath} status=error mode=delete\n\nError: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
 
-    // Mode 1: Full content mode - for creating new files
-    // Read existing content if file exists (for diff computation)
-    let existingContent = "";
-    let oldBytes = 0;
-    let isNew = true;
-
-    try {
-      existingContent = await readFile(fullPath, "utf-8");
-      oldBytes = Buffer.byteLength(existingContent, "utf-8");
-      isNew = false;
-    } catch {
-      // File doesn't exist - this is expected for new files
-    }
-
-    const newContent = content!;
-
-    // Validate SysML syntax if requested
-    if (validate) {
-      const validationResult = await validateSysml(newContent);
-      if (!validationResult.valid) {
-        const errors = validationResult.issues
-          .filter((i) => i.severity === "error")
-          .map((i) => `  Line ${i.line}:${i.column}: ${i.message}`)
-          .join("\n");
-        return `Error: Invalid SysML syntax:\n${errors}`;
-      }
-    }
-
-    // Check for semantic issues (duplicates) using sysml2
-    const semanticIssues = await checkSemanticIssuesWithSysml2(newContent);
-    let semanticWarnings = "";
-    if (semanticIssues.length > 0) {
-      semanticWarnings = `\n⚠ Semantic warnings:\n${formatSemanticIssues(semanticIssues, path)}`;
-    }
-
-    // Create directory if needed
-    const dir = dirname(fullPath);
-    if (dir && dir !== ".") {
-      await mkdir(dir, { recursive: true });
-    }
-
-    // Write file
-    await writeFile(fullPath, newContent, "utf-8");
-
-    const newBytes = Buffer.byteLength(newContent, "utf-8");
-    const marker: "new" | "upd" = isNew ? "new" : "upd";
-
-    // Compute diff lines for updates
-    let diffLines: SysMLWriteResult["diffLines"] = null;
-    if (!isNew && existingContent !== newContent) {
-      diffLines = computeDiffLines(existingContent, newContent, 1);
-    }
-
-    // Build result
-    const result: SysMLWriteResult = {
-      path: fullPath,
-      marker,
-      oldBytes,
-      newBytes,
-      diffLines,
-    };
-
-    // DEBUG: Check why output is so large
-    const jsonResult = JSON.stringify(result);
-    const resultBytes = Buffer.byteLength(jsonResult, "utf-8");
-    const resultLines = diffLines?.length ?? 0;
-
-    if (resultBytes > 100000) {
-      // Log debug info
-      console.error(`[SysMLWrite DEBUG] Large output detected:`);
-      console.error(`  path: ${fullPath}`);
-      console.error(`  marker: ${marker}`);
-      console.error(`  oldBytes: ${oldBytes}, newBytes: ${newBytes}`);
-      console.error(`  diffLines count: ${resultLines}`);
-      console.error(`  total JSON bytes: ${resultBytes}`);
-
-      if (diffLines && diffLines.length > 0) {
-        const addCount = diffLines.filter(l => l.type === "add").length;
-        const delCount = diffLines.filter(l => l.type === "del").length;
-        const ctxCount = diffLines.filter(l => l.type === "ctx").length;
-        console.error(`  diffLines breakdown: ${addCount} adds, ${delCount} dels, ${ctxCount} ctx`);
-        console.error(`  first 3 diffLines: ${JSON.stringify(diffLines.slice(0, 3))}`);
-        console.error(`  last 3 diffLines: ${JSON.stringify(diffLines.slice(-3))}`);
-      }
-
-      // Return truncated result for now
-      const truncatedResult: SysMLWriteResult = {
-        path: fullPath,
-        marker,
-        oldBytes,
-        newBytes,
-        diffLines: diffLines ? diffLines.slice(0, 50) : null, // Only first 50 lines
-      };
-      if (diffLines && diffLines.length > 50) {
-        return JSON.stringify(truncatedResult) + `\n[TRUNCATED: ${diffLines.length - 50} more diff lines]${semanticWarnings}`;
-      }
-    }
-
-    return jsonResult + semanticWarnings;
+    // Should not reach here - all modes are handled above
+    return `Error: Internal error - no mode matched`;
   },
 });
 

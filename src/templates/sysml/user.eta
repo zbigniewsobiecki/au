@@ -85,7 +85,7 @@ The following entities have already been created in this cycle. **Do NOT recreat
 *(... and <%= it.createdEntities.length - 50 %> more entities)*
 <% } %>
 
-**Important**: If you need to modify an existing entity, use `SysMLRead` to get the current content, then use search/replace mode with `SysMLWrite`.
+**Important**: If you need to modify an existing entity, use `SysMLRead` to get the current content, then use `SysMLWrite` with `element` + `at` to upsert.
 <% } %>
 
 ## File Viewer
