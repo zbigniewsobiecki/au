@@ -19,7 +19,7 @@ const SYSML_DIR = ".sysml";
  * Mapping from cycle number to output directory.
  * Each cycle writes to a specific subdirectory within .sysml.
  */
-const CYCLE_OUTPUT_DIRS: Record<number, string> = {
+export const CYCLE_OUTPUT_DIRS: Record<number, string> = {
   1: "context",
   2: "structure",
   3: "data",
@@ -52,6 +52,9 @@ export interface CoverageContext {
   minCoveragePercent?: number;
 }
 
+/** Debug flag - set AU_DEBUG_COVERAGE=1 to enable verbose logging */
+const DEBUG_COVERAGE = process.env.AU_DEBUG_COVERAGE === "1";
+
 /**
  * Scan all .sysml files and extract paths from `@SourceFile` metadata.
  * This metadata indicates which source files have been documented.
@@ -65,7 +68,12 @@ export async function findCoveredFiles(sysmlDir: string = SYSML_DIR): Promise<Se
   // - `@SourceFile { :>> path = "src/controllers/user.controller.ts"; :>> line = 42; }`
   // - Also supports legacy syntax without :>> for backward compatibility
   // - Multiple sources on separate lines
+  // Note: \s includes newlines in JavaScript, so this handles multiline format
   const metadataPattern = /@SourceFile\s*\{\s*(?::>>\s*)?path\s*=\s*"([^"]+)"/g;
+
+  if (DEBUG_COVERAGE) {
+    console.error(`[coverage] Scanning directory: ${sysmlDir}`);
+  }
 
   async function scanDir(dir: string): Promise<void> {
     try {
@@ -80,27 +88,55 @@ export async function findCoveredFiles(sysmlDir: string = SYSML_DIR): Promise<Se
           try {
             const content = await readFile(fullPath, "utf-8");
 
+            if (DEBUG_COVERAGE) {
+              console.error(`[coverage] Scanning file: ${fullPath} (${content.length} bytes)`);
+            }
+
             // Find all `@SourceFile` metadata
             let match;
+            let matchCount = 0;
             while ((match = metadataPattern.exec(content)) !== null) {
               const sourcePath = match[1].trim();
               if (sourcePath) {
                 coveredFiles.add(sourcePath);
+                matchCount++;
+                if (DEBUG_COVERAGE) {
+                  console.error(`[coverage]   Found: ${sourcePath}`);
+                }
               }
             }
             // Reset regex lastIndex for next file
             metadataPattern.lastIndex = 0;
+
+            if (DEBUG_COVERAGE && matchCount === 0) {
+              // Check if file contains @SourceFile at all (might be malformed)
+              if (content.includes("@SourceFile")) {
+                console.error(`[coverage]   WARNING: File contains @SourceFile but no matches (check syntax)`);
+                // Show first @SourceFile occurrence for debugging
+                const idx = content.indexOf("@SourceFile");
+                const snippet = content.slice(idx, idx + 100).replace(/\n/g, "\\n");
+                console.error(`[coverage]   First occurrence: ${snippet}...`);
+              }
+            }
           } catch {
             // Skip unreadable files
           }
         }
       }
-    } catch {
+    } catch (err) {
       // Directory doesn't exist
+      if (DEBUG_COVERAGE) {
+        console.error(`[coverage] Directory not found: ${dir}`);
+      }
     }
   }
 
   await scanDir(sysmlDir);
+
+  if (DEBUG_COVERAGE) {
+    console.error(`[coverage] Total covered files: ${coveredFiles.size}`);
+  }
+
   return coveredFiles;
 }
 

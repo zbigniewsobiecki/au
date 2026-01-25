@@ -80,6 +80,8 @@ export {
   checkManifestCoverage,
   formatManifestCoverageResult,
   suggestPatternsForUncoveredFiles,
+  // Cycle output directory mapping
+  CYCLE_OUTPUT_DIRS,
   type CoverageResult,
   type CoverageContext,
   type ManifestCoverageResult,

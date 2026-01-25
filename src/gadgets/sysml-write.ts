@@ -9,13 +9,42 @@
  */
 
 import { createGadget, z } from "llmist";
-import { writeFile, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { writeFile, readFile, stat, readdir, unlink } from "node:fs/promises";
+import { join, dirname, basename } from "node:path";
 import {
   setElement,
   deleteElements,
 } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
+
+/**
+ * Clean up stale .tmp files for a given target file.
+ *
+ * The sysml2 CLI creates temp files with format: <filename>.tmp.<pid>
+ * These get left behind if the process is killed or errors occur.
+ *
+ * @param targetPath - The target file path (e.g., .sysml/context/boundaries.sysml)
+ */
+async function cleanupStaleTmpFiles(targetPath: string): Promise<void> {
+  try {
+    const dir = dirname(targetPath);
+    const base = basename(targetPath);
+    const tmpPattern = `${base}.tmp.`;
+
+    const entries = await readdir(dir);
+    const staleTmpFiles = entries.filter(e => e.startsWith(tmpPattern));
+
+    for (const tmpFile of staleTmpFiles) {
+      try {
+        await unlink(join(dir, tmpFile));
+      } catch {
+        // Ignore cleanup errors - file may have been cleaned up by another process
+      }
+    }
+  } catch {
+    // Ignore errors - directory may not exist yet
+  }
+}
 
 /** Format byte delta as "+N bytes" or "-N bytes" */
 function formatByteDelta(before: number, after: number): string {
@@ -125,6 +154,21 @@ To create new files, use SysMLCreate instead.`;
 
     // Mode 1: CLI upsert - use sysml2 --set --at (atomic)
     if (isCliUpsert) {
+      // Validate: Reject double-redefinition syntax (:>> name :>> name)
+      // This pattern occurs when LLM sees existing :>> and tries to redefine again
+      if (/:>>\s*\w+\s*:>>/.test(element!)) {
+        return `path=${fullPath} status=error mode=upsert
+
+INVALID SYNTAX: Double-redefinition detected (':>> name :>> name').
+
+This happens when trying to redefine an already-redefined element.
+Use either:
+  - Declaration: 'port httpApi : HTTPPort { ... }'
+  - OR Redefinition: ':>> httpApi { ... }' (no type, no extra :>>)
+
+Do NOT combine both: ':>> httpApi : HTTPPort' or ':>> name :>> name'`;
+      }
+
       // Check if file exists - CLI upsert requires existing file to parse
       const fileExists = await stat(fullPath).then(() => true).catch(() => false);
 
@@ -134,6 +178,9 @@ To create new files, use SysMLCreate instead.`;
 File does not exist. Create it first:
   SysMLCreate(path="${path}", package="PackageName")`;
       }
+
+      // Clean up any stale .tmp files from previous failed writes
+      await cleanupStaleTmpFiles(fullPath);
 
       // Read original content before modification (for atomic rollback)
       const originalContent = await readFile(fullPath, "utf-8");

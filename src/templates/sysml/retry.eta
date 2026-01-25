@@ -1,5 +1,13 @@
 ## Coverage Retry Phase - Cycle <%= it.cycle %>
 
+## IMPORTANT: Write to Correct Directory
+
+All SysML output for Cycle <%= it.cycle %> retry MUST go to `.sysml/<%= it.cycleOutputDir %>/`
+
+Coverage is calculated by scanning `@SourceFile { :>> path = "..."; }` metadata in that directory ONLY.
+
+---
+
 The following source files were **NOT covered** in the main cycle and MUST be documented:
 
 <% for (const file of it.missingFiles) { %>
@@ -16,7 +24,7 @@ You **MUST**:
 
 1. Read and analyze EACH of the files listed above
 2. Add appropriate SysML definitions for entities, types, operations, etc. found in each file
-3. **CRITICAL**: Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each SysML definition to track which files have been covered
+3. **CRITICAL**: Write to `.sysml/<%= it.cycleOutputDir %>/` and include `@SourceFile { :>> path = "<filepath>"; }` metadata before each SysML definition
 
 ## SysML Source Metadata Format
 
@@ -44,6 +52,13 @@ action def AuthenticateUser {
 - Do NOT recreate entities that already exist in the model
 - Each source file should result in at least one SysML element with `@SourceFile` metadata
 - If a file contains multiple significant entities, document all of them
+
+## Iteration Control
+
+After documenting each batch of files:
+- Call `FileViewerNextFileSet(paths="")` to signal completion and check for more files
+- Or request specific files: `FileViewerNextFileSet(paths="file1.ts,file2.ts")`
+- Continue until all missing files are covered
 
 <% if (it.existingModel) { %>
 ## Existing Model Context

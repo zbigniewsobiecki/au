@@ -1,0 +1,56 @@
+
+---
+## Retry Turn <%= it.iteration %>/<%= it.maxIterations %>
+
+**CRITICAL**: All SysML files for this retry MUST be written to `.sysml/<%= it.cycleOutputDir %>/`
+
+- Files documented this session: **<%= it.readCount %>**
+- Remaining in current batch: **<%= it.remainingFiles %>**
+<% const coveragePercent = it.totalMissing > 0 ? Math.round(((it.totalMissing - it.stillMissing) / it.totalMissing) * 100) : 100; %>
+- Retry coverage: **<%= coveragePercent %>%** (<%= it.totalMissing - it.stillMissing %>/<%= it.totalMissing %> files)
+
+<% if (it.validationErrors && it.validationErrors.length > 0) { %>
+## Model Validation Errors
+
+Fix these semantic errors:
+
+<%
+// Group errors by code
+const byCode = {};
+for (const err of it.validationErrors) {
+  const code = err.code || 'Unknown';
+  if (!byCode[code]) byCode[code] = [];
+  byCode[code].push(err);
+}
+%>
+<% for (const [code, errors] of Object.entries(byCode)) { %>
+### <%= code %><% if (code === 'E3001') { %> (Undefined Reference)<% } else if (code === 'E3004') { %> (Duplicate Definition)<% } %>
+<% for (const err of errors.slice(0, 5)) { %>
+- `<%= err.file %>:<%= err.line %>`: <%= err.message %>
+<% } %>
+<% if (errors.length > 5) { %>
+*(+<%= errors.length - 5 %> more <%= code %> errors)*
+<% } %>
+<% } %>
+<% } %>
+
+<% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
+## Files Still Missing Coverage
+
+These files need `@SourceFile { :>> path = "..."; }` metadata in `.sysml/<%= it.cycleOutputDir %>/`:
+<% for (const file of it.unreadFiles.slice(0, 15)) { %>
+- `<%= file %>`
+<% } %>
+<% if (it.unreadFiles.length > 15) { %>
+*(+<%= it.unreadFiles.length - 15 %> more)*
+<% } %>
+<% } %>
+
+## Required Actions
+
+1. Write SysML definitions to `.sysml/<%= it.cycleOutputDir %>/` directory
+2. Include `@SourceFile { :>> path = "<filepath>"; }` metadata for EACH missing file
+3. When done with current batch, call `FileViewerNextFileSet(paths="")` to check coverage
+4. Or request specific files: `FileViewerNextFileSet(paths="file1.ts,file2.ts")`
+
+**IMPORTANT**: Keep iterating until ALL missing files have been covered. Do NOT stop early.
