@@ -1,6 +1,6 @@
 {
   "name": "@zbigniewsobiecki/au",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Agent Understanding - AI-powered codebase documentation",
   "type": "module",
   "main": "dist/index.js",

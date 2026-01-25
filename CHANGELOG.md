@@ -1,3 +1,9 @@
+## [2.0.2](https://github.com/zbigniewsobiecki/au/compare/v2.0.1...v2.0.2) (2026-01-25)
+
+### Bug Fixes
+
+* **sysml:** improve ingest robustness and coverage tracking ([ab2dff1](https://github.com/zbigniewsobiecki/au/commit/ab2dff1780d25c1d928b2fd351b99ce2daf8eb9a))
+
 ## [2.0.1](https://github.com/zbigniewsobiecki/au/compare/v2.0.0...v2.0.1) (2026-01-25)
 
 ### Bug Fixes
