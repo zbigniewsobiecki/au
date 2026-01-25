@@ -31,6 +31,7 @@ import {
   type CoverageResult,
 } from "../lib/sysml/index.js";
 import { parsePathList } from "../lib/command-utils.js";
+import { extractDiffFromResult } from "../lib/diff-utils.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import {
@@ -50,6 +51,7 @@ import {
   type ProjectMetadata,
 } from "../lib/sysml/index.js";
 import { runSysml2Multi, validateModelFull, type Sysml2MultiDiagnostic } from "../lib/sysml/sysml2-cli.js";
+import { estimateTokens, formatTokens } from "../lib/formatting.js";
 import micromatch from "micromatch";
 
 const TOTAL_CYCLES = 6;  // Cycles 1-6 (Cycle 0 is special discovery cycle)
@@ -72,13 +74,6 @@ const CYCLE_SYSML_PATTERNS: Record<number, string[]> = {
   5: ["SysMLPrimitives.sysml", "_project.sysml", "context/**/*.sysml", "structure/**/*.sysml", "data/**/*.sysml", "behavior/**/*.sysml"],  // + Cycle 4
   6: ["**/*.sysml"],  // Full model for final analysis
 };
-
-/**
- * Estimate tokens from string length (rough approximation: 4 chars ≈ 1 token)
- */
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
 
 interface CycleState {
   cycle: number;
@@ -168,16 +163,6 @@ interface IngestState {
   totalFilesWritten: number;
   cycleHistory: CycleState[];
   metadata: ProjectMetadata | null;
-}
-
-/**
- * Format token count for display.
- */
-function formatTokens(tokens: number): string {
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}k`;
-  }
-  return String(tokens);
 }
 
 /**
@@ -1372,6 +1357,7 @@ export default class Ingest extends Command {
       .withModel(flags.model)
       .withSystem(systemPrompt)
       .withMaxIterations(maxTurnIterations)
+      .withGadgetExecutionMode("sequential")
       .withGadgets(
         sysmlCreate,
         sysmlWrite,
@@ -1480,6 +1466,13 @@ export default class Ingest extends Command {
               const modeStr = mode === "create" ? chalk.yellow("[new]") : mode === "reset" ? chalk.magenta("[reset]") : mode === "upsert" ? chalk.blue("[set]") : mode === "delete" ? chalk.red("[del]") : "";
               const deltaStr = delta ? (delta.startsWith("-") ? chalk.red(` (${delta})`) : chalk.dim(` (${delta})`)) : "";
               console.log(`${chalk.green("   ✓")} ${writtenPath} ${modeStr}${deltaStr}`);
+
+              // Display colored diff if available
+              const diff = extractDiffFromResult(result.result);
+              if (diff) {
+                const indentedDiff = diff.split("\n").map((line) => `      ${line}`).join("\n");
+                console.log(indentedDiff);
+              }
             } else {
               console.log(`  Wrote: ${writtenPath}`);
             }
@@ -1565,6 +1558,7 @@ export default class Ingest extends Command {
       .withModel(flags.model)
       .withSystem(systemPrompt)
       .withMaxIterations(maxTurnIterations)
+      .withGadgetExecutionMode("sequential")
       .withGadgets(
         sysmlCreate,
         sysmlWrite,
@@ -1691,6 +1685,13 @@ export default class Ingest extends Command {
               const modeStr = mode === "create" ? chalk.yellow("[new]") : mode === "reset" ? chalk.magenta("[reset]") : mode === "upsert" ? chalk.blue("[set]") : mode === "delete" ? chalk.red("[del]") : "";
               const deltaStr = delta ? (delta.startsWith("-") ? chalk.red(` (${delta})`) : chalk.dim(` (${delta})`)) : "";
               console.log(`${chalk.green("   ✓")} ${writtenPath} ${modeStr}${deltaStr}`);
+
+              // Display colored diff if available
+              const diff = extractDiffFromResult(result.result);
+              if (diff) {
+                const indentedDiff = diff.split("\n").map((line) => `      ${line}`).join("\n");
+                console.log(indentedDiff);
+              }
             } else {
               console.log(`  Wrote: ${writtenPath}`);
             }
@@ -1825,6 +1826,7 @@ The manifest will guide subsequent cycles with exact file lists and counts.
       .withModel(flags.model)
       .withSystem(systemPrompt)
       .withMaxIterations(cycle0Iterations)
+      .withGadgetExecutionMode("sequential")
       .withGadgets(
         manifestWrite,
         manifestRead,

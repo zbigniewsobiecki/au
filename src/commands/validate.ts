@@ -36,6 +36,7 @@ import {
   withWorkingDirectory,
 } from "../lib/command-utils.js";
 import { runAgentWithEvents } from "../lib/agent-runner.js";
+import { extractDiffFromResult } from "../lib/diff-utils.js";
 
 export default class Validate extends Command {
   static description =
@@ -389,6 +390,7 @@ export default class Validate extends Command {
       .withModel(flags.model)
       .withSystem(systemPrompt)
       .withMaxIterations(flags["verify-iterations"])
+      .withGadgetExecutionMode("sequential")
       .withGadgetOutputLimitPercent(30)
       .withGadgets(...gadgets);
 
@@ -605,6 +607,7 @@ export default class Validate extends Command {
       .withModel(flags.model)
       .withSystem(systemPrompt)
       .withMaxIterations(flags["fix-iterations"])
+      .withGadgetExecutionMode("sequential")
       .withGadgetOutputLimitPercent(30)
       .withGadgets(...gadgets);
 
@@ -638,6 +641,13 @@ export default class Validate extends Command {
               const pathMatch = gadgetResult.match(/path=([^\s]+)/);
               if (pathMatch) {
                 out.info(`Fixed: ${pathMatch[1]}`);
+              }
+            } else {
+              // In verbose mode, display the colored diff if available
+              const diff = extractDiffFromResult(gadgetResult);
+              if (diff) {
+                const indentedDiff = diff.split("\n").map((line) => `      ${line}`).join("\n");
+                console.log(indentedDiff);
               }
             }
           }
