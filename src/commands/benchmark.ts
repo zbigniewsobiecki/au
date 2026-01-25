@@ -179,6 +179,7 @@ export default class Benchmark extends Command {
       .withModel(flags.model)
       .withSystem(ASK_SYSTEM_PROMPT({ sysmlOnly: modelOnly, codeOnly }))
       .withMaxIterations(flags["max-iterations"])
+      .withGadgetExecutionMode("sequential")
       .withGadgets(...gadgets);
 
     builder = configureBuilder(builder, out, flags.rpm, flags.tpm);

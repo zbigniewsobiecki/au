@@ -194,6 +194,7 @@ export default class DocsFeedback extends Command {
       .withModel(flags.model)
       .withSystem(systemPrompt)
       .withMaxIterations(flags.iterations)
+      .withGadgetExecutionMode("sequential")
       .withGadgetOutputLimitPercent(30)
       .withGadgets(...gadgets);
 
@@ -293,6 +294,7 @@ export default class DocsFeedback extends Command {
           .withModel(flags.model)
           .withSystem(fixSystemPrompt)
           .withMaxIterations(flags["fix-iterations"] || 30)
+          .withGadgetExecutionMode("sequential")
           .withGadgetOutputLimitPercent(30)
           .withGadgets(...fixGadgets);
 

@@ -11,12 +11,14 @@ Coverage is calculated by scanning `@SourceFile { :>> path = "..."; }` metadata 
 The following source files were **NOT covered** in the main cycle and MUST be documented:
 
 <% for (const file of it.missingFiles) { %>
-- `<%= file %>`
+- `<%= file %>` → requires `@SourceFile { :>> path = "<%= file %>"; }`
 <% } %>
 <% if (it.totalMissing > it.missingFiles.length) { %>
 
 *(... and <%= it.totalMissing - it.missingFiles.length %> more files)*
 <% } %>
+
+**IMPORTANT**: Coverage will remain at 0% if you annotate different files than those listed above. You MUST use the EXACT paths shown.
 
 ## Requirements
 
@@ -45,6 +47,24 @@ action def AuthenticateUser {
     out tokens : TokenResponse;
 }
 ```
+
+## Handling Barrel/Index Files
+
+For barrel files (index.ts, index.js, mod.rs, __init__.py) that only re-export from other modules:
+
+- **Still create @SourceFile metadata** for the barrel file itself
+- Create a minimal package/namespace that documents the re-export structure
+
+Example for a barrel file `src/types/index.ts`:
+```sysml
+@SourceFile { :>> path = "src/types/index.ts"; }
+package TypesBarrel {
+    doc /* Barrel file re-exporting domain types */
+    // Re-exports are documented in their source files
+}
+```
+
+This ensures coverage tracking works correctly even for files without unique definitions.
 
 ## Important Notes
 

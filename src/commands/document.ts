@@ -16,6 +16,7 @@ import {
   selectReadGadgets,
 } from "../lib/command-utils.js";
 import { runAgentWithEvents } from "../lib/agent-runner.js";
+import { formatLabel } from "../lib/formatting.js";
 
 interface DocPlanStructure {
   structure: Array<{
@@ -230,14 +231,6 @@ async function readProjectMetadata(): Promise<ProjectMetadata> {
   }
 }
 
-function formatLabel(directory: string): string {
-  return directory
-    .replace(/\/$/, "")
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
 // Fallback descriptions for common categories (used when plan doesn't provide one)
 const FALLBACK_SECTION_DESCRIPTIONS: Record<string, string> = {
   "getting-started": "Install and set up for local development",
@@ -403,6 +396,7 @@ export default class Document extends Command {
         .withModel(flags.model)
         .withSystem(planSystemPrompt)
         .withMaxIterations(flags["plan-iterations"])
+        .withGadgetExecutionMode("sequential")
         .withGadgetOutputLimitPercent(30)
         .withGadgets(...planGadgets);
 
@@ -628,6 +622,7 @@ Call FinishDocs only after ALL ${pendingDocs.length} documents are written.`;
       .withModel(flags.model)
       .withSystem(orchestratorSystemPrompt)
       .withMaxIterations(flags["gen-iterations"])
+      .withGadgetExecutionMode("sequential")
       .withGadgetOutputLimitPercent(30)
       .withGadgets(...genGadgets);
 

@@ -16,6 +16,7 @@ import {
   deleteElements,
 } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
+import { generateColoredDiff } from "../lib/diff-utils.js";
 
 /**
  * Clean up stale .tmp files for a given target file.
@@ -241,9 +242,25 @@ Check the element syntax and try again.`;
         const newBytes = Buffer.byteLength(newContent, "utf-8");
         const delta = formatByteDelta(originalBytes, newBytes);
 
+        // Generate diff for CLI display (colors for human, plain +/- for LLM)
+        let diffOutput = "";
+        if (originalContent !== newContent) {
+          diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent);
+        }
+
+        // Warn if no changes were made but element was provided
+        if (result.added === 0 && result.replaced === 0 && element && element.trim()) {
+          return `path=${fullPath} status=warning mode=upsert delta=${delta}
+WARNING: No elements were added or replaced.
+The element may already exist, or the scope '${at}' was not found.
+
+Fragment attempted:
+${element.slice(0, 300)}${element.length > 300 ? '...' : ''}`;
+        }
+
         return `path=${fullPath} status=success mode=upsert${dryRunNote} delta=${delta}
 Element ${actionDesc} at scope: ${at}
-Added: ${result.added}, Replaced: ${result.replaced}`;
+Added: ${result.added}, Replaced: ${result.replaced}${diffOutput}`;
       } catch (err) {
         // ATOMIC ROLLBACK: Restore original content on exception
         await writeFile(fullPath, originalContent, "utf-8");
@@ -253,6 +270,9 @@ Added: ${result.added}, Replaced: ${result.replaced}`;
 
     // Mode 2: CLI delete - use sysml2 --delete
     if (isCliDelete) {
+      // Clean up any stale .tmp files from previous failed writes
+      await cleanupStaleTmpFiles(fullPath);
+
       // Read original content for size tracking
       const originalContent = await readFile(fullPath, "utf-8");
       const originalBytes = Buffer.byteLength(originalContent, "utf-8");

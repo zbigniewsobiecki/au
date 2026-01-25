@@ -66,6 +66,19 @@ function getLibraryPathArgs(): string[] {
 }
 
 /**
+ * Get spawn options with isolated environment.
+ *
+ * Explicitly clears SYSML2_LIBRARY_PATH to prevent the official SysML v2
+ * standard library from being loaded, which can cause validation conflicts.
+ */
+function getSpawnOptions(): { stdio: ["pipe", "pipe", "pipe"]; env: NodeJS.ProcessEnv } {
+  return {
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, SYSML2_LIBRARY_PATH: "" },
+  };
+}
+
+/**
  * Run sysml2 on the provided content.
  *
  * @param content - SysML source text to parse
@@ -80,7 +93,7 @@ export async function runSysml2(
   if (options?.json) args.push("-f", "json");
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
 
     let stdout = "";
     let stderr = "";
@@ -201,7 +214,7 @@ export async function runSysml2Multi(
   if (options?.json) args.push("-f", "json");
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
 
     let stdout = "";
     let stderr = "";
@@ -351,7 +364,7 @@ export async function selectElements(
   args.push(...files);
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
 
     let stdout = "";
     let stderr = "";
@@ -459,7 +472,7 @@ export async function setElement(
   };
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
 
     let stdout = "";
     let stderr = "";
@@ -551,7 +564,7 @@ export async function deleteElements(
   args.push(targetFile);
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
 
     let stdout = "";
     let stderr = "";
@@ -649,7 +662,7 @@ export async function validateModelFull(sysmlDir: string = ".sysml"): Promise<Va
   const args = ["--color=never", ...getLibraryPathArgs(), ...files];
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(SYSML2_CMD, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
 
     let stderr = "";
 

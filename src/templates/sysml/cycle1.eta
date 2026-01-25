@@ -215,6 +215,40 @@ Write ONLY these files:
 **IMPORTANT**: Do NOT write to any other directories (structure/, data/, behavior/, verification/, analysis/).
 This cycle focuses ONLY on context and requirements. Data models, behavior, etc. will be handled in later cycles.
 
+### CRITICAL: Coverage Tracking with @SourceFile
+
+Coverage is calculated by scanning `@SourceFile { :>> path = "..."; }` metadata in your output.
+
+**You MUST add @SourceFile metadata for EACH file from the "Files to Analyze" list above.**
+
+For cycle 1, these are the specific files you must cover:
+<% if (it.files && it.files.length > 0) { %>
+<% for (const file of it.files) { %>
+- `<%= file %>` → requires `@SourceFile { :>> path = "<%= file %>"; }`
+<% } %>
+<% } %>
+
+**Example - if analyzing package.json and turbo.json:**
+```sysml
+package SystemRequirements {
+    import SysMLPrimitives::*;
+
+    @SourceFile { :>> path = "package.json"; }
+    requirement def FR001 :> DiscoveredRequirement {
+        :>> id = "FR-001";
+        doc /* Monorepo structure with workspaces defined in package.json */
+    }
+
+    @SourceFile { :>> path = "turbo.json"; }
+    requirement def NFR001 :> DiscoveredRequirement {
+        :>> id = "NFR-001";
+        doc /* Build orchestration using Turborepo for parallel task execution */
+    }
+}
+```
+
+**IMPORTANT**: Coverage will be 0% if you annotate files NOT in the list above (e.g., annotating `vite.config.ts` when the list only contains `package.json`).
+
 ### Success Criteria
 
 - [ ] SystemContext package has all external dependencies
@@ -222,6 +256,7 @@ This cycle focuses ONLY on context and requirements. Data models, behavior, etc.
 - [ ] Requirements package has at least basic functional requirements
 - [ ] Documentation comments explain the system purpose
 - [ ] Output is limited to `context/` directory only
+- [ ] **Every file in "Files to Analyze" has at least one @SourceFile annotation**
 
 <% if (it.isIterative) { %>
 ### File Selection Priority for Discovery
