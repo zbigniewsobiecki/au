@@ -1,3 +1,9 @@
+## [2.0.1](https://github.com/zbigniewsobiecki/au/compare/v2.0.0...v2.0.1) (2026-01-25)
+
+### Bug Fixes
+
+* **sysml:** use :>> syntax for metadata attribute redefinitions ([6dfa0ae](https://github.com/zbigniewsobiecki/au/commit/6dfa0ae22d4d40634e3188dd7693b0a350288a22))
+
 ## [2.0.0](https://github.com/zbigniewsobiecki/au/compare/v1.6.0...v2.0.0) (2026-01-25)
 
 ### ⚠ BREAKING CHANGES
