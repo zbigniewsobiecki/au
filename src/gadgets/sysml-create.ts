@@ -9,6 +9,7 @@ import { writeFile, mkdir, stat, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 import { runSysml2 } from "../lib/sysml/sysml2-cli.js";
+import { generateColoredDiff } from "../lib/diff-utils.js";
 
 /** Format byte delta as "+N bytes" or "-N bytes" */
 function formatByteDelta(before: number, after: number): string {
@@ -76,10 +77,11 @@ Package ${pkgName} already exists (no changes needed)`;
       return `Error: File already exists: ${fullPath}. Use SysMLWrite for targeted writes, or use force=true to wipe this file clean and overwrite.`;
     }
 
-    // Track original size for delta (if file exists)
+    // Track original content for delta and diff (if file exists)
     let originalBytes = 0;
+    let originalContent = "";
     if (fileExists) {
-      const originalContent = await readFile(fullPath, "utf-8");
+      originalContent = await readFile(fullPath, "utf-8");
       originalBytes = Buffer.byteLength(originalContent, "utf-8");
     }
 
@@ -146,7 +148,13 @@ Fix the syntax errors and try again.`;
     const newBytes = Buffer.byteLength(finalContent, "utf-8");
     const delta = formatByteDelta(originalBytes, newBytes);
 
+    // Generate diff for force overwrite cases (shows what was replaced)
+    let diffOutput = "";
+    if (fileExists && originalContent !== finalContent) {
+      diffOutput = "\n\n" + generateColoredDiff(originalContent, finalContent);
+    }
+
     return `path=${fullPath} status=success delta=${delta}
-${fileExists ? "Reset" : "Created"} package: ${pkgName}`;
+${fileExists ? "Reset" : "Created"} package: ${pkgName}${diffOutput}`;
   },
 });
