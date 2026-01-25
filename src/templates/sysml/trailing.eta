@@ -4,21 +4,22 @@
 
 - Files analyzed: **<%= it.readCount %>**
 - Expected files: ~**<%= it.expectedCount %>**
-<% const coveragePercent = it.expectedCount > 0 ? Math.round((it.readCount / it.expectedCount) * 100) : 100; %>
-- Coverage: **<%= coveragePercent %>%**
+<% const coveragePercent = it.docCoveragePercent ?? (it.expectedCount > 0 ? Math.round((it.readCount / it.expectedCount) * 100) : 100); %>
+- Documentation Coverage: **<%= coveragePercent %>%**
 <% if (coveragePercent < 50) { %>
-⚠️ **COVERAGE TOO LOW** - You MUST continue exploring!
+⚠️ **COVERAGE TOO LOW** - You MUST document more files with @SourceFile metadata!
 <% } else if (coveragePercent < 80) { %>
 📊 Coverage acceptable but continue to improve
 <% } %>
 
-<% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
-### Files Not Yet Covered (first 15)
-<% for (const file of it.unreadFiles.slice(0, 15)) { %>
+<% const missingFiles = it.docMissingFiles ?? []; %>
+<% if (missingFiles.length > 0) { %>
+### Files Missing @SourceFile Documentation (first 15)
+<% for (const file of missingFiles.slice(0, 15)) { %>
 - `<%= file %>`
 <% } %>
-<% if (it.unreadFiles.length > 15) { %>
-*(+<%= it.unreadFiles.length - 15 %> more)*
+<% if (missingFiles.length > 15) { %>
+*(+<%= missingFiles.length - 15 %> more)*
 <% } %>
 <% } %>
 

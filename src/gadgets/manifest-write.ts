@@ -77,6 +77,8 @@ export interface Manifest {
   directories?: DirectoryAssignment[];
   cycles: Record<string, ManifestCycle>;
   statistics?: ManifestStatistics;
+  discoveredEntities?: string[];  // Entity names discovered from model/entity files
+  discoveredDomains?: string[];   // Domain names discovered from controllers/services
 }
 
 const MANIFEST_PATH = ".sysml/_manifest.json";
@@ -123,6 +125,10 @@ const manifestObjectSchema = z.object({
     totalFiles: z.number().optional(),
     relevantFiles: z.number().optional(),
   }).optional().describe("Overall statistics"),
+  discoveredEntities: z.array(z.string()).optional()
+    .describe("Entity names discovered from model/entity files"),
+  discoveredDomains: z.array(z.string()).optional()
+    .describe("Domain names discovered from controllers/services"),
 });
 
 export const manifestWrite = createGadget({

@@ -5,6 +5,15 @@
 import chalk from "chalk";
 
 /**
+ * Strip ANSI escape codes from a string.
+ * Used to test content without color formatting.
+ */
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+/**
  * Extract the diff portion from a SysMLWrite result string.
  * The result format is:
  * ```
@@ -16,6 +25,9 @@ import chalk from "chalk";
  * + new line
  * ```
  *
+ * Note: Diff output may contain ANSI color codes (e.g., \x1b[31m for red),
+ * so we strip them before testing the pattern.
+ *
  * @param result - The SysMLWrite result string
  * @returns The diff portion (lines starting with +/-/space) or null if no diff found
  */
@@ -25,7 +37,8 @@ export function extractDiffFromResult(result: string): string | null {
   if (parts.length >= 2) {
     const diffPart = parts.slice(1).join("\n\n");
     // Check if it looks like a diff (has lines starting with +, -, or dimmed context spaces)
-    if (/^[+-\s]/.test(diffPart) && diffPart.trim().length > 0) {
+    // Strip ANSI codes before testing since generateColoredDiff() produces colored output
+    if (/^[+-\s]/.test(stripAnsi(diffPart)) && diffPart.trim().length > 0) {
       return diffPart;
     }
   }

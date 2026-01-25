@@ -559,8 +559,17 @@ ${externalDeps}
     part def System {
         doc /*The ${escapeSysmlString(metadata.name)} system */
 
-        // Entry points
-${metadata.entryPoints.map((ep) => `        attribute entryPoint_${pathToIdentifier(ep)} : FilePath = "${escapeSysmlString(ep)}";`).join("\n")}
+        // Application entry points
+${metadata.entryPoints
+  .filter(ep => ep.startsWith("apps/"))
+  .map((ep) => `        attribute appEntryPoint_${pathToIdentifier(ep)} : FilePath = "${escapeSysmlString(ep)}";`)
+  .join("\n") || "        // No application entry points discovered"}
+
+        // Library entry points (for reference)
+${metadata.entryPoints
+  .filter(ep => ep.startsWith("packages/"))
+  .map((ep) => `        attribute libEntryPoint_${pathToIdentifier(ep)} : FilePath = "${escapeSysmlString(ep)}";`)
+  .join("\n") || "        // No library entry points discovered"}
 
         // System ports (discovered interfaces)
 ${portDefs.length > 0 ? portDefs.join("\n") : "        // No ports discovered"}
@@ -667,8 +676,46 @@ export function generateStructureTemplate(): string {
 
 /**
  * Generate data model template (Cycle 3).
+ * Optionally includes entity stubs and auth types based on discovered entities/domains.
  */
-export function generateDataModelTemplate(): string {
+export function generateDataModelTemplate(
+  discoveredEntities?: string[],
+  discoveredDomains?: string[]
+): string {
+  // Generate entity stubs
+  const entityStubs = (discoveredEntities ?? []).map(name => `
+        // Stub - attributes populated in Cycle 3
+        item def ${name} :> BaseEntity {
+            doc /* ${name} domain entity */
+        }
+
+        item def Create${name}Dto :> BaseDTO {
+            doc /* Request DTO for creating a ${name} */
+        }
+
+        item def Update${name}Dto :> BaseDTO {
+            doc /* Request DTO for updating a ${name} */
+        }`).join('\n');
+
+  // Generate auth types if auth domain discovered
+  const hasAuth = (discoveredDomains ?? []).some(d =>
+    d.toLowerCase() === 'auth'
+  );
+
+  const authStubs = hasAuth ? `
+        // Authentication types - stub for Cycle 2 ports
+        item def LoginRequest :> BaseDTO {
+            doc /* Login credentials */
+        }
+
+        item def AuthResponse :> BaseDTO {
+            doc /* Authentication response with token */
+        }
+
+        item def TokenPayload :> BaseDTO {
+            doc /* JWT token payload */
+        }` : '';
+
   return `package DataModel {
     import SysMLPrimitives::*;
 
@@ -704,12 +751,14 @@ export function generateDataModelTemplate(): string {
 
     // Entity definitions (to be populated by analysis)
     package Entities {
-        doc /*Domain entities - specialize from BaseEntity */
+        import DataModel::*;
+${entityStubs || '        // No entities discovered - populated in Cycle 3'}
     }
 
     // Data transfer objects (to be populated by analysis)
     package DTOs {
-        doc /*Request/Response shapes - specialize from BaseDTO */
+        import DataModel::*;
+${authStubs || '        // Auth types populated in Cycle 3'}
     }
 
     // Events (to be populated by analysis)

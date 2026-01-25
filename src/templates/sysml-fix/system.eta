@@ -96,6 +96,33 @@ Files declared in manifest expectedOutputs don't exist.
 - Create the missing file with appropriate SysML content
 - Use SysMLQuery to understand what content the file should have
 
+### Entity Stub Regeneration
+
+If `data/_index.sysml` has undefined type errors (e.g., `LoginRequest`, `User` not found):
+
+1. **Read the manifest** to get discovered entities and domains:
+   ```
+   ReadFiles(paths: ".sysml/_manifest.json")
+   ```
+   Look for:
+   - `discoveredEntities`: ["User", "Customer", ...]
+   - `discoveredDomains`: ["Auth", "Customers", ...]
+
+2. **Regenerate stubs** in `data/_index.sysml`:
+   - For each entity in `discoveredEntities`:
+     - `item def EntityName :> BaseEntity { doc /* EntityName domain entity */ }`
+     - `item def CreateEntityNameDto :> BaseDTO { doc /* Request DTO */ }`
+     - `item def UpdateEntityNameDto :> BaseDTO { doc /* Request DTO */ }`
+   - If "Auth" is in `discoveredDomains`:
+     - `item def LoginRequest :> BaseDTO { doc /* Login credentials */ }`
+     - `item def AuthResponse :> BaseDTO { doc /* Auth response with token */ }`
+     - `item def TokenPayload :> BaseDTO { doc /* JWT token payload */ }`
+
+3. **Placement**:
+   - Entity stubs go in `package Entities { import DataModel::*; ... }`
+   - Auth/DTO stubs go in `package DTOs { import DataModel::*; ... }`
+   - Both packages are inside `package DataModel`
+
 ## SysML v2 Syntax Quick Reference
 
 ```sysml

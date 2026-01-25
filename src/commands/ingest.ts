@@ -44,6 +44,7 @@ import {
 import {
   discoverProject,
   generateInitialFiles,
+  generateDataModelTemplate,
   cycleNames,
   cycleGoals,
   getCyclePatterns,
@@ -445,7 +446,13 @@ async function getFilesForCycle(
     return dirFiles;
   }
 
-  // 2. Try manifest v1 files array
+  // 2. Try manifest sourceFiles patterns (cycle-specific file patterns)
+  const sourceFiles = await getManifestCycleSourceFiles(cycle);
+  if (sourceFiles && sourceFiles.length > 0) {
+    return expandManifestGlobs(sourceFiles, maxFiles);
+  }
+
+  // 3. Try manifest v1 files array (legacy format)
   const manifest = await loadManifest();
   if (manifest) {
     const cycleData = findManifestCycle(manifest, cycle);
@@ -454,7 +461,7 @@ async function getFilesForCycle(
     }
   }
 
-  // 3. Fall back to hardcoded patterns
+  // 4. Fall back to hardcoded patterns
   const patterns = getCyclePatterns(cycle, language);
 
   if (patterns.length === 0) {
@@ -774,6 +781,25 @@ export default class Ingest extends Command {
         state.totalOutputTokens += cycle0Result.outputTokens;
         state.totalCachedTokens += cycle0Result.cachedTokens;
         state.totalCost += cycle0Result.cost;
+
+        // Regenerate data/_index.sysml with discovered entity stubs
+        const manifest = await loadManifest();
+        if (manifest?.discoveredEntities || manifest?.discoveredDomains) {
+          const dataModel = generateDataModelTemplate(
+            manifest.discoveredEntities,
+            manifest.discoveredDomains
+          );
+          await writeFile(
+            join(SYSML_DIR, "data/_index.sysml"),
+            dataModel,
+            "utf-8"
+          );
+          if (flags.verbose) {
+            const entityCount = manifest.discoveredEntities?.length ?? 0;
+            const domainCount = manifest.discoveredDomains?.length ?? 0;
+            console.log(`\x1b[2m   Regenerated data/_index.sysml with ${entityCount} entity stubs, ${domainCount} domains\x1b[0m`);
+          }
+        }
       }
 
       // If only Cycle 0 was requested, we're done
@@ -1064,6 +1090,10 @@ export default class Ingest extends Command {
         batchSize,
       });
 
+      // Compute documentation coverage for trailing template
+      // This shows files missing @SourceFile annotations (not just unread files)
+      const docCoverage = await checkCycleCoverage(cycle, ".");
+
       // Run single turn with FileViewerNextFileSet gadget
       const turnResult = await this.runSingleCycleTurn(
         client,
@@ -1077,6 +1107,8 @@ export default class Ingest extends Command {
           expectedCount: manifestHints?.expectedFileCount ?? seedFiles.length,
           cycle,
           language: state.metadata?.primaryLanguage,
+          docCoveragePercent: docCoverage.coveragePercent,
+          docMissingFiles: docCoverage.missingFiles,
         }
       );
 
@@ -1530,6 +1562,8 @@ export default class Ingest extends Command {
       expectedCount: number;
       cycle: number;
       language?: string;
+      docCoveragePercent: number;
+      docMissingFiles: string[];
     }
   ): Promise<{ nextFiles: string[]; summary: string[]; turns: number }> {
     const textState = createTextBlockState();
@@ -1539,10 +1573,8 @@ export default class Ingest extends Command {
     // Single turn with limited iterations (allow some multi-step processing within turn)
     const maxTurnIterations = Math.min(flags["max-iterations"], 30);
 
-    // Compute unread files for trailing message (need to discover what's potentially available)
-    const { expectedCount, cycle, language } = trailingContext;
-    const allCycleFiles = await getFilesForCycle(cycle, language, 100);  // Get up to 100 potential files
-    const unreadFiles = allCycleFiles.filter(f => !iterState.readFiles.has(f));
+    // Extract trailing context values
+    const { expectedCount, cycle, language, docCoveragePercent, docMissingFiles } = trailingContext;
 
     // Run full model validation before turn to get semantic errors from previous writes
     // This surfaces errors incrementally so the agent can fix them in subsequent iterations
@@ -1580,7 +1612,9 @@ export default class Ingest extends Command {
           maxIterations: ctx.maxIterations,
           readCount: iterState.readFiles.size,
           expectedCount,
-          unreadFiles: unreadFiles.slice(0, 20),  // Show first 20 unread files
+          // Documentation coverage: files with @SourceFile annotations vs manifest sourceFiles
+          docCoveragePercent,
+          docMissingFiles: docMissingFiles.slice(0, 20),  // Show first 20 missing files
           validationErrors,  // Pass semantic errors from pre-turn validation
         });
       });
@@ -1692,6 +1726,14 @@ export default class Ingest extends Command {
                 if (coverage.expectedFiles.length > 0) {
                   const coveragePercent = Math.round(coverage.coveragePercent);
                   console.log(`\x1b[2m      📄 Coverage: ${coverage.coveredFiles.length}/${coverage.expectedFiles.length} (${coveragePercent}%)\x1b[0m`);
+
+                  // Show specific missing files to guide agent
+                  if (coverage.missingFiles.length > 0) {
+                    const sample = coverage.missingFiles.slice(0, 3).map(f => `"${f}"`).join(', ');
+                    const moreCount = coverage.missingFiles.length - 3;
+                    const moreStr = moreCount > 0 ? ` (+${moreCount} more)` : '';
+                    console.log(`\x1b[2m      Still need: ${sample}${moreStr}\x1b[0m`);
+                  }
                 }
               }
             } else {

@@ -71,6 +71,8 @@ export interface ProjectMetadata {
   };
   discoveredAt: string;
   manifestFile?: string;
+  discoveredEntities?: string[];  // Entity names found from model files
+  discoveredDomains?: string[];   // Domain names from controllers (Auth, Customer, etc.)
 }
 
 /**
@@ -379,6 +381,7 @@ async function scanMonorepoPackages(basePath: string): Promise<{
         dependencies?: Record<string, string>;
         devDependencies?: Record<string, string>;
         main?: string;
+        scripts?: Record<string, string>;
       };
 
       const deps = pkg.dependencies ?? {};
@@ -393,10 +396,28 @@ async function scanMonorepoPackages(basePath: string): Promise<{
         frameworks.push(framework);
       }
 
-      // Track entry points
-      if (pkg.main) {
-        const dir = pkgFile.replace("/package.json", "");
-        entryPoints.push(join(dir, pkg.main));
+      // Track entry points - prioritize apps over packages
+      const dir = pkgFile.replace("/package.json", "");
+      const isApp = dir.startsWith("apps/");
+
+      if (isApp) {
+        // For apps, infer entry point from scripts.dev or scripts.start
+        const scripts = pkg.scripts ?? {};
+        const devScript = scripts.dev ?? scripts.start ?? "";
+        // Extract file path from common patterns: "tsx watch src/server.ts", "ts-node src/index.ts", "node dist/index.js"
+        const match = devScript.match(/(?:tsx\s+(?:watch\s+)?|ts-node\s+|node\s+)([^\s]+)/);
+        if (match) {
+          entryPoints.push(join(dir, match[1]));
+        } else if (devScript.includes("vite") || devScript.includes("next")) {
+          // For Vite/Next.js apps, use conventional entry point
+          entryPoints.push(join(dir, "src/main.tsx"));
+        }
+      } else if (pkg.main) {
+        // For packages, use main only if it's a library (skip utility packages)
+        // Skip utility packages like eslint-config, typescript-config
+        if (!dir.includes("eslint-config") && !dir.includes("typescript-config")) {
+          entryPoints.push(join(dir, pkg.main));
+        }
       }
     } catch {
       // Skip unreadable packages
@@ -642,9 +663,9 @@ async function findEntryPoints(
 async function detectPorts(basePath: string, metadata: Partial<ProjectMetadata>): Promise<ProjectMetadata["ports"]> {
   const ports: ProjectMetadata["ports"] = {};
 
-  // Check for HTTP frameworks
+  // Check for HTTP frameworks (handle combined frameworks like "express + react")
   const httpFrameworks = ["express", "fastify", "nestjs", "hono", "koa", "fastapi", "flask", "django", "gin", "echo"];
-  if (metadata.framework && httpFrameworks.includes(metadata.framework)) {
+  if (metadata.framework && httpFrameworks.some(f => metadata.framework!.includes(f))) {
     ports.http = true;
   }
 
@@ -672,6 +693,55 @@ async function detectPorts(basePath: string, metadata: Partial<ProjectMetadata>)
   }
 
   return ports;
+}
+
+/**
+ * Extract entity names from model/entity files.
+ * Looks for patterns like User.model.ts, Customer.entity.ts, etc.
+ */
+async function extractEntitiesFromFiles(basePath: string): Promise<string[]> {
+  const modelFiles = await fg([
+    "**/models/*.model.ts",
+    "**/models/*.ts",
+    "**/entities/*.entity.ts",
+    "**/entities/*.ts"
+  ], {
+    cwd: basePath,
+    ignore: ["**/node_modules/**", "**/dist/**", "**/*.d.ts", "**/db.ts", "**/index.ts"]
+  });
+
+  const entities = new Set<string>();
+  for (const file of modelFiles) {
+    // Extract entity name from "User.model.ts" -> "User" or "models/User.ts" -> "User"
+    const match = file.match(/\/([A-Z][a-zA-Z]+)(?:\.model|\.entity)?\.ts$/);
+    if (match) entities.add(match[1]);
+  }
+  return [...entities].sort();
+}
+
+/**
+ * Extract domain names from controller files.
+ * Looks for patterns like auth.controller.ts, customer.controller.ts, etc.
+ */
+async function extractDomainsFromControllers(basePath: string): Promise<string[]> {
+  const controllerFiles = await fg([
+    "**/controllers/*.controller.ts",
+    "**/controllers/*.ts"
+  ], {
+    cwd: basePath,
+    ignore: ["**/node_modules/**", "**/dist/**", "**/*.d.ts", "**/index.ts"]
+  });
+
+  const domains = new Set<string>();
+  for (const file of controllerFiles) {
+    // Extract domain from "auth.controller.ts" -> "Auth" or "controllers/user.ts" -> "User"
+    const match = file.match(/\/([a-z]+)(?:\.controller)?\.ts$/i);
+    if (match) {
+      const name = match[1];
+      domains.add(name.charAt(0).toUpperCase() + name.slice(1));
+    }
+  }
+  return [...domains].sort();
 }
 
 /**

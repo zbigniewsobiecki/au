@@ -53,6 +53,8 @@ Before finishing, verify your counts are close to these targets.
 
 5. **Generate SysML**:
 
+   Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each verification definition to track coverage.
+
    **verification/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
    package Verification {
@@ -100,6 +102,7 @@ Before finishing, verify your counts are close to these targets.
        package AuthTests {
            doc /*Authentication service tests */
 
+           @SourceFile { :>> path = "tests/auth.test.ts"; }
            verification registerUserHappyPath : TestCase {
                :>> testFile = "tests/auth.test.ts";
                :>> testName = "should register new user successfully";
@@ -107,6 +110,7 @@ Before finishing, verify your counts are close to these targets.
                doc /*Verifies user registration works with valid input */
            }
 
+           @SourceFile { :>> path = "tests/auth.test.ts"; }
            verification registerUserDuplicateEmail : TestCase {
                :>> testFile = "tests/auth.test.ts";
                :>> testName = "should reject duplicate email";
@@ -114,6 +118,7 @@ Before finishing, verify your counts are close to these targets.
                doc /*Verifies duplicate email prevention */
            }
 
+           @SourceFile { :>> path = "tests/auth.test.ts"; }
            verification loginSuccessful : TestCase {
                :>> testFile = "tests/auth.test.ts";
                :>> testName = "should login with valid credentials";
@@ -125,6 +130,7 @@ Before finishing, verify your counts are close to these targets.
        package IntegrationTests {
            doc /*Integration test suite */
 
+           @SourceFile { :>> path = "tests/integration/auth.integration.test.ts"; }
            verification apiAuthFlow : TestCase {
                :>> testFile = "tests/integration/auth.integration.test.ts";
                :>> testName = "complete auth flow";
@@ -137,6 +143,7 @@ Before finishing, verify your counts are close to these targets.
        package E2ETests {
            doc /*End-to-end test suite */
 
+           @SourceFile { :>> path = "tests/e2e/user-journey.spec.ts"; }
            verification userJourney : TestCase {
                :>> testFile = "tests/e2e/user-journey.spec.ts";
                :>> testName = "user can register and make purchase";
@@ -223,6 +230,7 @@ This cycle focuses ONLY on verification and test mapping. Analysis will be handl
 - [ ] Coverage gaps identified
 - [ ] CI/CD verification documented
 - [ ] Output is limited to `verification/` directory only
+- [ ] Each verification definition includes `@SourceFile { :>> path = "<filepath>"; }` metadata
 
 <% if (it.isIterative) { %>
 ### File Selection Priority for Verification Analysis

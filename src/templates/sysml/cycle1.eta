@@ -98,7 +98,33 @@ requirement def FR001 {
    - Functional requirements from documentation
    - Non-functional requirements (performance, security, etc.)
 
-3. **Generate SysML**:
+3. **Infer business requirements from dependencies**:
+
+   When reading package.json files, infer functional requirements from key dependencies:
+
+   | Dependency | Inferred Capability |
+   |------------|---------------------|
+   | `bcryptjs`, `argon2` | User authentication with password hashing |
+   | `jsonwebtoken`, `jose` | Token-based authentication (JWT) |
+   | `multer`, `formidable` | File upload handling |
+   | `pg`, `mysql2`, `mongodb` | Database persistence |
+   | `express-validator`, `zod`, `joi` | Input validation |
+   | `react-query`, `swr` | Server state management |
+   | `zustand`, `redux` | Client state management |
+   | `react-hook-form` | Form handling |
+   | `stripe`, `paypal` | Payment processing |
+   | `nodemailer`, `sendgrid` | Email sending |
+
+   **Example**: If `apps/backend/package.json` has `bcryptjs` and `jsonwebtoken`:
+   ```sysml
+   @SourceFile { :>> path = "apps/backend/package.json"; }
+   requirement def FR001 :> DiscoveredRequirement {
+       :>> id = "FR-001";
+       doc /* The system shall support user authentication with secure password hashing (bcryptjs) and JWT-based session management. */
+   }
+   ```
+
+4. **Generate SysML**:
 
    **context/boundaries.sysml** - Update with discovered external systems:
    ```sysml
@@ -248,6 +274,22 @@ package SystemRequirements {
 ```
 
 **IMPORTANT**: Coverage will be 0% if you annotate files NOT in the list above (e.g., annotating `vite.config.ts` when the list only contains `package.json`).
+
+### STRICT FILE ADHERENCE
+
+**CRITICAL**: You MUST ONLY add @SourceFile annotations for files listed in "Files to Analyze" above.
+
+<% if (it.files && it.files.length > 0) { %>
+**Files you CAN annotate** (from the list above):
+<% for (const file of it.files.slice(0, 5)) { %>
+- ✅ `<%= file %>`
+<% } %>
+<% if (it.files.length > 5) { %>
+- ... and <%= it.files.length - 5 %> more from the list
+<% } %>
+<% } %>
+
+**DO NOT** annotate files not in the list, even if you read them for context. If you discover useful information in other files, extract the insight but attribute the @SourceFile to the file from the list that led you there.
 
 ### Success Criteria
 
