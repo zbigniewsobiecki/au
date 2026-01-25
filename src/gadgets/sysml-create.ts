@@ -60,7 +60,20 @@ Examples:
     const fileExists = await stat(fullPath).then(() => true).catch(() => false);
 
     if (fileExists && !force) {
-      return `Error: File already exists: ${fullPath}. Use force=true to overwrite.`;
+      // Check if existing file has the same package - if so, this is idempotent
+      try {
+        const existingContent = await readFile(fullPath, "utf-8");
+        const existingPkgMatch = existingContent.match(/package\s+(\w+)\s*\{/);
+        if (existingPkgMatch && existingPkgMatch[1] === pkgName) {
+          // Same package already exists - this is idempotent, return success
+          const bytes = Buffer.byteLength(existingContent, "utf-8");
+          return `path=${fullPath} status=success delta=+0 bytes
+Package ${pkgName} already exists (no changes needed)`;
+        }
+      } catch {
+        // Couldn't read existing file, fall through to error
+      }
+      return `Error: File already exists: ${fullPath}. Use SysMLWrite for targeted writes, or use force=true to wipe this file clean and overwrite.`;
     }
 
     // Track original size for delta (if file exists)

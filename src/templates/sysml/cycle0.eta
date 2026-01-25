@@ -27,7 +27,7 @@ The manifest ensures:
 ### Phase 1: Structure Discovery
 
 **Use these gadgets:**
-- `ReadDirs(paths=".", depth=100)` - See the full directory tree
+- `ReadDirs(paths=".", depth=10)` - See the directory tree
 - `ProjectMetaRead()` - Get basic project metadata
 
 **Identify:**
