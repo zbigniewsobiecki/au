@@ -53,14 +53,17 @@ Before finishing, verify your counts are close to these targets.
 
 5. **Generate SysML**:
 
-   **verification/_index.sysml** - Update overview:
+   **verification/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
    package Verification {
        import SysMLPrimitives::*;
        import SystemRequirements::*;
        import SystemBehavior::*;
+       // CRITICAL: Import all sibling packages to avoid orphaned files
+       import TestMappings::*;
+       import CoverageAnalysis::*;
 
-       doc /**Verification and test coverage */
+       doc /*Verification and test coverage */
 
        // Test category enumeration
        enum def TestCategory {
@@ -91,24 +94,24 @@ Before finishing, verify your counts are close to these targets.
        import SystemRequirements::*;
        import SystemBehavior::SystemOperations::*;
 
-       doc /**Test to requirement/operation mappings */
+       doc /*Test to requirement/operation mappings */
 
        // Unit tests for authentication
        package AuthTests {
-           doc /**Authentication service tests */
+           doc /*Authentication service tests */
 
            verification registerUserHappyPath : TestCase {
                :>> testFile = "tests/auth.test.ts";
                :>> testName = "should register new user successfully";
                :>> category = Unit;
-               doc /**Verifies user registration works with valid input */
+               doc /*Verifies user registration works with valid input */
            }
 
            verification registerUserDuplicateEmail : TestCase {
                :>> testFile = "tests/auth.test.ts";
                :>> testName = "should reject duplicate email";
                :>> category = Unit;
-               doc /**Verifies duplicate email prevention */
+               doc /*Verifies duplicate email prevention */
            }
 
            verification loginSuccessful : TestCase {
@@ -120,25 +123,25 @@ Before finishing, verify your counts are close to these targets.
 
        // Integration tests
        package IntegrationTests {
-           doc /**Integration test suite */
+           doc /*Integration test suite */
 
            verification apiAuthFlow : TestCase {
                :>> testFile = "tests/integration/auth.integration.test.ts";
                :>> testName = "complete auth flow";
                :>> category = Integration;
-               doc /**Tests full registration → login → refresh flow */
+               doc /*Tests full registration → login → refresh flow */
            }
        }
 
        // E2E tests
        package E2ETests {
-           doc /**End-to-end test suite */
+           doc /*End-to-end test suite */
 
            verification userJourney : TestCase {
                :>> testFile = "tests/e2e/user-journey.spec.ts";
                :>> testName = "user can register and make purchase";
                :>> category = E2E;
-               doc /**Full user journey from registration to purchase */
+               doc /*Full user journey from registration to purchase */
            }
        }
    }
@@ -150,7 +153,7 @@ Before finishing, verify your counts are close to these targets.
        import SysMLPrimitives::*;
        import Verification::*;
 
-       doc /**Test coverage analysis */
+       doc /*Test coverage analysis */
 
        analysis def TestCoverageReport {
            subject testSuite : TestMappings;
@@ -175,7 +178,7 @@ Before finishing, verify your counts are close to these targets.
 
        // Coverage gaps
        package CoverageGaps {
-           doc /**Identified gaps in test coverage */
+           doc /*Identified gaps in test coverage */
 
            // List operations without tests
            // List requirements without verification

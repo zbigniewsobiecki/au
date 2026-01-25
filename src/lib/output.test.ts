@@ -122,10 +122,10 @@ describe("Output", () => {
     });
 
     it("gadgetError always logs", () => {
-      output.gadgetError("AUUpdate", "File not found");
+      output.gadgetError("SysMLWrite", "File not found");
       expect(consoleSpy).toHaveBeenCalled();
       const calls = consoleSpy.mock.calls.flat().join(" ");
-      expect(calls).toContain("AUUpdate");
+      expect(calls).toContain("SysMLWrite");
       expect(calls).toContain("File not found");
     });
 

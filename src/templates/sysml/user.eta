@@ -145,7 +145,7 @@ You may finish when you've extracted all relevant SysML elements.
 - Track what you've already analyzed to avoid redundant work
 - Only signal completion by calling `FileViewerNextFileSet(paths="")` when you have thoroughly explored this cycle's scope
 <% if (it.manifestHints?.sourceFiles && it.manifestHints.sourceFiles.length > 0) { %>
-- Verify you've included `// Source: <filepath>` comments for all covered files
+- Verify you've included `@SourceFile { path = "<filepath>"; }` metadata for all covered files
 - Ensure all source file patterns have been processed
 <% } %>
 

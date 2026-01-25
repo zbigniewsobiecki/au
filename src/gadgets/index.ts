@@ -1,6 +1,3 @@
-export { auUpdate } from "./au-update.js";
-export { auRead } from "./au-read.js";
-export { auList } from "./au-list.js";
 export { readFiles } from "./read-files.js";
 export { readDirs } from "./read-dirs.js";
 export { ripGrep } from "./rip-grep.js";
@@ -16,7 +13,11 @@ export { fileViewerNextFileSet, setCoverageContext, getCoverageContext } from ".
 export { sysmlWrite, sysmlRead, sysmlList } from "./sysml-write.js";
 export type { SysMLWriteResult } from "./sysml-write.js";
 export { sysmlQuery } from "./sysml-query.js";
+export { sysmlDelete } from "./sysml-delete.js";
 export { finishSysmlFix } from "./sysml-fix-gadget.js";
+export { verifyFinding, resetCollectedFindings, getCollectedFindings } from "./verify-finding.js";
+export type { VerificationFinding, FindingCategory, FindingDomain } from "./verify-finding.js";
+export { finishVerify } from "./finish-verify.js";
 export { projectMetaRead, projectMetaDiscover, projectMetaUpdate } from "./project-meta.js";
 export { fileDiscover, fileDiscoverCustom, cycleInfo } from "./file-discover.js";
 export { manifestWrite, manifestRead, loadManifest, getManifestCycleFiles, getManifestCycleSourceFiles, getManifestDirectoryPatterns } from "./manifest-write.js";

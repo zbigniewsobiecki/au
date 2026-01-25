@@ -21,17 +21,16 @@ describe("createFileFilter", () => {
       expect(filter.accepts("README.md")).toBe(true);
     });
 
-    it("rejects .au files", async () => {
+    it("rejects .sysml directory", async () => {
       vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
       const filter = await createFileFilter(".");
 
-      expect(filter.accepts("src/index.ts.au")).toBe(false);
-      expect(filter.accepts("src/.au")).toBe(false);
-      expect(filter.accepts(".au")).toBe(false);
+      expect(filter.accepts(".sysml")).toBe(false);
+      expect(filter.accepts(".sysml/context/overview.sysml")).toBe(false);
     });
 
     it("accepts directories when no gitignore exists", async () => {
-      // Without gitignore, no directories are rejected (except .au and .git)
+      // Without gitignore, no directories are rejected (except .sysml and .git)
       vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
       const filter = await createFileFilter(".");
 
@@ -128,7 +127,7 @@ describe("createFileFilter", () => {
       expect(filter.accepts("src/index.ts")).toBe(true);
     });
 
-    it("combines gitignore with default .au ignores", async () => {
+    it("combines gitignore with default .sysml ignores", async () => {
       vi.mocked(fs.readFile).mockResolvedValue("custom-ignore/\nnode_modules");
       const filter = await createFileFilter(".");
 
@@ -136,8 +135,8 @@ describe("createFileFilter", () => {
       expect(filter.accepts("custom-ignore/file.txt")).toBe(false);
       // node_modules from gitignore
       expect(filter.accepts("node_modules/pkg")).toBe(false);
-      // .au files are always ignored (hardcoded)
-      expect(filter.accepts(".au")).toBe(false);
+      // .sysml directory is always ignored (hardcoded)
+      expect(filter.accepts(".sysml")).toBe(false);
     });
   });
 });

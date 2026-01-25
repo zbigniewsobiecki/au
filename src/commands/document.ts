@@ -2,7 +2,7 @@ import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
 import { rm, mkdir, access, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { writeDoc, setTargetDir, auList } from "../gadgets/index.js";
+import { writeDoc, setTargetDir, sysmlList } from "../gadgets/index.js";
 import { docPlan, finishPlanning, finishDocs } from "../gadgets/doc-gadgets.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
@@ -44,7 +44,7 @@ interface ProjectMetadata {
 }
 
 /**
- * Structure analysis results from AU content.
+ * Structure analysis results from SysML content.
  * Used to guide documentation coverage decisions.
  */
 interface StructureAnalysis {
@@ -57,10 +57,10 @@ interface StructureAnalysis {
 }
 
 /**
- * Analyzes AU summary content to extract structure information.
- * This is language-agnostic and works from AU summaries and paths.
+ * Analyzes SysML summary content to extract structure information.
+ * This is language-agnostic and works from SysML summaries and paths.
  */
-function analyzeAUStructure(auSummary: string): StructureAnalysis {
+function analyzeSysMLStructure(sysmlSummary: string): StructureAnalysis {
   const result: StructureAnalysis = {
     componentCount: 0,
     componentPaths: [],
@@ -70,9 +70,9 @@ function analyzeAUStructure(auSummary: string): StructureAnalysis {
     projectType: "unknown",
   };
 
-  // Parse AU entries from the summary
-  // Format: === path/to/file.au ===
-  const auEntries = auSummary.match(/^=== (.+?) ===/gm) || [];
+  // Parse SysML entries from the summary
+  // Format: === path/to/file.sysml ===
+  const auEntries = sysmlSummary.match(/^=== (.+?) ===/gm) || [];
   const paths = auEntries.map((e) => e.replace(/^=== | ===$/g, ""));
 
   // Detect project type from directory structure
@@ -133,7 +133,7 @@ function analyzeAUStructure(auSummary: string): StructureAnalysis {
     "openai", "anthropic", "webhook",
   ];
 
-  const summaryLower = auSummary.toLowerCase();
+  const summaryLower = sysmlSummary.toLowerCase();
   for (const keyword of integrationKeywords) {
     if (summaryLower.includes(keyword)) {
       result.integrationMentions.push(keyword);
@@ -266,13 +266,13 @@ function getSectionDescription(directory: string, planDescription?: string): str
 }
 
 export default class Document extends Command {
-  static description = "Generate markdown documentation from AU understanding";
+  static description = "Generate markdown documentation from SysML model";
 
   static examples = [
     "<%= config.bin %> document --target ./docs",
     "<%= config.bin %> document --target ./docs --model opus",
     "<%= config.bin %> document --target ./docs --dry-run",
-    "<%= config.bin %> document --target ./docs --au-only",
+    "<%= config.bin %> document --target ./docs --model-only",
     "<%= config.bin %> document --target ./docs --code-only",
     "<%= config.bin %> document --target ./docs --format starlight",
   ];
@@ -310,15 +310,15 @@ export default class Document extends Command {
       description: "Max iterations for generation phase",
       default: 30,
     }),
-    "au-only": Flags.boolean({
-      description: "Use only AU files, no source code reading",
+    "model-only": Flags.boolean({
+      description: "Use only SysML model, no source code reading",
       default: false,
       exclusive: ["code-only"],
     }),
     "code-only": Flags.boolean({
-      description: "Use only source code, no AU files",
+      description: "Use only source code, no SysML model",
       default: false,
-      exclusive: ["au-only"],
+      exclusive: ["model-only"],
     }),
   };
 
@@ -328,41 +328,41 @@ export default class Document extends Command {
 
     const { restore } = withWorkingDirectory(flags.path, out);
 
-    const auOnly = flags["au-only"];
+    const modelOnly = flags["model-only"];
     const codeOnly = flags["code-only"];
 
-    // Load AU understanding summary (unless code-only mode)
-    let auSummary: string | null = null;
+    // Load SysML model summary (unless code-only mode)
+    let sysmlSummary: string | null = null;
     if (!codeOnly) {
-      out.info("Loading AU understanding...");
+      out.info("Loading SysML model...");
       try {
-        auSummary = (await auList.execute({ path: "." })) as string;
+        sysmlSummary = (await sysmlList.execute({ path: "." })) as string;
       } catch (error) {
-        out.error(`Failed to load AU understanding: ${error instanceof Error ? error.message : error}`);
+        out.error(`Failed to load SysML model: ${error instanceof Error ? error.message : error}`);
         restore();
         process.exit(1);
       }
 
-      if (!auSummary || auSummary.trim() === "" || auSummary === "No AU entries found.") {
-        if (auOnly) {
-          out.error("No AU understanding found. Run 'au ingest' first to create understanding files.");
+      if (!sysmlSummary || sysmlSummary.trim() === "" || sysmlSummary === "No SysML files found.") {
+        if (modelOnly) {
+          out.error("No SysML model found. Run 'au ingest' first to create the model.");
           restore();
           process.exit(1);
         } else {
-          out.warn("No AU understanding found. Will use source code only.");
-          auSummary = null;
+          out.warn("No SysML model found. Will use source code only.");
+          sysmlSummary = null;
         }
       } else {
-        const auEntries = (auSummary.match(/^=== /gm) || []).length;
-        out.success(`Found ${auEntries} understanding entries`);
+        const sysmlEntries = (sysmlSummary.match(/^=== /gm) || []).length;
+        out.success(`Found ${sysmlEntries} model entries`);
       }
     } else {
-      out.info("Code-only mode: skipping AU files");
+      out.info("Code-only mode: skipping SysML model");
     }
 
     // Phase 1: Planning (or load cached plan)
     const targetDir = flags.target;
-    const planFile = `${targetDir}/.au/doc-plan.json`;
+    const planFile = `${targetDir}/.sysml/doc-plan.json`;
     const client = new LLMist();
     let documentPlan: DocPlanStructure | null = null;
 
@@ -382,22 +382,22 @@ export default class Document extends Command {
     if (!documentPlan) {
       out.info("Planning documentation structure...");
 
-      // Analyze AU structure for coverage guidance
+      // Analyze SysML structure for coverage guidance
       let structureAnalysis: string | undefined;
-      if (auSummary) {
-        const analysis = analyzeAUStructure(auSummary);
+      if (sysmlSummary) {
+        const analysis = analyzeSysMLStructure(sysmlSummary);
         structureAnalysis = formatStructureAnalysis(analysis);
         out.info(`Detected ${analysis.componentCount} components, ${analysis.integrationMentions.length} integrations`);
       }
 
       const planSystemPrompt = render("document/plan-system", {});
       const planInitialPrompt = render("document/plan-initial", {
-        auSummary: auSummary || "",
+        sysmlSummary: sysmlSummary || "",
         structureAnalysis,
       });
 
       // Build gadgets based on mode
-      const planGadgets = [docPlan, finishPlanning, ...selectReadGadgets({ auOnly, codeOnly })];
+      const planGadgets = [docPlan, finishPlanning, ...selectReadGadgets({ modelOnly, codeOnly })];
 
       let planBuilder = new AgentBuilder(client)
         .withModel(flags.model)
@@ -408,12 +408,12 @@ export default class Document extends Command {
 
       planBuilder = configureBuilder(planBuilder, out, flags.rpm, flags.tpm);
 
-      // Inject AU summary as synthetic call (only if available)
-      if (auSummary) {
+      // Inject SysML summary as synthetic call (only if available)
+      if (sysmlSummary) {
         planBuilder.withSyntheticGadgetCall(
-          "AUListSummary",
+          "SysMLListSummary",
           { path: "." },
-          auSummary,
+          sysmlSummary,
           "gc_init_1"
         );
       }
@@ -468,7 +468,7 @@ export default class Document extends Command {
 
       // Save plan to cache
       try {
-        await mkdir(`${targetDir}/.au`, { recursive: true });
+        await mkdir(`${targetDir}/.sysml`, { recursive: true });
         await writeFile(planFile, JSON.stringify(newPlan, null, 2));
         out.info(`Saved plan to ${planFile}`);
       } catch (error) {
@@ -563,12 +563,12 @@ export default class Document extends Command {
 
     // Build research instruction based on mode
     let researchInstruction: string;
-    if (auOnly) {
-      researchInstruction = "ONE AURead call with 2-4 relevant paths";
+    if (modelOnly) {
+      researchInstruction = "ONE SysMLRead call with 2-4 relevant paths";
     } else if (codeOnly) {
       researchInstruction = "ReadFiles/ReadDirs/RipGrep calls to gather source code";
     } else {
-      researchInstruction = "ONE AURead call (with multiple paths) or ReadFiles as needed";
+      researchInstruction = "ONE SysMLRead call (with multiple paths) or ReadFiles as needed";
     }
 
     // Format document info with optional metadata (numbered for clarity)
@@ -576,7 +576,7 @@ export default class Document extends Command {
       const docType = d.type || "reference";
       let info = `${index + 1}. **${d.path}** (type: ${docType}): ${d.title}
    Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`;
-      // Show AU paths to cover if specified
+      // Show SysML paths to cover if specified
       if (d.mustCoverPaths?.length) {
         info += `\n   📂 Must cover: ${d.mustCoverPaths.join(", ")}`;
       }
@@ -604,7 +604,7 @@ export default class Document extends Command {
 ${pendingDocs.map((d, i) => formatDocInfo(d, i)).join("\n\n")}
 
 ## Workflow Per Document
-1. **Read**: ${researchInstruction} (use paths from AUListSummary above)
+1. **Read**: ${researchInstruction} (use paths from SysMLListSummary above)
 2. **Validate**: If marked "REQUIRES VALIDATION", also read those source files
 3. **Write**: Call WriteFile with complete, thorough markdown (80-150+ lines)
 4. **Stop**: Wait for confirmation, then proceed to next document
@@ -617,12 +617,12 @@ ${pendingDocs.map((d, i) => formatDocInfo(d, i)).join("\n\n")}
 
 ## Start Now
 Begin with document #1: **${pendingDocs[0]?.path}**
-Read the relevant AU content, then write a comprehensive document.
+Read the relevant SysML content, then write a comprehensive document.
 
 Call FinishDocs only after ALL ${pendingDocs.length} documents are written.`;
 
     // Build gadgets based on mode
-    const genGadgets = [writeDoc, ...selectReadGadgets({ auOnly, codeOnly }), finishDocs];
+    const genGadgets = [writeDoc, ...selectReadGadgets({ modelOnly, codeOnly }), finishDocs];
 
     let genBuilder = new AgentBuilder(client)
       .withModel(flags.model)
@@ -633,12 +633,12 @@ Call FinishDocs only after ALL ${pendingDocs.length} documents are written.`;
 
     genBuilder = configureBuilder(genBuilder, out, flags.rpm, flags.tpm);
 
-    // Inject AU summary so model knows what paths exist
-    if (auSummary) {
+    // Inject SysML summary so model knows what paths exist
+    if (sysmlSummary) {
       genBuilder.withSyntheticGadgetCall(
-        "AUListSummary",
+        "SysMLListSummary",
         { path: "." },
-        auSummary,
+        sysmlSummary,
         "gc_init_summary"
       );
     }

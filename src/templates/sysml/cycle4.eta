@@ -19,7 +19,7 @@
 - `<%= pattern %>`
 <% } %>
 
-Include `// Source: <filepath>` comments to track which files have been covered.
+Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track coverage.
 <% } %>
 
 ### Files to Analyze
@@ -58,67 +58,135 @@ Include `// Source: <filepath>` comments to track which files have been covered.
 
 5. **Generate SysML**:
 
-   **behavior/_index.sysml** - Update overview:
+   **behavior/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
    package SystemBehavior {
        import SysMLPrimitives::*;
        import DataModel::*;
        import SystemArchitecture::*;
+       // CRITICAL: Import all sibling packages to avoid orphaned files
+       import SystemOperations::*;
+       import EntityStateMachines::*;
+       import EventHandlers::*;
 
-       doc /**System behavioral model */
+       doc /*System behavioral model */
    }
    ```
 
-   **behavior/operations.sysml** - Add operations (use `SystemBehavior` namespace):
+   **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
+   If modifying an existing index:
+   1. First use `SysMLRead("behavior/_index.sysml")` to see current content
+   2. Then use search/replace mode to ADD new imports after existing ones
+   3. Do NOT assume the file matches these examples - it may already have other imports
+
+   **behavior/operations.sysml** - Add operations with data flows:
    ```sysml
-   package SystemBehavior {
+   package SystemOperations {
        import SysMLPrimitives::*;
        import DataModel::*;
 
-       doc /**System operations/actions */
+       doc /*System operations/actions with explicit data flows */
 
-       // User registration operation
+       // User registration operation with full flow specification
+       // Action bodies use 'first' for control flow (NOT 'transition'!)
+       // Use 'flow from X to Y' for data flow between steps
        action def RegisterUser {
-           doc /**Register a new user account.
-           Steps: validateInput -> checkExistingEmail -> hashPassword -> createUser -> generateTokens */
+           doc /*Register a new user account */
 
            in request : CreateUserRequest;
            out response : UserResponse;
            out error : ErrorResponse [0..1];
 
+           // Define action steps with typed inputs/outputs
            action validateInput {
-               doc /**Validate email format and password strength */
+               doc /*Validate email format and password strength */
+               in data : CreateUserRequest;
+               out validated : CreateUserRequest;
+               out validationError : ValidationError [0..1];
            }
 
            action checkExistingEmail {
-               doc /**Verify email is not already registered */
+               doc /*Verify email is not already registered */
+               in userData : CreateUserRequest;
+               out checkedData : CreateUserRequest;
+               out duplicateError : DuplicateError [0..1];
            }
 
            action hashPassword {
-               doc /**Securely hash the password */
+               doc /*Securely hash the password */
+               in userData : CreateUserRequest;
+               out securedData : SecuredUserData;
            }
 
            action createUser {
-               doc /**Persist user to database */
+               doc /*Persist user to database */
+               in data : SecuredUserData;
+               out user : User;
            }
 
            action generateTokens {
-               doc /**Generate JWT access and refresh tokens */
+               doc /*Generate JWT access and refresh tokens */
+               in user : User;
+               out tokens : TokenResponse;
            }
+
+           // Explicit data flows between action steps
+           flow from request to validateInput.data;
+           flow from validateInput.validated to checkExistingEmail.userData;
+           flow from checkExistingEmail.checkedData to hashPassword.userData;
+           flow from hashPassword.securedData to createUser.data;
+           flow from createUser.user to generateTokens.user;
+           flow from generateTokens.tokens to response;
+
+           // Error flows
+           flow from validateInput.validationError to error;
+           flow from checkExistingEmail.duplicateError to error;
+
+           // Control flow sequencing
+           first validateInput then checkExistingEmail;
+           first checkExistingEmail then hashPassword;
+           first hashPassword then createUser;
+           first createUser then generateTokens;
        }
 
-       // Authentication operation
+       // Authentication operation with flows
        action def Login {
-           doc /**Authenticate user and issue tokens.
-           Steps: verifyCredentials -> checkAccountStatus -> issueTokens */
+           doc /*Authenticate user and issue tokens */
 
            in credentials : LoginRequest;
            out tokens : TokenResponse;
-           out error : ErrorResponse [0..1];
+           out error : AuthError [0..1];
 
-           action verifyCredentials;
-           action checkAccountStatus;
-           action issueTokens;
+           action verifyCredentials {
+               in creds : LoginRequest;
+               out user : User;
+               out authError : AuthError [0..1];
+           }
+
+           action checkAccountStatus {
+               in user : User;
+               out activeUser : User;
+               out statusError : AccountStatusError [0..1];
+           }
+
+           action issueTokens {
+               in user : User;
+               out tokens : TokenResponse;
+           }
+
+           // Data flows
+           flow from credentials to verifyCredentials.creds;
+           flow from verifyCredentials.user to checkAccountStatus.user;
+           flow from checkAccountStatus.activeUser to issueTokens.user;
+           flow from issueTokens.tokens to tokens;
+
+           // Error flows
+           flow from verifyCredentials.authError to error;
+           flow from checkAccountStatus.statusError to error;
+
+           // Control flow
+           first verifyCredentials then checkAccountStatus;
+           first checkAccountStatus then issueTokens;
        }
    }
    ```
@@ -129,33 +197,35 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import SysMLPrimitives::*;
        import DataModel::*;
 
-       doc /**Entity state machines */
+       doc /*Entity state machines */
 
        // Order lifecycle
+       // State machines use 'transition first X then Y' keyword
+       // In action bodies, use just 'first X then Y' instead
        state def OrderLifecycle {
-           doc /**Order processing state machine */
+           doc /*Order processing state machine */
 
            state Pending {
-               doc /**Order created, awaiting processing */
+               doc /*Order created, awaiting processing */
            }
 
            state Processing {
-               doc /**Order is being prepared */
+               doc /*Order is being prepared */
            }
 
            state Shipped {
-               doc /**Order has been shipped */
+               doc /*Order has been shipped */
            }
 
            state Delivered {
-               doc /**Order delivered to customer */
+               doc /*Order delivered to customer */
            }
 
            state Cancelled {
-               doc /**Order was cancelled */
+               doc /*Order was cancelled */
            }
 
-           // Transitions
+           // Transitions: 'transition name? first Source then Target;'
            transition first Pending then Processing;
            transition first Processing then Shipped;
            transition first Shipped then Delivered;
@@ -183,10 +253,10 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        import SysMLPrimitives::*;
        import DataModel::*;
 
-       doc /**Event handlers */
+       doc /*Event handlers */
 
        action def OnUserCreated {
-           doc /**Handle user creation event */
+           doc /*Handle user creation event */
 
            in event : UserCreatedEvent;
 
@@ -198,7 +268,7 @@ Include `// Source: <filepath>` comments to track which files have been covered.
        }
 
        action def OnOrderShipped {
-           doc /**Handle order shipped event */
+           doc /*Handle order shipped event */
 
            in event : OrderShippedEvent;
 
@@ -233,13 +303,85 @@ Include `// Source: <filepath>` comments to track which files have been covered.
 | Spring | Controllers, services |
 | Gin/Echo | Handlers, middleware |
 
+### Flow Patterns
+
+**Data Flow Pattern** - Explicit data passing between action steps:
+```sysml
+action def {Operation} {
+    in input : {InputType};
+    out output : {OutputType};
+    out error : {ErrorType} [0..1];
+
+    action step1 {
+        in data : {InputType};
+        out result : {IntermediateType};
+    }
+
+    action step2 {
+        in data : {IntermediateType};
+        out result : {OutputType};
+    }
+
+    // Data flows
+    flow from input to step1.data;
+    flow from step1.result to step2.data;
+    flow from step2.result to output;
+
+    // Control flow
+    first step1 then step2;
+}
+```
+
+**Event Handler Pattern** - Port-based message handling:
+```sysml
+action def On{Event} {
+    in event : {EventType};
+
+    action process {
+        in eventData : {EventType};
+        out result : {ResultType};
+    }
+
+    action notify {
+        in data : {ResultType};
+    }
+
+    flow from event to process.eventData;
+    flow from process.result to notify.data;
+
+    first process then notify;
+}
+```
+
+**Parallel Flow Pattern** - Independent data paths:
+```sysml
+action def {Operation} {
+    in input : {InputType};
+    out output : {OutputType};
+
+    // These actions can run in parallel
+    action validateA { in data; out result; }
+    action validateB { in data; out result; }
+
+    action merge { in a; in b; out combined; }
+
+    // Parallel flows
+    flow from input to validateA.data;
+    flow from input to validateB.data;
+    flow from validateA.result to merge.a;
+    flow from validateB.result to merge.b;
+    flow from merge.combined to output;
+}
+```
+
 ### What to Look For
 
-- **Happy path**: Normal operation flow
-- **Error handling**: How errors are caught and handled
+- **Happy path**: Normal operation flow with data transformations
+- **Error handling**: Error outputs and flows from each step
 - **Side effects**: External calls (email, payment, etc.)
 - **Transactions**: Database transaction boundaries
 - **Middleware**: Pre/post processing
+- **Data transformations**: How data changes between steps
 
 ### Deliverables
 
@@ -254,10 +396,12 @@ This cycle focuses ONLY on behavioral modeling. Verification and analysis will b
 
 ### Success Criteria
 
-- [ ] All major operations captured
-- [ ] Operation flows documented with steps
-- [ ] Entity state machines identified
-- [ ] Event handlers documented (if applicable)
+- [ ] All major operations captured with typed inputs/outputs
+- [ ] **Data flows** (`flow from X to Y`) between action steps
+- [ ] **Control flows** (`first X then Y`) for sequencing
+- [ ] **Error flows** for error handling paths
+- [ ] Entity state machines with proper transitions
+- [ ] Event handlers with port-based flows (if applicable)
 - [ ] Side effects marked clearly
 - [ ] Output is limited to `behavior/` directory only
 

@@ -90,7 +90,7 @@ export default class Ask extends Command {
     }
 
     // Build the agent with appropriate gadgets
-    const gadgets = selectReadGadgets({ sysmlOnly, codeOnly });
+    const gadgets = selectReadGadgets({ modelOnly: sysmlOnly, codeOnly });
 
     // Helper to run an agent and collect its output
     const runAgent = async (

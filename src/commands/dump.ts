@@ -1,17 +1,16 @@
 import { Command, Flags } from "@oclif/core";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { findAuFiles, getSourceFromAuPath } from "../lib/au-paths.js";
-import { parseAuFile, stringifyForInference } from "../lib/au-yaml.js";
+import fg from "fast-glob";
 
 export default class Dump extends Command {
   static description =
-    "Dump all agent understanding to stdout (deterministic, non-agentic)";
+    "Dump all SysML model content to stdout (deterministic, non-agentic)";
 
   static examples = [
     "<%= config.bin %> dump",
     "<%= config.bin %> dump --path ./src",
-    "<%= config.bin %> dump > understanding.txt",
+    "<%= config.bin %> dump > model.txt",
   ];
 
   static flags = {
@@ -20,37 +19,38 @@ export default class Dump extends Command {
       description: "Root path to dump",
       default: ".",
     }),
-    "with-meta": Flags.boolean({
-      description: "Include meta block (timestamps, hashes) in output",
-      default: false,
-    }),
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Dump);
 
-    const { files: auFiles } = await findAuFiles(flags.path, true);
+    const sysmlDir = join(flags.path, ".sysml");
+    const pattern = "**/*.sysml";
 
-    if (auFiles.length === 0) {
-      console.error("No .au files found.");
+    // Find all .sysml files
+    const sysmlFiles = await fg(pattern, {
+      cwd: sysmlDir,
+      onlyFiles: true,
+      dot: false,
+    });
+
+    if (sysmlFiles.length === 0) {
+      console.error("No .sysml files found.");
       return;
     }
 
-    for (const auFile of auFiles) {
-      const sourcePath = getSourceFromAuPath(auFile);
-      const fullAuPath = join(flags.path, auFile);
+    // Sort files for consistent output
+    sysmlFiles.sort();
+
+    for (const sysmlFile of sysmlFiles) {
+      const fullPath = join(sysmlDir, sysmlFile);
 
       try {
-        const content = await readFile(fullAuPath, "utf-8");
-        console.log(`=== ${sourcePath} ===`);
-        if (flags["with-meta"]) {
-          console.log(content);
-        } else {
-          const doc = parseAuFile(content);
-          console.log(stringifyForInference(doc));
-        }
+        const content = await readFile(fullPath, "utf-8");
+        console.log(`=== ${sysmlFile} ===`);
+        console.log(content);
       } catch {
-        console.error(`Error reading ${auFile}`);
+        console.error(`Error reading ${sysmlFile}`);
       }
     }
   }

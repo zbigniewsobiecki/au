@@ -90,7 +90,6 @@ FileDiscover(maxFiles=50)`,
         "**/build/**",
         "**/.git/**",
         "**/.sysml/**",
-        "**/*.au",
       ],
       onlyFiles: true,
     });

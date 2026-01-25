@@ -5,6 +5,7 @@
 
 import { validateDocument } from "./sysml-parser-loader.js";
 import type { SysmlParserResult } from "./sysml-parser-loader.js";
+import { runSysml2, SYSML2_ERROR_CODES, type Sysml2Diagnostic } from "./sysml2-cli.js";
 
 export interface ValidationIssue {
   line: number;
@@ -338,8 +339,12 @@ export interface SemanticIssue {
 }
 
 /**
- * Check for duplicate definitions within a SysML file.
+ * Check for duplicate definitions within a SysML file using regex.
  * Returns warnings for any duplicates found.
+ *
+ * @deprecated Use checkSemanticIssuesWithSysml2() instead for better accuracy.
+ * This function uses regex-based detection which misses edge cases and doesn't
+ * catch cross-file duplicates. Keep as fallback when sysml2 CLI is unavailable.
  */
 export function checkDuplicatesInFile(content: string): SemanticIssue[] {
   const issues: SemanticIssue[] = [];
@@ -508,6 +513,85 @@ export function formatValidationIssues(result: ValidationResult, filePath?: stri
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Format a semantic error from sysml2 with enhanced messages.
+ *
+ * @param diag - The diagnostic from sysml2
+ * @returns Formatted error message
+ */
+export function formatSemanticError(diag: Sysml2Diagnostic): string {
+  switch (diag.code) {
+    case SYSML2_ERROR_CODES.UNDEFINED_REFERENCE:
+      // Parser already includes "did you mean?" in message
+      return `Undefined reference: ${diag.message}`;
+    case SYSML2_ERROR_CODES.DUPLICATE_DEFINITION:
+      return `Duplicate definition: ${diag.message}`;
+    case SYSML2_ERROR_CODES.CIRCULAR_SPECIALIZATION:
+      return `Circular specialization detected: ${diag.message}`;
+    case SYSML2_ERROR_CODES.TYPE_MISMATCH:
+      return `Type mismatch: ${diag.message}`;
+    default:
+      return diag.message;
+  }
+}
+
+/**
+ * Check for semantic issues using the sysml2 CLI.
+ * Returns errors and warnings from sysml2 semantic validation.
+ *
+ * @param content - SysML source text to validate
+ * @returns Promise resolving to semantic issues found
+ */
+export async function checkSemanticIssuesWithSysml2(content: string): Promise<SemanticIssue[]> {
+  try {
+    const result = await runSysml2(content);
+    const issues: SemanticIssue[] = [];
+
+    for (const diag of result.diagnostics) {
+      // Map sysml2 error codes to semantic issue types
+      let type: SemanticIssue["type"];
+      switch (diag.code) {
+        case SYSML2_ERROR_CODES.DUPLICATE_DEFINITION:
+          type = "duplicate-item";
+          break;
+        default:
+          // Skip non-duplicate semantic errors for now (they're still reported in diagnostics)
+          continue;
+      }
+
+      issues.push({
+        line: diag.line,
+        column: diag.column,
+        message: formatSemanticError(diag),
+        severity: diag.severity === "error" ? "warning" : "info",
+        type,
+        name: extractNameFromMessage(diag.message),
+      });
+    }
+
+    return issues;
+  } catch {
+    // If sysml2 is not available, return empty array
+    // Caller can fall back to regex-based checkDuplicatesInFile
+    return [];
+  }
+}
+
+/**
+ * Extract the definition name from a diagnostic message.
+ */
+function extractNameFromMessage(message: string): string {
+  // Try to extract quoted name: "duplicate definition 'FooBar'"
+  const quotedMatch = message.match(/'([^']+)'/);
+  if (quotedMatch) return quotedMatch[1];
+
+  // Try to extract from "FooBar is already defined"
+  const alreadyMatch = message.match(/^(\w+)\s+is\s+already/);
+  if (alreadyMatch) return alreadyMatch[1];
+
+  return "unknown";
 }
 
 /**

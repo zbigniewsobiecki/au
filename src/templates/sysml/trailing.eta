@@ -27,15 +27,15 @@
 <% if (coveragePercent < 80) { %>
 1. Use `FileDiscover` or `ReadFiles` to find more files
 2. Analyze and write SysML for discovered elements
-3. Include `// Source: <filepath>` comments in SysML to track coverage
+3. Include `@SourceFile { path = "<filepath>"; }` metadata before definitions to track coverage
 4. Request next batch with `FileViewerNextFileSet(paths="...")`
 
 **DO NOT call `FileViewerNextFileSet(paths="")` until coverage >= 80%**
 <% } else { %>
 Coverage is good. You may finish if you've:
 - Extracted all relevant SysML elements
-- Included `// Source: <filepath>` comments for each covered file
+- Included `@SourceFile { path = "<filepath>"; }` metadata for each covered file
 <% } %>
 
 **REQUIRED**: At least 2 SysMLWrite calls per response when there are files to analyze.
-**IMPORTANT**: Include `// Source: <filepath>` comments to track which source files are covered.
+**IMPORTANT**: Include `@SourceFile { path = "<filepath>"; }` metadata to track which source files are covered.

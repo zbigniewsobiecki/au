@@ -59,18 +59,19 @@
    package SystemContext {
        import SysMLPrimitives::*;
 
-       doc /**System: {name} - {description} */
+       doc /*System: {name} - {description} */
 
        // External dependencies
+       @external
        part def ExternalDependency {
-           @external;
            attribute name : String;
            attribute purpose : String;
        }
 
        // Discovered external systems
+       // NOTE: Use ':>>' alone to redefine attributes - NOT 'attribute :>>'!
        part database : ExternalDependency {
-           :>> name = "{discovered}";
+           :>> name = "{discovered}";    // CORRECT - no 'attribute' keyword
            :>> purpose = "Data persistence";
        }
 
@@ -91,15 +92,40 @@
    package SystemRequirements {
        import SysMLPrimitives::*;
 
-       doc /**Requirements extracted from {sources} */
+       doc /*Requirements extracted from {sources} */
 
-       requirement def FR001 : DiscoveredRequirement {
+       requirement def FR001 :> DiscoveredRequirement {
            :>> id = "FR-001";
            :>> source = "README.md";
-           doc /**{requirement text} */
+           doc /*{requirement text} */
        }
    }
    ```
+
+### Requirements: Standalone vs Inherited
+
+**Standalone requirement (no base type):**
+```sysml
+requirement def FR001 {
+    attribute id : Identifier = "FR-001";  // Define with value
+    doc /* description */
+}
+```
+
+**Inherited requirement (has base type):**
+```sysml
+requirement def FR001 :> DiscoveredRequirement {
+    :>> id = "FR-001";                     // Redefine inherited attr
+    doc /* description */
+}
+```
+
+**ERROR - :>> without inheritance:**
+```sysml
+requirement def FR001 {          // No ":>"
+    :>> id = "FR-001";           // WRONG! Use 'attribute id : T = v;'
+}
+```
 
 ### ID Sequencing Convention
 

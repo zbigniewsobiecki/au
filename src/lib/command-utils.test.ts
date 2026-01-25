@@ -1,34 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  countAuLines,
   formatResultSize,
   createTextBlockState,
   parsePathList,
 } from "./command-utils.js";
-
-describe("countAuLines", () => {
-  it("counts lines excluding separators", () => {
-    const content = `=== src/index.ts.au ===
-layer: core
-understanding:
-  summary: A test file
-=== src/lib/utils.ts.au ===
-layer: util`;
-    // 4 non-separator lines
-    expect(countAuLines(content)).toBe(4);
-  });
-
-  it("returns 0 for empty content", () => {
-    expect(countAuLines("")).toBe(1); // Empty string splits to [""]
-  });
-
-  it("counts all lines when no separators", () => {
-    const content = `line1
-line2
-line3`;
-    expect(countAuLines(content)).toBe(3);
-  });
-});
 
 describe("formatResultSize", () => {
   it("formats bytes to kb", () => {

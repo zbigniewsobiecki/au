@@ -17,7 +17,7 @@ const SYSTEM_FILES = new Set([
   "_manifest.json",
   "_model.sysml",
   "_project.sysml",
-  "_stdlib.sysml",
+  "SysMLPrimitives.sysml",
 ]);
 
 /**
@@ -507,14 +507,14 @@ export class SysMLModelValidator {
 
   /**
    * Extract source file references from SysML content.
-   * Looks for // Source: <path> comments.
+   * Looks for @SourceFile { path = "<path>"; } metadata.
    */
   private findCoveredFiles(fileContents: Map<string, string>): Set<string> {
     const covered = new Set<string>();
 
     for (const [, content] of fileContents) {
-      // Match // Source: <path> comments
-      const sourceMatches = content.matchAll(/\/\/\s*Source:\s*(.+?)(?:\s*$|\s*\/\/)/gm);
+      // Match @SourceFile { path = "<path>"; } metadata
+      const sourceMatches = content.matchAll(/@SourceFile\s*\{\s*path\s*=\s*"([^"]+)"/g);
       for (const match of sourceMatches) {
         const sourcePath = match[1].trim();
         if (sourcePath) {

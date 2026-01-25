@@ -5,15 +5,15 @@ export interface FileFilter {
 }
 
 /**
- * Creates a filter that respects .gitignore and excludes .au files.
+ * Creates a filter that respects .gitignore and excludes .sysml files.
  */
 export async function createFileFilter(rootPath = "."): Promise<FileFilter> {
   // Start with .gitignore patterns
   const ig = await loadGitignore(rootPath);
 
-  // Always ignore .au files (these are documentation, not source)
+  // Always ignore .sysml directory (model files, not source)
   // Also ignore .git directory (implicitly ignored by git itself)
-  ig.add(["*.au", ".au", "**/*.au", "**/.au", ".git", ".git/**"]);
+  ig.add(["**/.sysml/**", ".sysml", ".git", ".git/**"]);
 
   return {
     accepts(path: string): boolean {

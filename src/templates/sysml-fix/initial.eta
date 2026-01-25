@@ -1,112 +1,96 @@
 Fix the following SysML model validation issues.
 
-## IMPORTANT: One Fix Per Turn
+## IMPORTANT: Verify Against Source Code
 
-Fix ONE issue at a time. After calling SysMLWrite, STOP and wait for the next turn.
+Before fixing any issue, **read the actual source code** to verify what the fix should be.
 
 Workflow for each fix:
-1. SysMLRead - read the current file content
-2. SysMLQuery/ReadFiles - understand context if needed
+1. SysMLRead - read the current SysML file content
+2. ReadFiles/RipGrep - **read source code** to verify what the fix should be
 3. SysMLWrite - apply the fix (search/replace preferred)
-4. STOP - wait for confirmation
 
 ## Base Path
 
 All paths are relative to: **<%= it.basePath %>**
 
-## Validation Issues
+## Issues to Fix (by Priority)
 
-<% const result = it.result; %>
+<% const grouped = it.groupedIssues; %>
+<% const issues = it.prioritizedIssues; %>
 
-<% if (result.manifestErrors && result.manifestErrors.length > 0) { %>
-### Manifest Errors
+<% if (issues.length === 0) { %>
+No issues found. Call FinishSysmlFix with a summary.
+<% } else { %>
+Total: **<%= issues.length %> issue<%= issues.length === 1 ? "" : "s" %>**
 
-<% result.manifestErrors.forEach(function(error) { %>
-- <%= error %>
+<% const p1 = grouped.get(1) || []; %>
+<% const p2 = grouped.get(2) || []; %>
+<% const p3 = grouped.get(3) || []; %>
+<% const p4 = grouped.get(4) || []; %>
+<% const p5 = grouped.get(5) || []; %>
+
+<% if (p1.length > 0) { %>
+### P1 - BLOCKING (<%= p1.length %>)
+**Fix these first** - they prevent the model from being parsed.
+
+<% p1.forEach(function(issue) { %>
+- **[<%= issue.category %>]**<% if (issue.file) { %> `<%= issue.file %>`<% if (issue.line) { %>:<%= issue.line %><% } %><% } %>
+  <%= issue.description %>
+<% if (issue.recommendation) { %>  → <%= issue.recommendation %><% } %>
 <% }); %>
 
 <% } %>
+<% if (p2.length > 0) { %>
+### P2 - CRITICAL (<%= p2.length %>)
+**Fix after P1** - semantic errors that break references.
 
-<% if (result.syntaxErrors && result.syntaxErrors.length > 0) { %>
-### Syntax Errors (<%= result.syntaxErrors.length %> files)
-
-<% result.syntaxErrors.forEach(function(syntaxError) { %>
-#### File: <%= syntaxError.file %>
-<% syntaxError.errors.forEach(function(error) { %>
-- <%= error %>
-<% }); %>
-
-<% }); %>
-<% } %>
-
-<% if (result.missingReferences && result.missingReferences.length > 0) { %>
-### Missing References (<%= result.missingReferences.length %>)
-
-<% result.missingReferences.forEach(function(ref) { %>
-- **<%= ref.file %>**:<%= ref.line %> - <%= ref.type %> '<%= ref.reference %>'
-<% if (ref.context) { %>  Context: `<%= ref.context %>`<% } %>
+<% p2.forEach(function(issue) { %>
+- **[<%= issue.category %>]**<% if (issue.file) { %> `<%= issue.file %>`<% if (issue.line) { %>:<%= issue.line %><% } %><% } %>
+  <%= issue.description %>
+<% if (issue.recommendation) { %>  → <%= issue.recommendation %><% } %>
 <% }); %>
 
 <% } %>
+<% if (p3.length > 0) { %>
+### P3 - HIGH (<%= p3.length %>)
+**Fix after P1/P2** - missing content that should exist.
 
-<% if (result.countMismatches && result.countMismatches.length > 0) { %>
-### Count Mismatches (<%= result.countMismatches.length %>)
-
-**The codebase is the source of truth. SysML is incomplete.**
-
-<% result.countMismatches.forEach(function(mismatch) { %>
-- **<%= mismatch.cycle %>**: expected <%= mismatch.expected %> <%= mismatch.item %>, found <%= mismatch.actual %>
-  → SysML is missing <%= mismatch.expected - mismatch.actual %> <%= mismatch.item %> definitions
-  → Read codebase to find what's missing, then generate SysML
-<% }); %>
-
-**To fix:** Use ReadFiles/RipGrep to find the missing elements in the codebase, then create SysML definitions.
-
-<% } %>
-
-<% if (result.orphanedFiles && result.orphanedFiles.length > 0) { %>
-### Orphaned Files (<%= result.orphanedFiles.length %>)
-
-Files in .sysml/ not listed in manifest expectedOutputs:
-<% result.orphanedFiles.forEach(function(file) { %>
-- <%= file %>
+<% p3.forEach(function(issue) { %>
+- **[<%= issue.category %>]**<% if (issue.file) { %> `<%= issue.file %>`<% if (issue.line) { %>:<%= issue.line %><% } %><% } %>
+  <%= issue.description %>
+<% if (issue.recommendation) { %>  → <%= issue.recommendation %><% } %>
 <% }); %>
 
 <% } %>
+<% if (p4.length > 0) { %>
+### P4 - MEDIUM (<%= p4.length %>)
+**Fix after higher priorities** - incomplete coverage and warnings.
 
-<% if (result.coverageIssues && result.coverageIssues.length > 0) { %>
-### Coverage Issues (<%= result.coverageIssues.length %>)
-
-<% result.coverageIssues.forEach(function(issue) { %>
-- **<%= issue.cycle %>**: <%= issue.type %> - <%= issue.path %><% if (issue.detail) { %> (<%= issue.detail %>)<% } %>
+<% p4.forEach(function(issue) { %>
+- **[<%= issue.category %>]**<% if (issue.file) { %> `<%= issue.file %>`<% if (issue.line) { %>:<%= issue.line %><% } %><% } %>
+  <%= issue.description %>
+<% if (issue.recommendation) { %>  → <%= issue.recommendation %><% } %>
 <% }); %>
 
 <% } %>
+<% if (p5.length > 0) { %>
+### P5 - LOW (<%= p5.length %>)
+**Fix last** - cleanup and suggestions.
 
-<% const missingOutputs = (result.expectedOutputs || []).filter(function(o) { return !o.exists; }); %>
-<% if (missingOutputs.length > 0) { %>
-### Missing Expected Outputs (<%= missingOutputs.length %>)
-
-Files declared in manifest but don't exist:
-<% missingOutputs.forEach(function(output) { %>
-- <%= output.path %>
+<% p5.forEach(function(issue) { %>
+- **[<%= issue.category %>]**<% if (issue.file) { %> `<%= issue.file %>`<% if (issue.line) { %>:<%= issue.line %><% } %><% } %>
+  <%= issue.description %>
+<% if (issue.recommendation) { %>  → <%= issue.recommendation %><% } %>
 <% }); %>
 
 <% } %>
-
-## Fix Priority
-
-1. **Syntax errors first**: These prevent the model from being parsed
-2. **Missing expected outputs**: These are files that should exist
-3. **Missing references**: These indicate broken dependencies
-4. **Count mismatches**: These indicate incomplete coverage
-5. **Orphaned files**: These need to be added to manifest or removed
-6. **Coverage issues**: These indicate configuration problems
+<% } %>
 
 ## Start Fixing
 
-Begin with the highest priority issue. Read the relevant file with SysMLRead, then apply the fix with SysMLWrite.
-
-After each fix, STOP and wait for the next turn.
+Begin with the highest priority issue (P1 first, then P2, etc.):
+1. Read the SysML file with SysMLRead
+2. Read the relevant source code with ReadFiles/RipGrep
+3. Apply the fix with SysMLWrite
 
 When all issues are resolved (or no more can be fixed), call FinishSysmlFix with a summary.
