@@ -22,20 +22,47 @@
 <% } %>
 <% } %>
 
+<% if (it.validationErrors && it.validationErrors.length > 0) { %>
+## ⚠️ Model Validation Errors
+
+Fix these semantic errors in the SysML model:
+
+<%
+// Group errors by code
+const byCode = {};
+for (const err of it.validationErrors) {
+  const code = err.code || 'Unknown';
+  if (!byCode[code]) byCode[code] = [];
+  byCode[code].push(err);
+}
+%>
+<% for (const [code, errors] of Object.entries(byCode)) { %>
+### <%= code %><% if (code === 'E3001') { %> (Undefined Reference)<% } else if (code === 'E3004') { %> (Duplicate Definition)<% } %>
+<% for (const err of errors.slice(0, 10)) { %>
+- `<%= err.file %>:<%= err.line %>`: <%= err.message %>
+<% } %>
+<% if (errors.length > 10) { %>
+*(+<%= errors.length - 10 %> more <%= code %> errors)*
+<% } %>
+<% } %>
+
+**To fix undefined references (E3001)**: Create the missing types using SysMLWrite before referencing them.
+<% } %>
+
 ## Required Actions
 
 <% if (coveragePercent < 80) { %>
 1. Use `FileDiscover` or `ReadFiles` to find more files
 2. Analyze and write SysML for discovered elements
-3. Include `@SourceFile { path = "<filepath>"; }` metadata before definitions to track coverage
+3. Include `@SourceFile { :>> path = "<filepath>"; }` metadata before definitions to track coverage
 4. Request next batch with `FileViewerNextFileSet(paths="...")`
 
 **DO NOT call `FileViewerNextFileSet(paths="")` until coverage >= 80%**
 <% } else { %>
 Coverage is good. You may finish if you've:
 - Extracted all relevant SysML elements
-- Included `@SourceFile { path = "<filepath>"; }` metadata for each covered file
+- Included `@SourceFile { :>> path = "<filepath>"; }` metadata for each covered file
 <% } %>
 
 **REQUIRED**: At least 2 SysMLWrite calls per response when there are files to analyze.
-**IMPORTANT**: Include `@SourceFile { path = "<filepath>"; }` metadata to track which source files are covered.
+**IMPORTANT**: Include `@SourceFile { :>> path = "<filepath>"; }` metadata to track which source files are covered.

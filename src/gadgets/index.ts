@@ -10,8 +10,8 @@ export { writeDoc, setTargetDir } from "./write-doc.js";
 export { fileViewerNextFileSet, setCoverageContext, getCoverageContext } from "./file-viewer-next.js";
 
 // SysML reverse engineering gadgets
+export { sysmlCreate } from "./sysml-create.js";
 export { sysmlWrite, sysmlRead, sysmlList } from "./sysml-write.js";
-export type { SysMLWriteResult } from "./sysml-write.js";
 export { sysmlQuery } from "./sysml-query.js";
 export { sysmlDelete } from "./sysml-delete.js";
 export { finishSysmlFix } from "./sysml-fix-gadget.js";

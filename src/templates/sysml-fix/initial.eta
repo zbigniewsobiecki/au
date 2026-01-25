@@ -7,7 +7,7 @@ Before fixing any issue, **read the actual source code** to verify what the fix 
 Workflow for each fix:
 1. SysMLRead - read the current SysML file content
 2. ReadFiles/RipGrep - **read source code** to verify what the fix should be
-3. SysMLWrite - apply the fix (search/replace preferred)
+3. SysMLWrite (element+at) for upserts, or SysMLCreate (force=true) to reset corrupted files
 
 ## Base Path
 

@@ -19,7 +19,7 @@
 - `<%= pattern %>`
 <% } %>
 
-Include `@SourceFile { path = "<filepath>"; }` metadata before each definition to track coverage.
+Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definition to track coverage.
 <% } %>
 
 ### Files to Analyze
@@ -76,7 +76,7 @@ Include `@SourceFile { path = "<filepath>"; }` metadata before each definition t
    **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
    If modifying an existing index:
    1. First use `SysMLRead("behavior/_index.sysml")` to see current content
-   2. Then use search/replace mode to ADD new imports after existing ones
+   2. Then use SysMLWrite with `element` + `at` to upsert imports
    3. Do NOT assume the file matches these examples - it may already have other imports
 
    **behavior/operations.sysml** - Add operations with data flows:
