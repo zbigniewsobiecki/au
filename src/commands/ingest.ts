@@ -1623,14 +1623,7 @@ export default class Ingest extends Command {
             ? `$${iterationCost.toFixed(3)}`
             : `$${iterationCost.toFixed(4)}`;
           console.log(`\x1b[2m   ⤷ Turn ${iterState.turnCount}.${turnCount}: ${inputStr} in · ${outputStr} out${cachedStr} · ${costStr}\x1b[0m`);
-          // Show file progress stats
-          const filesRead = iterState.readFiles.size;
-          if (expectedCount > 0) {
-            const percentage = Math.round((filesRead / expectedCount) * 100);
-            console.log(`\x1b[2m      📄 Files: ${filesRead}/${expectedCount} (${percentage}%)\x1b[0m`);
-          } else {
-            console.log(`\x1b[2m      📄 Files: ${filesRead} analyzed\x1b[0m`);
-          }
+          // Coverage is now shown after each SysMLWrite/SysMLCreate gadget result
         }
       }
     });
@@ -1691,6 +1684,15 @@ export default class Ingest extends Command {
               if (diff) {
                 const indentedDiff = diff.split("\n").map((line) => `      ${line}`).join("\n");
                 console.log(indentedDiff);
+              }
+
+              // Show real-time coverage based on @SourceFile annotations
+              if (expectedCount > 0) {
+                const coverage = await checkCycleCoverage(cycle, ".");
+                if (coverage.expectedFiles.length > 0) {
+                  const coveragePercent = Math.round(coverage.coveragePercent);
+                  console.log(`\x1b[2m      📄 Coverage: ${coverage.coveredFiles.length}/${coverage.expectedFiles.length} (${coveragePercent}%)\x1b[0m`);
+                }
               }
             } else {
               console.log(`  Wrote: ${writtenPath}`);
