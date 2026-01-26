@@ -266,6 +266,10 @@ async function scanSysmlFiles(basePath: string): Promise<string[]> {
         const fullPath = join(dir, entry.name);
 
         if (entry.isDirectory()) {
+          // Skip .debug/ directory (contains partial fragments from edit history)
+          if (entry.name === ".debug") {
+            continue;
+          }
           await scanDir(fullPath, relativePath);
         } else if (entry.name.endsWith(".sysml")) {
           files.push(relativePath);

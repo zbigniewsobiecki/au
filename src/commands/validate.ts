@@ -7,6 +7,7 @@ import {
   sysmlList,
   sysmlQuery,
   sysmlWrite,
+  sysmlCreate,
   readFiles,
   readDirs,
   ripGrep,
@@ -594,6 +595,7 @@ export default class Validate extends Command {
     const client = new LLMist();
     const gadgets = [
       sysmlWrite,
+      sysmlCreate,
       finishSysmlFix,
       sysmlRead,
       sysmlList,
