@@ -467,10 +467,10 @@ export default class Validate extends Command {
     // Display current validation errors
     try {
       const validation = await validateModelFull(".sysml");
-      out.displayValidationErrors(
-        validation.syntaxErrors,
-        validation.semanticErrors
-      );
+      if (validation.exitCode !== 0 && validation.output) {
+        const errorType = validation.exitCode === 1 ? "Syntax" : "Semantic";
+        out.warn(`${errorType} validation errors (exit code ${validation.exitCode})`);
+      }
     } catch {
       // sysml2 not available
     }
@@ -710,10 +710,10 @@ export default class Validate extends Command {
     // Display current validation errors
     try {
       const validation = await validateModelFull(".sysml");
-      out.displayValidationErrors(
-        validation.syntaxErrors,
-        validation.semanticErrors
-      );
+      if (validation.exitCode !== 0 && validation.output) {
+        const errorType = validation.exitCode === 1 ? "Syntax" : "Semantic";
+        out.warn(`${errorType} validation errors (exit code ${validation.exitCode})`);
+      }
     } catch {
       // sysml2 not available
     }

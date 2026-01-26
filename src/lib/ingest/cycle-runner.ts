@@ -35,7 +35,7 @@ import {
   fileViewerNextFileSet,
 } from "../../gadgets/index.js";
 import { checkCycleCoverage, type CoverageResult } from "../sysml/index.js";
-import { validateModelFull, type Sysml2MultiDiagnostic, type ValidationResult } from "../sysml/sysml2-cli.js";
+import { validateModelFull, type ValidationResult } from "../sysml/sysml2-cli.js";
 
 /**
  * Gadget sets for different cycle types.
@@ -84,8 +84,8 @@ export interface TrailingMessageContext {
   expectedCount: number;
   docCoveragePercent?: number;
   docMissingFiles?: string[];
-  syntaxErrors?: Sysml2MultiDiagnostic[];
-  semanticErrors?: Sysml2MultiDiagnostic[];
+  validationExitCode?: number;
+  validationOutput?: string;
 }
 
 /**
@@ -100,7 +100,8 @@ export interface RetryTrailingContext {
   totalMissing: number;
   stillMissing: number;
   unreadFiles: string[];
-  validationErrors?: Sysml2MultiDiagnostic[];
+  validationExitCode?: number;
+  validationOutput?: string;
 }
 
 /**
@@ -116,7 +117,7 @@ export interface AgentTurnConfig {
   maxIterations: number;
   terminateOnTextOnly?: boolean;
   trailingMessage?: () => string;
-  onFileWrite?: (path: string, mode: string, delta: string | null, diff: string | null) => void;
+  onFileWrite?: (path: string, mode: string, delta: string | null, diff: string | null) => void | Promise<void>;
   onNextFiles?: (files: string[]) => void;
   trackEntities?: CycleIterationState;
 }
@@ -181,12 +182,42 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
   let iterationOutputTokens = 0;
   let iterationCachedTokens = 0;
   let iterationCost = 0;
+  let iterationGadgetCount = 0;
+
+  // Track pending turn summary (print after gadgets complete)
+  let pendingTurnSummary: {
+    turnNumber: number;
+    inputTokens: number;
+    outputTokens: number;
+    cachedTokens: number;
+    cost: number;
+  } | null = null;
+
+  // Function to print pending turn summary with gadget count
+  const printPendingTurnSummary = () => {
+    if (pendingTurnSummary && options.verbose) {
+      console.log(formatTurnSummary(
+        pendingTurnSummary.turnNumber,
+        pendingTurnSummary.inputTokens,
+        pendingTurnSummary.outputTokens,
+        pendingTurnSummary.cachedTokens,
+        pendingTurnSummary.cost,
+        iterationGadgetCount
+      ));
+      pendingTurnSummary = null;
+    }
+  };
 
   const tree = agent.getTree();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tree.onAll((event: any) => {
     if (event.type === "llm_call_complete") {
+      // Print previous turn's summary before starting new turn
+      printPendingTurnSummary();
+
       turnCount++;
+      iterationGadgetCount = 0; // Reset gadget count for new turn
+
       if (event.usage) {
         iterationInputTokens = event.usage.inputTokens || 0;
         iterationOutputTokens = event.usage.outputTokens || 0;
@@ -200,16 +231,17 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
         totalCost += iterationCost;
       }
 
-      // Show turn stats in verbose mode
-      if (options.verbose) {
-        console.log(formatTurnSummary(
-          turnCount,
-          iterationInputTokens,
-          iterationOutputTokens,
-          iterationCachedTokens,
-          iterationCost
-        ));
-      }
+      // Queue turn summary to be printed after gadgets complete
+      pendingTurnSummary = {
+        turnNumber: turnCount,
+        inputTokens: iterationInputTokens,
+        outputTokens: iterationOutputTokens,
+        cachedTokens: iterationCachedTokens,
+        cost: iterationCost,
+      };
+    } else if (event.type === "gadget_call") {
+      // Track gadget count in onAll to ensure correct timing with turn summary
+      iterationGadgetCount++;
     }
   });
 
@@ -261,7 +293,7 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
           summary.push(`Wrote ${writtenPath}`);
 
           if (onFileWrite) {
-            onFileWrite(writtenPath, mode, delta, diff);
+            await onFileWrite(writtenPath, mode, delta, diff);
           }
 
           if (options.verbose) {
@@ -321,6 +353,9 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
       }
     }
   }
+
+  // Print final turn summary
+  printPendingTurnSummary();
 
   if (options.verbose) {
     endTextBlock(textState, out);
@@ -386,19 +421,28 @@ export async function runCycleTurn(
         expectedCount,
         docCoveragePercent,
         docMissingFiles: docMissingFiles.slice(0, 20),
-        syntaxErrors: validationResult?.syntaxErrors ?? [],
-        semanticErrors: validationResult?.semanticErrors ?? [],
+        validationExitCode: validationResult?.exitCode ?? 0,
+        validationOutput: validationResult?.output ?? "",
       });
     },
     onFileWrite: async (path, mode, delta, diff) => {
       cycleState.filesWritten++;
+
+      // Re-run validation after SysML writes so trailing message shows current state
+      try {
+        const modelFile = join(".sysml", "_model.sysml");
+        validationResult = await validateModelFull(".sysml", [modelFile]);
+      } catch {
+        // sysml2 not available - skip validation
+      }
 
       // Show real-time coverage
       if (options.verbose && expectedCount > 0) {
         const coverage = await checkCycleCoverage(cycle, ".");
         if (coverage.expectedFiles.length > 0) {
           const coveragePercent = Math.round(coverage.coveragePercent);
-          console.log(`\x1b[2m      📄 Coverage: ${coverage.coveredFiles.length}/${coverage.expectedFiles.length} (${coveragePercent}%)\x1b[0m`);
+          const covered = coverage.expectedFiles.length - coverage.missingFiles.length;
+          console.log(`\x1b[2m      📄 Coverage: ${covered}/${coverage.expectedFiles.length} (${coveragePercent}%)\x1b[0m`);
 
           if (coverage.missingFiles.length > 0) {
             const sample = coverage.missingFiles.slice(0, 3).map(f => `"${f}"`).join(', ');
@@ -436,10 +480,15 @@ export async function runRetryTurn(
   retryState: CycleState,
   options: CycleTurnOptions,
   out: Output,
-  validationErrors: Sysml2MultiDiagnostic[],
+  initialValidationExitCode: number,
+  initialValidationOutput: string,
   totalMissing: number,
   cycleOutputDir: string
 ): Promise<{ nextFiles: string[]; turns: number }> {
+  // Mutable validation state - updated after SysML writes
+  let validationExitCode = initialValidationExitCode;
+  let validationOutput = initialValidationOutput;
+
   // Get current coverage for trailing message
   let stillMissingCount = totalMissing - iterState.readFiles.size;
   const unreadFiles: string[] = [];
@@ -470,11 +519,22 @@ export async function runRetryTurn(
         totalMissing,
         stillMissing: stillMissingCount,
         unreadFiles: unreadFiles.slice(0, 20),
-        validationErrors,
+        validationExitCode,
+        validationOutput,
       });
     },
-    onFileWrite: () => {
+    onFileWrite: async () => {
       retryState.filesWritten++;
+
+      // Re-run validation after SysML writes so trailing message shows current state
+      try {
+        const modelFile = join(".sysml", "_model.sysml");
+        const result = await validateModelFull(".sysml", [modelFile]);
+        validationExitCode = result.exitCode;
+        validationOutput = result.output;
+      } catch {
+        // sysml2 not available - skip validation
+      }
     },
   });
 

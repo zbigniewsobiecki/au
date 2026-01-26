@@ -415,25 +415,17 @@ export class SysMLModelValidator {
     const modelFile = join(sysmlDirPath, "_model.sysml");
     const validationResult = await validateModelFull(sysmlDirPath, [modelFile]);
 
-    // Map diagnostics to SyntaxError format
-    for (const diag of validationResult.syntaxErrors) {
-      // Extract relative file path from diagnostic
-      const relativeFile = diag.file.startsWith(sysmlDirPath)
-        ? diag.file.slice(sysmlDirPath.length + 1)
-        : diag.file;
-
-      const existingError = result.syntaxErrors.find(e => e.file === relativeFile);
-      if (existingError) {
-        existingError.errors.push(`Line ${diag.line}:${diag.column}: ${diag.message}`);
-      } else {
-        result.syntaxErrors.push({
-          file: relativeFile,
-          errors: [`Line ${diag.line}:${diag.column}: ${diag.message}`],
-        });
-      }
+    // Check if there are validation errors based on exit code
+    // Exit code 1 = syntax errors, exit code 2 = semantic errors
+    if (validationResult.exitCode !== 0 && validationResult.output) {
+      // Store raw output as a single error entry for the model
+      result.syntaxErrors.push({
+        file: "_model.sysml",
+        errors: validationResult.output.trim().split("\n").filter(l => l.startsWith("error")),
+      });
     }
 
-    result.validFileCount = sysmlFiles.length - result.syntaxErrors.length;
+    result.validFileCount = validationResult.exitCode === 0 ? sysmlFiles.length : 0;
 
     // Collect file contents for count validation and reference checking
     const fileContents: Map<string, string> = new Map();

@@ -216,7 +216,7 @@ export function generateStdlib(): string {
         doc /*Full-stack web application */
         part frontend : Frontend [0..1];
         part backend : Backend [0..1];
-        part database : Database [0..*];
+        part database [0..*];
     }
 
     part def Frontend :> Part {

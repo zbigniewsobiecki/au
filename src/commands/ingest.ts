@@ -12,7 +12,7 @@ import {
   generateDataModelTemplate,
   type ProjectMetadata,
 } from "../lib/sysml/index.js";
-import { validateModelFull, type Sysml2MultiDiagnostic, type ValidationResult } from "../lib/sysml/sysml2-cli.js";
+import { validateModelFull } from "../lib/sysml/sysml2-cli.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import { agentFlags, withWorkingDirectory } from "../lib/command-utils.js";
@@ -406,11 +406,9 @@ export default class Ingest extends Command {
       );
 
       // Display validation errors to CLI user
-      if (turnResult.validationResult) {
-        out.displayValidationErrors(
-          turnResult.validationResult.syntaxErrors,
-          turnResult.validationResult.semanticErrors
-        );
+      if (turnResult.validationResult && turnResult.validationResult.exitCode !== 0) {
+        const errorType = turnResult.validationResult.exitCode === 1 ? "Syntax" : "Semantic";
+        out.warn(`${errorType} validation errors (exit code ${turnResult.validationResult.exitCode})`);
       }
 
       totalTurns += turnResult.turns;
@@ -559,10 +557,12 @@ export default class Ingest extends Command {
       }
 
       // Run validation
-      let validationErrors: Sysml2MultiDiagnostic[] = [];
+      let validationExitCode = 0;
+      let validationOutput = "";
       try {
         const validation = await validateModelFull(".sysml");
-        validationErrors = validation.semanticErrors;
+        validationExitCode = validation.exitCode;
+        validationOutput = validation.output;
       } catch {
         // sysml2 not available
       }
@@ -588,14 +588,16 @@ export default class Ingest extends Command {
         retryState,
         options,
         out,
-        validationErrors,
+        validationExitCode,
+        validationOutput,
         totalMissing,
         cycleOutputDir
       );
 
       // Display validation errors to CLI user
-      if (validationErrors.length > 0) {
-        out.displayValidationErrors([], validationErrors);
+      if (validationExitCode !== 0) {
+        const errorType = validationExitCode === 1 ? "Syntax" : "Semantic";
+        out.warn(`${errorType} validation errors (exit code ${validationExitCode})`);
       }
 
       // Track read files

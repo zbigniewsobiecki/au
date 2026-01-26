@@ -42,11 +42,15 @@ export function formatTurnSummary(
   outputTokens: number,
   cachedTokens: number,
   cost: number,
+  gadgetCount?: number,
   prefix: string = "Turn"
 ): string {
   const usageStr = formatTokenUsage(inputTokens, outputTokens, cachedTokens);
   const costStr = formatCost(cost);
-  return `\x1b[2m   ⤷ ${prefix} ${turnNumber}: ${usageStr} · ${costStr}\x1b[0m`;
+  const gadgetStr = gadgetCount !== undefined && gadgetCount > 0
+    ? ` · ${gadgetCount} gadget${gadgetCount !== 1 ? "s" : ""}`
+    : "";
+  return `\x1b[2m   ⤷ ${prefix} ${turnNumber}: ${usageStr} · ${costStr}${gadgetStr}\x1b[0m`;
 }
 
 /**

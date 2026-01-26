@@ -285,7 +285,6 @@ Check the element syntax and try again.`;
           return `path=${fullPath} status=error mode=upsert (rolled back)\n\nSyntax error:\n${errors || result.stderr || "Unknown error"}`;
         }
 
-        const actionDesc = result.replaced > 0 ? "replaced" : "added";
         const dryRunNote = dryRun ? " (dry run)" : "";
 
         // Get new file size for delta calculation
@@ -319,11 +318,15 @@ Check the element syntax and try again.`;
           }).catch(() => {});
         }
 
-        // Generate diff for CLI display (colors for human, plain +/- for LLM)
-        let diffOutput = "";
-        if (originalContent !== newContent) {
-          diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent);
+        // Check if content is unchanged - tell LLM clearly so it doesn't keep retrying
+        if (originalContent === newContent) {
+          return `path=${fullPath} status=unchanged mode=upsert delta=+0 bytes
+Content identical - no changes made. The fix may already be applied, or the error is elsewhere.
+Check if another file has the issue, or if the element name/scope is different than expected.`;
         }
+
+        // Generate diff for CLI display (colors for human, plain +/- for LLM)
+        const diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent);
 
         // Warn if no changes were made but element was provided
         if (result.added === 0 && result.replaced === 0 && element && element.trim()) {
@@ -335,9 +338,26 @@ Fragment attempted:
 ${element.slice(0, 300)}${element.length > 300 ? '...' : ''}`;
         }
 
+        const actionDesc = result.replaced > 0 ? "replaced" : "added";
+
+        // Include validation status based on exit code
+        // Exit 0 = all good, Exit 2 = semantic errors remain
+        let validationNote = "";
+        if (result.exitCode === 0) {
+          validationNote = "\n✓ Model validation passed";
+        } else if (result.exitCode === 2) {
+          const semanticErrors = result.diagnostics
+            .filter((d) => d.severity === "error" && d.code?.startsWith("E3"))
+            .slice(0, 5);
+          if (semanticErrors.length > 0) {
+            validationNote = "\n⚠ Semantic errors remain:\n" +
+              semanticErrors.map((d) => `  Line ${d.line}: ${d.message}`).join("\n");
+          }
+        }
+
         return `path=${fullPath} status=success mode=upsert${dryRunNote} delta=${delta}
 Element ${actionDesc} at scope: ${at}
-Added: ${result.added}, Replaced: ${result.replaced}${diffOutput}`;
+Added: ${result.added}, Replaced: ${result.replaced}${validationNote}${diffOutput}`;
       } catch (err) {
         // ATOMIC ROLLBACK: Restore original content on exception
         await writeFile(fullPath, originalContent, "utf-8");
