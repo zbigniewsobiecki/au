@@ -378,6 +378,8 @@ export default class Validate extends Command {
       sysmlRead,
       sysmlQuery,
       readFiles,
+      readDirs,
+      ripGrep,
     ];
 
     let builder = new AgentBuilder(client)
