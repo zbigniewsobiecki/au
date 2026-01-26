@@ -431,7 +431,13 @@ export async function setElement(
   targetFile: string,
   fragment: string,
   scope: string,
-  options?: { createScope?: boolean; dryRun?: boolean; parseOnly?: boolean }
+  options?: {
+    createScope?: boolean;
+    dryRun?: boolean;
+    parseOnly?: boolean;
+    replaceScope?: boolean;
+    allowSemanticErrors?: boolean;  // Allow writes despite E3xxx errors
+  }
 ): Promise<SetResult> {
   // Write fragment to a temporary file
   const { writeFile, unlink } = await import("node:fs/promises");
@@ -457,6 +463,14 @@ export async function setElement(
 
   if (options?.parseOnly) {
     args.push("--parse-only");
+  }
+
+  if (options?.replaceScope) {
+    args.push("--replace-scope");
+  }
+
+  if (options?.allowSemanticErrors) {
+    args.push("--allow-semantic-errors");
   }
 
   args.push("-f", "json");
@@ -628,6 +642,18 @@ export interface ValidationResult {
 }
 
 /**
+ * Result from formatting a SysML file.
+ */
+export interface FormatResult {
+  success: boolean;
+  modified: boolean;
+  diagnostics: Sysml2Diagnostic[];
+  originalContent?: string;
+  formattedContent?: string;
+  stderr?: string;
+}
+
+/**
  * Run full validation on all SysML files in a directory.
  * Returns exit code and raw output - no parsing.
  *
@@ -679,6 +705,92 @@ export async function validateModelFull(
         success: code === 0,
         exitCode: code ?? -1,
         output: stderr,
+      });
+    });
+
+    proc.on("error", (err) => {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`sysml2 not found in PATH. Install sysml2 globally.`));
+      } else {
+        reject(err);
+      }
+    });
+
+    proc.stdin.end();
+  });
+}
+
+/**
+ * Format a SysML file using the CLI --fix option.
+ *
+ * @param targetFile - The file to format
+ * @param options - Options for the format operation
+ * @returns Promise resolving to the format result
+ */
+export async function formatFile(
+  targetFile: string,
+  options?: { dryRun?: boolean }
+): Promise<FormatResult> {
+  const { readFile } = await import("node:fs/promises");
+
+  // Read original content before formatting
+  let originalContent: string;
+  try {
+    originalContent = await readFile(targetFile, "utf-8");
+  } catch {
+    return {
+      success: false,
+      modified: false,
+      diagnostics: [],
+      stderr: `File not found: ${targetFile}`,
+    };
+  }
+
+  const args = ["--color=never", ...getLibraryPathArgs()];
+
+  // Add fix flag for formatting
+  args.push("--fix");
+
+  if (options?.dryRun) {
+    args.push("--dry-run");
+  }
+
+  args.push(targetFile);
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data) => {
+      stdout += data;
+    });
+    proc.stderr.on("data", (data) => {
+      stderr += data;
+    });
+
+    proc.on("close", async (code) => {
+      const diagnostics = parseDiagnosticOutput(stderr);
+      const success = code === 0;
+
+      // Read the file after formatting to get the new content
+      let formattedContent: string | undefined;
+      try {
+        formattedContent = await readFile(targetFile, "utf-8");
+      } catch {
+        // File may not exist or couldn't be read
+      }
+
+      const modified = formattedContent !== undefined && formattedContent !== originalContent;
+
+      resolve({
+        success,
+        modified,
+        diagnostics,
+        originalContent,
+        formattedContent,
+        stderr: stderr.trim() || undefined,
       });
     });
 

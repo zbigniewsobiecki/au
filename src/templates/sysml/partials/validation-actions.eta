@@ -1,3 +1,17 @@
+<% if (it.sourceFileErrors && it.sourceFileErrors.length > 0) { %>
+## Invalid @SourceFile References (HIGH PRIORITY)
+
+These source file paths don't exist in the repository:
+<% for (const err of it.sourceFileErrors.slice(0, 10)) { %>
+- `<%= err.sysmlFile %>:<%= err.line %>` → `<%= err.referencedPath %>`
+<% } %>
+<% if (it.sourceFileErrors.length > 10) { %>
+*(+<%= it.sourceFileErrors.length - 10 %> more)*
+<% } %>
+
+**Fix**: Update the @SourceFile path to reference an existing file, or remove the metadata if the source is no longer relevant.
+
+<% } %>
 <% if (it.validationExitCode && it.validationExitCode !== 0) { %>
 ## Fix Validation Errors First
 
@@ -18,6 +32,7 @@ These are undefined references or type mismatches:
 - **E3006 "cannot be typed by"**: The type exists but can't be used as a typing relationship. Use `:>` (specializes) instead of `:` for item definitions, or ensure you're referencing the correct type.
 - **E3001 "undefined type"**: Create the missing type definition, or add an import if it exists elsewhere.
 - **E3002 "feature not found"**: The referenced feature doesn't exist in the parent type - check the parent definition.
+- **E3003 "undefined namespace"**: The imported package doesn't exist. Create the package file FIRST, then import it.
 
 **Workflow:**
 1. `SysMLRead` the file mentioned in the error
@@ -27,8 +42,29 @@ These are undefined references or type mismatches:
 
 <% } %>
 <% } else if (it.validationExitCode === 0 && it.validationOutput && it.validationOutput.includes('warning')) { %>
-### Warnings (fix for quality)
-- **W1003 "instantiation of abstract type"**: Use a concrete subtype instead of the abstract base
-- Fix warnings when convenient, but they don't block progress
+### Warnings (must fix)
+- **W1003 "instantiation of abstract type"**: You are using an abstract type directly.
+  - For entities: use `:> BaseEntity` not `:> Item`
+  - For DTOs: use `:> BaseDTO` not `:> Item`
+  - For events: use `:> BaseDomainEvent` not `:> Item`
+  - For requirements: use `:> BaseRequirement`
+  - For polymorphic fields (can hold any item): use `: AnyItem` not `: Item`
+  - Fix these before proceeding - they indicate incorrect type usage.
 
 <% } %>
+
+## Gadget Selection Guide
+
+**Before writing SysML, determine which gadget to use:**
+
+| Situation | Gadget | Example |
+|-----------|--------|---------|
+| File doesn't exist | `SysMLCreate` | `SysMLCreate(path="data/enums.sysml", package="DomainEnums")` |
+| File exists, add/update content | `SysMLWrite` | `SysMLWrite(path="data/enums.sysml", element="...", at="DomainEnums")` |
+| File exists, fix ordering (E3002) | `SysMLWrite` | Use `replaceScope=true` to reorder declarations |
+| File corrupted/unrecoverable | `SysMLCreate` | Use `force=true` only for syntax errors that can't be fixed |
+
+**CRITICAL: NEVER use SysMLCreate on existing files without `force=true`!**
+- If you get "file already exists" error, switch to `SysMLWrite` with `at` parameter
+- `SysMLCreate` is for NEW files only
+- `SysMLWrite(element="...", at="Pkg")` adds/updates elements in existing files

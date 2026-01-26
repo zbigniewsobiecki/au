@@ -8,7 +8,7 @@
  * cover all source files in the repository.
  */
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, access } from "node:fs/promises";
 import { join } from "node:path";
 import fg from "fast-glob";
 import { loadManifest, type Manifest } from "../../gadgets/manifest-write.js";
@@ -516,4 +516,103 @@ export function suggestPatternsForUncoveredFiles(uncoveredFiles: string[]): stri
   }
 
   return suggestions;
+}
+
+// ============================================================================
+// @SourceFile Path Validation
+// ============================================================================
+
+/**
+ * Error for a @SourceFile reference to a non-existent path.
+ */
+export interface SourceFileError {
+  /** Path to .sysml file containing the @SourceFile */
+  sysmlFile: string;
+  /** Line number in the .sysml file */
+  line: number;
+  /** The path that doesn't exist */
+  referencedPath: string;
+}
+
+/**
+ * Result of validating @SourceFile paths.
+ */
+export interface SourceFileValidationResult {
+  /** Whether all @SourceFile paths are valid */
+  valid: boolean;
+  /** Errors for non-existent paths */
+  errors: SourceFileError[];
+  /** Number of @SourceFile references checked */
+  checkedCount: number;
+}
+
+/**
+ * Validate that all @SourceFile paths reference files that actually exist.
+ *
+ * @param sysmlDir - Directory containing .sysml files (default: ".sysml")
+ * @param basePath - Base path for resolving source file paths (default: ".")
+ * @returns Validation result with errors for non-existent paths
+ */
+export async function validateSourceFilePaths(
+  sysmlDir: string = SYSML_DIR,
+  basePath: string = "."
+): Promise<SourceFileValidationResult> {
+  const errors: SourceFileError[] = [];
+  let checkedCount = 0;
+
+  // Pattern to match `@SourceFile { :>> path = "<filepath>" }` with line tracking
+  // This pattern matches on a per-line basis to track line numbers
+  const linePattern = /@SourceFile\s*\{\s*(?::>>\s*)?path\s*=\s*"([^"]+)"/;
+
+  async function scanDir(dir: string): Promise<void> {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          await scanDir(fullPath);
+        } else if (entry.name.endsWith(".sysml")) {
+          try {
+            const content = await readFile(fullPath, "utf-8");
+            const lines = content.split("\n");
+
+            for (let i = 0; i < lines.length; i++) {
+              const match = linePattern.exec(lines[i]);
+              if (match) {
+                const referencedPath = match[1].trim();
+                checkedCount++;
+
+                // Check if file exists
+                const absolutePath = join(basePath, referencedPath);
+                try {
+                  await access(absolutePath);
+                } catch {
+                  // File doesn't exist
+                  errors.push({
+                    sysmlFile: fullPath,
+                    line: i + 1, // 1-indexed
+                    referencedPath,
+                  });
+                }
+              }
+            }
+          } catch {
+            // Skip unreadable files
+          }
+        }
+      }
+    } catch {
+      // Directory doesn't exist
+    }
+  }
+
+  await scanDir(sysmlDir);
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    checkedCount,
+  };
 }

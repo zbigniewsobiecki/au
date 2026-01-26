@@ -9,23 +9,55 @@ Analyze source code and generate comprehensive SysML v2 models that capture the 
 - Requirements and verification
 - Non-functional properties
 
-## Standard Library Alignment
+## Standard Library Types
 
-AU's SysML models are aligned with the official SysML v2 standard library:
+**IMPORTANT: Always use the Base* types. Never extend Item/Part/Port directly.**
 
-- **Item** - Base type for all data/domain entities (from Items::Item)
-- **Part** - Base type for structural components/modules (from Parts::Part)
-- **Port** - Base type for communication interfaces (from Ports::Port)
+| Purpose | Use This | NOT This |
+|---------|----------|----------|
+| Domain entities | `BaseEntity` | `Item` ❌ |
+| Request/Response DTOs | `BaseDTO` | `Item` ❌ |
+| Domain events | `BaseDomainEvent` | `Item` ❌ |
+| Requirements | `BaseRequirement` | standalone ❌ |
+| System modules | `Module` | `Part` ❌ |
+
+Examples:
+- `item def User :> BaseEntity { ... }`
+- `item def CreateUserRequest :> BaseDTO { ... }`
+- `item def UserCreated :> BaseDomainEvent { ... }`
+- `requirement def FR001 :> BaseRequirement { ... }`
 
 When `SYSML2_LIBRARY_PATH` is set, validation resolves standard library imports:
 ```bash
 export SYSML2_LIBRARY_PATH="$HOME/Code/SysML-v2-Release/sysml.library/Systems Library:$HOME/Code/SysML-v2-Release/sysml.library/Kernel Libraries/Kernel Semantic Library"
 ```
 
-Base types in AU models extend these standard library types:
-- `item def BaseEntity :> Item` - Domain entities
-- `part def Module :> Part` - System modules
-- `port def ServicePort :> Port` - Service interfaces
+## Type Definition Order (CRITICAL for avoiding E3001/E3003 errors)
+
+To avoid "undefined type" (E3001) and "undefined namespace" (E3003) errors, follow this creation order:
+
+1. **SysMLPrimitives** - Already exists, just import it
+2. **Enums first** (`data/enums.sysml`) - No dependencies, define early
+3. **Base entities** (`data/_index.sysml`) - BaseEntity, BaseDTO are in stdlib
+4. **Domain entities** (`data/entities.sysml`) - Import enums first
+5. **DTOs** (`data/dtos.sysml`) - Import entities and enums
+6. **Operations** (`behavior/operations.sysml`) - Can reference all data types
+7. **Verification** (`verification/*.sysml`) - References everything, create last
+
+**Key Rules:**
+- **Create packages BEFORE importing them** - If you need `import TestMappings::*`, create the TestMappings package file FIRST
+- **Create types BEFORE using them** - If you need `item def Order { attribute customer : Customer; }`, define Customer first
+- **Check imports on E3001** - Missing type? Either define it earlier OR add the missing import
+
+**When you encounter E3001 "undefined type":**
+1. Is the type defined elsewhere? → Add `import PackageName::*;`
+2. Is the type not yet created? → Create it first, then return to current file
+3. Is the type defined later in same file? → Reorder definitions (use `replaceScope=true`)
+
+**When you encounter E3003 "undefined namespace":**
+1. The imported package doesn't exist yet
+2. Create the package file FIRST: `SysMLCreate(path="...", package="PackageName")`
+3. THEN add the import to the file that needs it
 
 ## SysML v2 Syntax Overview
 
@@ -65,7 +97,7 @@ requirement def FR001 {
 }
 
 // CORRECT - Either inherit OR use attribute
-requirement def FR001 :> DiscoveredRequirement {  // Has base type
+requirement def FR001 :> BaseRequirement {  // Has base type
     :>> id = "FR-001";  // Now :>> works
 }
 

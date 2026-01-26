@@ -34,7 +34,7 @@ import {
   enumerateDirectories,
   fileViewerNextFileSet,
 } from "../../gadgets/index.js";
-import { checkCycleCoverage, type CoverageResult } from "../sysml/index.js";
+import { checkCycleCoverage, validateSourceFilePaths, type CoverageResult, type SourceFileError } from "../sysml/index.js";
 import { validateModelFull, type ValidationResult } from "../sysml/sysml2-cli.js";
 
 /**
@@ -86,6 +86,7 @@ export interface TrailingMessageContext {
   docMissingFiles?: string[];
   validationExitCode?: number;
   validationOutput?: string;
+  sourceFileErrors?: SourceFileError[];
 }
 
 /**
@@ -102,6 +103,7 @@ export interface RetryTrailingContext {
   unreadFiles: string[];
   validationExitCode?: number;
   validationOutput?: string;
+  sourceFileErrors?: SourceFileError[];
 }
 
 /**
@@ -403,6 +405,15 @@ export async function runCycleTurn(
     // sysml2 not available - skip validation
   }
 
+  // Validate @SourceFile paths
+  let sourceFileErrors: SourceFileError[] = [];
+  try {
+    const sfValidation = await validateSourceFilePaths(".sysml", ".");
+    sourceFileErrors = sfValidation.errors;
+  } catch {
+    // Ignore errors
+  }
+
   const result = await runAgentTurn({
     client,
     systemPrompt,
@@ -423,6 +434,7 @@ export async function runCycleTurn(
         docMissingFiles: docMissingFiles.slice(0, 20),
         validationExitCode: validationResult?.exitCode ?? 0,
         validationOutput: validationResult?.output ?? "",
+        sourceFileErrors,
       });
     },
     onFileWrite: async (path, mode, delta, diff) => {
@@ -434,6 +446,14 @@ export async function runCycleTurn(
         validationResult = await validateModelFull(".sysml", [modelFile]);
       } catch {
         // sysml2 not available - skip validation
+      }
+
+      // Re-run @SourceFile validation
+      try {
+        const sfValidation = await validateSourceFilePaths(".sysml", ".");
+        sourceFileErrors = sfValidation.errors;
+      } catch {
+        // Ignore errors
       }
 
       // Show real-time coverage
@@ -489,6 +509,15 @@ export async function runRetryTurn(
   let validationExitCode = initialValidationExitCode;
   let validationOutput = initialValidationOutput;
 
+  // Validate @SourceFile paths
+  let sourceFileErrors: SourceFileError[] = [];
+  try {
+    const sfValidation = await validateSourceFilePaths(".sysml", ".");
+    sourceFileErrors = sfValidation.errors;
+  } catch {
+    // Ignore errors
+  }
+
   // Get current coverage for trailing message
   let stillMissingCount = totalMissing - iterState.readFiles.size;
   const unreadFiles: string[] = [];
@@ -521,6 +550,7 @@ export async function runRetryTurn(
         unreadFiles: unreadFiles.slice(0, 20),
         validationExitCode,
         validationOutput,
+        sourceFileErrors,
       });
     },
     onFileWrite: async () => {
@@ -534,6 +564,14 @@ export async function runRetryTurn(
         validationOutput = result.output;
       } catch {
         // sysml2 not available - skip validation
+      }
+
+      // Re-run @SourceFile validation
+      try {
+        const sfValidation = await validateSourceFilePaths(".sysml", ".");
+        sourceFileErrors = sfValidation.errors;
+      } catch {
+        // Ignore errors
       }
     },
   });

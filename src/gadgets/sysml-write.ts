@@ -75,6 +75,7 @@ export const sysmlWrite = createGadget({
    - element: SysML fragment to insert or replace
    - at: Qualified scope path (e.g., "DataModel::Entities")
    - createScope=true: Create scope hierarchy if missing
+   - replaceScope=true: Clear scope before inserting (preserves fragment order)
    - UPSERT semantics: replaces if element exists, adds if new
    - ATOMIC: On failure, file is restored to original state
 
@@ -85,8 +86,43 @@ export const sysmlWrite = createGadget({
 
    The \`at\` parameter specifies WHERE to place the element - don't duplicate the scope.
 
+   **When to use replaceScope=true:**
+   Use this when fixing E3002 "feature not found" errors caused by wrong element order.
+   Declarations must come before redefinitions in SysML. When you provide the full
+   scope content with correct order and replaceScope=true, the fragment's order is preserved.
+
+   Example - fixing E3002 ordering error:
+   \`\`\`
+   // Before: Scope has redefinition before declaration (E3002 error)
+   // Fix by providing full scope content with correct order:
+   SysMLWrite(
+     path="structure/modules.sysml",
+     element="part def BaseModule;\\npart def ExtendedModule :> BaseModule;",
+     at="SystemModules",
+     replaceScope=true
+   )
+   \`\`\`
+
+   Example - replacing all scope children:
+   \`\`\`
+   SysMLWrite(
+     path="data/entities.sysml",
+     element="item def User { attribute name : String; }\\nitem def Order { attribute total : Real; }",
+     at="DataEntities",
+     replaceScope=true
+   )
+   \`\`\`
+
 2. **DELETE mode** (remove elements):
    SysMLWrite(path="data/entities.sysml", delete="DataModel::Entities::OldUser")
+
+**Validation:**
+   - Full validation (syntax + semantic) runs on every write
+   - By default, semantic errors (E3xxx) are reported but don't block the write
+   - Use validateSemantics=true to block/rollback on semantic errors:
+     \`\`\`
+     SysMLWrite(path="...", element="...", at="...", validateSemantics=true)
+     \`\`\`
 
 **To create new files, use SysMLCreate:**
    SysMLCreate(path="...", package="PackageName")
@@ -110,6 +146,10 @@ export const sysmlWrite = createGadget({
       .boolean()
       .optional()
       .describe("Create scope hierarchy if it doesn't exist (default: false)"),
+    replaceScope: z
+      .boolean()
+      .optional()
+      .describe("Clear target scope before inserting (preserves fragment element order)"),
 
     // Mode 2: CLI delete
     delete: z
@@ -122,8 +162,12 @@ export const sysmlWrite = createGadget({
       .boolean()
       .optional()
       .describe("Preview changes without writing (default: false)"),
+    validateSemantics: z
+      .boolean()
+      .optional()
+      .describe("Block write on semantic errors (default: false). Validation always runs; this controls whether semantic errors cause rollback."),
   }),
-  execute: async ({ reason: _reason, path, element, at, createScope = false, delete: deletePattern, dryRun = false }) => {
+  execute: async ({ reason: _reason, path, element, at, createScope = false, replaceScope = false, delete: deletePattern, dryRun = false, validateSemantics = false }) => {
     // Ensure path ends with .sysml
     if (!path.endsWith(".sysml")) {
       return `Error: File path must end with .sysml extension`;
@@ -208,6 +252,8 @@ File does not exist. Create it first:
             path: fullPath,
             scope: at,
             createScope,
+            replaceScope,
+            validateSemantics,
             bytesOriginal: Buffer.byteLength(originalContent, "utf-8"),
             dryRun,
           }
@@ -217,8 +263,56 @@ File does not exist. Create it first:
         const result = await setElement(fullPath, element!, at!, {
           createScope,
           dryRun,
-          parseOnly: true,  // Only check syntax, allow semantic issues
+          parseOnly: false,  // Always run full validation (syntax + semantic)
+          replaceScope,
+          allowSemanticErrors: true,  // Allow writes despite E3xxx errors - agent builds model iteratively
         });
+
+        // Check for "target scope not found" error from stderr
+        if (result.stderr?.includes("target scope") && result.stderr?.includes("not found")) {
+          // Extract the scope name from the error message
+          const scopeMatch = result.stderr.match(/target scope '([^']+)' not found/);
+          const missingScope = scopeMatch ? scopeMatch[1] : at;
+
+          // Debug logging
+          if (debugEnabled) {
+            writeEditDebug({
+              metadata: {
+                ...baseDebugMetadata,
+                status: "error",
+                bytesResult: Buffer.byteLength(originalContent, "utf-8"),
+                byteDelta: 0,
+                errorMessage: `Target scope '${missingScope}' not found`,
+              } as EditDebugMetadata,
+              original: originalContent,
+              fragment: element!,
+              result: originalContent,
+            }).catch(() => {});
+          }
+
+          return `path=${fullPath} status=error mode=upsert
+
+TARGET SCOPE NOT FOUND: '${missingScope}'
+
+The scope '${missingScope}' does not exist in the file.
+
+Available behavioral scopes in SystemBehavior:
+  - SystemBehavior::Operations
+  - SystemBehavior::StateMachines
+  - SystemBehavior::EventHandlers
+  - SystemBehavior::SystemOperations
+  - SystemBehavior::ServiceBehaviors
+  - SystemBehavior::EntityStateMachines
+  - SystemBehavior::DomainEvents
+
+To create a new scope, use createScope=true:
+  SysMLWrite(
+    path="${path}",
+    element="${element!.slice(0, 100)}${element!.length > 100 ? '...' : ''}",
+    at="${at}",
+    createScope=true
+  )`;
+        }
 
         // Only fail on syntax errors (exit code 1), allow semantic errors (exit code 2)
         if (!result.syntaxValid) {
@@ -283,6 +377,53 @@ Check the element syntax and try again.`;
             .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
             .join("\n");
           return `path=${fullPath} status=error mode=upsert (rolled back)\n\nSyntax error:\n${errors || result.stderr || "Unknown error"}`;
+        }
+
+        // When validateSemantics is true, also fail on semantic errors (exit code 2)
+        if (validateSemantics && result.exitCode === 2) {
+          // ATOMIC ROLLBACK: Restore original content on semantic errors
+          await writeFile(fullPath, originalContent, "utf-8");
+
+          const semanticErrors = result.diagnostics
+            .filter((d) => d.severity === "error" && d.code?.startsWith("E3"))
+            .slice(0, 10);  // Limit to first 10 errors
+
+          // Debug logging for semantic rollback
+          if (debugEnabled) {
+            writeEditDebug({
+              metadata: {
+                ...baseDebugMetadata,
+                status: "rollback",
+                bytesResult: Buffer.byteLength(originalContent, "utf-8"),
+                byteDelta: 0,
+                added: result.added,
+                replaced: result.replaced,
+                errorMessage: semanticErrors[0]?.message || "Semantic error",
+                diagnostics: semanticErrors.map((d) => ({
+                  severity: d.severity,
+                  message: d.message,
+                  line: d.line,
+                  column: d.column,
+                })),
+              } as EditDebugMetadata,
+              original: originalContent,
+              fragment: element!,
+              result: originalContent,
+            }).catch(() => {});
+          }
+
+          const errors = semanticErrors
+            .map((d) => `  Line ${d.line}:${d.column}: [${d.code}] ${d.message}`)
+            .join("\n");
+
+          return `path=${fullPath} status=error mode=upsert (rolled back)
+
+SEMANTIC VALIDATION FAILED (validateSemantics=true)
+
+${errors || result.stderr || "Unknown semantic error"}
+
+The write was rolled back because semantic validation is enabled.
+To allow semantic errors, use validateSemantics=false (default).`;
         }
 
         const dryRunNote = dryRun ? " (dry run)" : "";
