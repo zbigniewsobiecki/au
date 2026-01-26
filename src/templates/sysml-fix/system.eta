@@ -55,6 +55,30 @@ When fixing SysML issues, **always verify against actual source code**:
 - Use SysMLQuery to find where the referenced type might be defined
 - **Read source code** to verify the type actually exists and understand its structure
 
+### E3002 "Feature not found" Errors (Element Ordering)
+E3002 errors often occur when redefinitions appear before their declarations.
+In SysML, declarations must come before redefinitions.
+
+**Symptoms:**
+- Error: `E3002: feature 'X' not found` even though X is defined in the same file
+- The element X is defined AFTER it's referenced/redefined
+
+**Fix using replaceScope:**
+When the issue is element ordering, use `replaceScope=true` to replace the entire
+scope content with correctly ordered elements:
+
+```
+SysMLWrite(
+  path="structure/modules.sysml",
+  element="part def BaseModule;\\npart def ExtendedModule :> BaseModule;",
+  at="SystemModules",
+  replaceScope=true
+)
+```
+
+This clears the scope and inserts elements in the order you provide, ensuring
+declarations come before redefinitions.
+
 ### Count Mismatches
 The manifest counts reflect what EXISTS in the codebase. The SysML model is INCOMPLETE.
 

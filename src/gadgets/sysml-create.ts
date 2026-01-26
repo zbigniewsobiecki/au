@@ -79,7 +79,15 @@ Package ${pkgName} already exists (no changes needed)`;
       } catch {
         // Couldn't read existing file, fall through to error
       }
-      return `Error: File already exists: ${fullPath}. Use SysMLWrite for targeted writes, or use force=true to wipe this file clean and overwrite.`;
+      return `Error: File already exists: ${fullPath}
+
+→ To ADD/UPDATE elements in this file, use SysMLWrite:
+  SysMLWrite(path="${path}", element="...", at="${pkgName}")
+
+→ To RESET a corrupted file, use SysMLCreate with force=true:
+  SysMLCreate(path="${path}", package="${pkgName}", force=true)
+
+NEVER use SysMLCreate on existing files without force=true.`;
     }
 
     // Track original content for delta and diff (if file exists)
@@ -129,7 +137,8 @@ Package ${pkgName} already exists (no changes needed)`;
 
     // Validate content before writing to prevent syntax errors
     // Only reject on PARSE errors (no error code), not semantic errors (E3001 undefined type, etc.)
-    // Semantic errors are expected when stdlib isn't fully loaded
+    // Semantic errors are expected during incremental model building - cross-package
+    // references fail until all files exist
     try {
       const validation = await runSysml2(finalContent);
       if (!validation.success) {

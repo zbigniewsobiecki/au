@@ -82,9 +82,13 @@ export {
   checkManifestCoverage,
   formatManifestCoverageResult,
   suggestPatternsForUncoveredFiles,
+  // @SourceFile path validation
+  validateSourceFilePaths,
   // Cycle output directory mapping
   CYCLE_OUTPUT_DIRS,
   type CoverageResult,
   type CoverageContext,
   type ManifestCoverageResult,
+  type SourceFileError,
+  type SourceFileValidationResult,
 } from "./coverage-checker.js";

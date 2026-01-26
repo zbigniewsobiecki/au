@@ -76,26 +76,42 @@ export function generateStdlib(): string {
     datatype JSON;
 
     // ========== BASE ITEM TYPES ==========
+    // IMPORTANT: Use BaseEntity, BaseDTO, BaseDomainEvent - NOT Item directly
+
     abstract item def Item {
-        doc /*Base for all domain items */
+        doc /*Internal base - do NOT extend directly. Use BaseEntity, BaseDTO, etc. */
     }
 
-    item def Entity :> Item {
-        doc /*Domain entity with identity */
+    item def BaseEntity :> Item {
+        doc /*Extend for domain entities: item def User :> BaseEntity { ... } */
         attribute id : Identifier;
-        attribute createdAt : DateTime;
-        attribute updatedAt : DateTime;
+        attribute createdAt : DateTime [0..1];
+        attribute updatedAt : DateTime [0..1];
     }
 
-    item def DTO :> Item {
-        doc /*Data transfer object */
+    item def BaseDTO :> Item {
+        doc /*Extend for DTOs: item def CreateUserRequest :> BaseDTO { ... } */
     }
 
-    item def DomainEvent :> Item {
-        doc /*Domain event */
+    item def BaseDomainEvent :> Item {
+        doc /*Extend for events: item def UserCreated :> BaseDomainEvent { ... } */
         attribute eventId : Identifier;
         attribute eventType : String;
         attribute timestamp : DateTime;
+    }
+
+    item def AnyItem :> Item {
+        doc /*Concrete marker for polymorphic item fields.
+             Use when a field can hold any item type (e.g., API response data).
+             Example: item data : AnyItem [0..1]; */
+    }
+
+    // ========== BASE REQUIREMENT TYPE ==========
+    requirement def BaseRequirement {
+        doc /*Extend for requirements: requirement def FR001 :> BaseRequirement { ... } */
+        attribute id : Identifier;
+        attribute source : String [0..1];
+        attribute priority : String [0..1];
     }
 
     // ========== BASE PART TYPES ==========
@@ -341,7 +357,7 @@ export function generateStdlib(): string {
     }
 
     // ========== API ITEM TYPES ==========
-    item def HTTPRequest :> DTO {
+    item def HTTPRequest :> BaseDTO {
         doc /*HTTP request */
         attribute method : String;
         attribute path : String;
@@ -349,7 +365,7 @@ export function generateStdlib(): string {
         attribute body : JSON [0..1];
     }
 
-    item def HTTPResponse :> DTO {
+    item def HTTPResponse :> BaseDTO {
         doc /*HTTP response */
         attribute statusCode : Integer;
         attribute headers : JSON [0..1];
@@ -374,21 +390,21 @@ export function generateStdlib(): string {
         attribute rowCount : Integer;
     }
 
-    item def Credentials :> DTO {
+    item def Credentials :> BaseDTO {
         doc /*Authentication credentials */
         attribute email : String [0..1];
         attribute password : String [0..1];
         attribute token : String [0..1];
     }
 
-    item def AuthToken :> DTO {
+    item def AuthToken :> BaseDTO {
         doc /*Authentication token */
         attribute accessToken : String;
         attribute refreshToken : String [0..1];
         attribute expiresAt : DateTime [0..1];
     }
 
-    item def FileData :> DTO {
+    item def FileData :> BaseDTO {
         doc /*File data for storage */
         attribute name : String;
         attribute contentType : String [0..1];
@@ -524,26 +540,22 @@ ${portDefs.length > 0 ? portDefs.join("\n") : "        // No ports discovered"}
 
 /**
  * Generate initial requirements package (Cycle 1).
+ * Note: BaseRequirement is defined in SysMLPrimitives stdlib.
  */
 export function generateRequirements(metadata: ProjectMetadata): string {
   return `package SystemRequirements {
     import SysMLPrimitives::*;
 
-    doc /*System Requirements. Requirements extracted from documentation and codebase analysis for ${escapeSysmlString(metadata.name)}. */
-
-    // Requirement definition
-    requirement def DiscoveredRequirement {
-        attribute id : Identifier;
-        attribute source : String;
-        attribute priority : String [0..1];
-    }
+    doc /*System Requirements. Requirements extracted from documentation and codebase analysis for ${escapeSysmlString(metadata.name)}. Use BaseRequirement from SysMLPrimitives as the base type for all requirements. */
 
     // Functional requirements (to be populated by analysis)
+    // Example: requirement def FR001 :> BaseRequirement { :>> id = "FR-001"; doc /* ... */ }
     package FunctionalRequirements {
         doc /*Functional requirements discovered from documentation */
     }
 
     // Non-functional requirements (to be populated by analysis)
+    // Example: requirement def NFR001 :> BaseRequirement { :>> id = "NFR-001"; doc /* ... */ }
     package NonFunctionalRequirements {
         doc /*Non-functional requirements discovered from documentation */
     }
@@ -794,12 +806,45 @@ export function generateBehaviorTemplate(): string {
     package EventHandlers {
         doc /*Event handlers discovered from code */
     }
+
+    // System-level operations with data flows
+    package SystemOperations {
+        import SysMLPrimitives::*;
+        import DataModel::*;
+        doc /*System operations/actions with data flows */
+    }
+
+    // Service-level behavioral definitions
+    package ServiceBehaviors {
+        import SysMLPrimitives::*;
+        import SystemArchitecture::*;
+        doc /*Service-level behavioral definitions */
+    }
+
+    // Entity lifecycle state machines
+    package EntityStateMachines {
+        import SysMLPrimitives::*;
+        import DataModel::*;
+        doc /*Entity lifecycle state machines */
+    }
+
+    // Domain event definitions
+    package DomainEvents {
+        import SysMLPrimitives::*;
+        import DataModel::*;
+        doc /*Domain event definitions */
+    }
 }
 `;
 }
 
 /**
  * Generate verification template (Cycle 5).
+ *
+ * Note: TestMappings and CoverageAnalysis are created as sibling packages
+ * in separate files during Cycle 5. This template only provides the base
+ * definitions to avoid E3003 "undefined namespace" errors when the agent
+ * tries to import packages before creating them.
  */
 export function generateVerificationTemplate(): string {
   return `package Verification {
@@ -807,7 +852,7 @@ export function generateVerificationTemplate(): string {
     import SystemRequirements::*;
     import SystemBehavior::*;
 
-    doc /*Verification. Test coverage and requirement traceability. */
+    doc /*Verification. Test coverage and requirement traceability. Base definitions for verification modeling. TestMappings and CoverageAnalysis packages are created as sibling files during Cycle 5. */
 
     // Test category enumeration
     enum def TestCategory {
@@ -820,25 +865,23 @@ export function generateVerificationTemplate(): string {
         Regression;
     }
 
-    // Test case definition
+    // Test case definition - base type for all test cases
     verification def TestCase {
+        doc /*Base verification definition for test cases */
         attribute testFile : FilePath;
         attribute testName : String;
         attribute category : TestCategory;
+        attribute description : String [0..1];
     }
 
-    // Test coverage analysis
+    // Test coverage analysis template
     analysis def TestCoverage {
+        doc /*Template for test coverage analysis */
         results {
             attribute testedOperations : Integer;
             attribute totalOperations : Integer;
             attribute coveragePercent : Real;
         }
-    }
-
-    // Test mappings (to be populated by analysis)
-    package TestMappings {
-        doc /*Tests mapped to requirements and operations */
     }
 }
 `;

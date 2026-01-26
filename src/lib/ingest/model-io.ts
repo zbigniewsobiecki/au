@@ -8,7 +8,7 @@ import fg from "fast-glob";
 
 import { SYSML_DIR, CYCLE_SYSML_PATTERNS } from "./constants.js";
 import { generateInitialFiles, regenerateModelIndex, type ProjectMetadata } from "../sysml/index.js";
-import { runSysml2Multi } from "../sysml/sysml2-cli.js";
+import { runSysml2Multi, formatFile } from "../sysml/sysml2-cli.js";
 import { Output } from "../output.js";
 
 /**
@@ -61,11 +61,22 @@ export async function generateInitialModel(
   await mkdir(join(SYSML_DIR, "analysis"), { recursive: true });
 
   // Write files
+  const writtenPaths: string[] = [];
   for (const [path, content] of Object.entries(files)) {
     const fullPath = join(SYSML_DIR, path);
     await writeFile(fullPath, content, "utf-8");
+    writtenPaths.push(fullPath);
     if (verbose) {
       console.log(`  Created: ${fullPath}`);
+    }
+  }
+
+  // Validate and pretty-print all files
+  for (const fullPath of writtenPaths) {
+    try {
+      await formatFile(fullPath);
+    } catch {
+      // sysml2 not available - skip formatting
     }
   }
 

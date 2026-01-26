@@ -76,7 +76,7 @@ requirement def FR001 {
 }
 
 // CORRECT - Either inherit OR use attribute
-requirement def FR001 :> DiscoveredRequirement {  // Has base type
+requirement def FR001 :> BaseRequirement {  // Has base type
     :>> id = "FR-001";  // Now :>> works
 }
 
@@ -118,7 +118,7 @@ requirement def FR001 {
    **Example**: If `apps/backend/package.json` has `bcryptjs` and `jsonwebtoken`:
    ```sysml
    @SourceFile { :>> path = "apps/backend/package.json"; }
-   requirement def FR001 :> DiscoveredRequirement {
+   requirement def FR001 :> BaseRequirement {
        :>> id = "FR-001";
        doc /* The system shall support user authentication with secure password hashing (bcryptjs) and JWT-based session management. */
    }
@@ -166,7 +166,7 @@ requirement def FR001 {
 
        doc /*Requirements extracted from {sources} */
 
-       requirement def FR001 :> DiscoveredRequirement {
+       requirement def FR001 :> BaseRequirement {
            :>> id = "FR-001";
            :>> source = "README.md";
            doc /*{requirement text} */
@@ -186,7 +186,7 @@ requirement def FR001 {
 
 **Inherited requirement (has base type):**
 ```sysml
-requirement def FR001 :> DiscoveredRequirement {
+requirement def FR001 :> BaseRequirement {
     :>> id = "FR-001";                     // Redefine inherited attr
     doc /* description */
 }
@@ -201,11 +201,11 @@ requirement def FR001 {          // No ":>"
 
 **ERROR - value after definition name:**
 ```sysml
-requirement def FR001 :> DiscoveredRequirement = "README.md" {  // WRONG!
+requirement def FR001 :> BaseRequirement = "README.md" {  // WRONG!
     // Cannot assign value to a 'def' - values go INSIDE the body
 }
 // CORRECT:
-requirement def FR001 :> DiscoveredRequirement {
+requirement def FR001 :> BaseRequirement {
     :>> source = "README.md";    // Value assigned to attribute inside body
 }
 ```
@@ -260,13 +260,13 @@ package SystemRequirements {
     import SysMLPrimitives::*;
 
     @SourceFile { :>> path = "package.json"; }
-    requirement def FR001 :> DiscoveredRequirement {
+    requirement def FR001 :> BaseRequirement {
         :>> id = "FR-001";
         doc /* Monorepo structure with workspaces defined in package.json */
     }
 
     @SourceFile { :>> path = "turbo.json"; }
-    requirement def NFR001 :> DiscoveredRequirement {
+    requirement def NFR001 :> BaseRequirement {
         :>> id = "NFR-001";
         doc /* Build orchestration using Turborepo for parallel task execution */
     }

@@ -21,6 +21,37 @@
 Before finishing, verify your counts are close to these targets.
 <% } %>
 
+### ⚠️ CRITICAL: File Creation Order for Cycle 5
+
+**To avoid E3003 "undefined namespace" errors, follow this EXACT order:**
+
+**Step 1**: Create sibling package files FIRST (before any imports):
+```
+SysMLCreate(path="verification/test-mapping.sysml", package="TestMappings")
+SysMLCreate(path="verification/coverage.sysml", package="CoverageAnalysis")
+```
+
+**Step 2**: THEN update `verification/_index.sysml` to import them:
+```
+SysMLWrite(
+  path="verification/_index.sysml",
+  element="import TestMappings::*; import CoverageAnalysis::*;",
+  at="Verification"
+)
+```
+
+**Step 3**: Add content to the packages using SysMLWrite:
+```
+SysMLWrite(path="verification/test-mapping.sysml", element="...", at="TestMappings")
+SysMLWrite(path="verification/coverage.sysml", element="...", at="CoverageAnalysis")
+```
+
+**IMPORTANT**:
+- Create packages BEFORE importing them!
+- Use `SysMLCreate` for NEW files only
+- Use `SysMLWrite` with `at` parameter to add content to EXISTING files
+- NEVER use `SysMLCreate` on files that already exist (use `SysMLWrite` instead)
+
 ### Files to Analyze
 
 <% if (it.files && it.files.length > 0) { %>
@@ -55,40 +86,23 @@ Before finishing, verify your counts are close to these targets.
 
    Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each verification definition to track coverage.
 
-   **verification/_index.sysml** - Update overview (MUST import all sibling packages):
-   ```sysml
-   package Verification {
-       import SysMLPrimitives::*;
-       import SystemRequirements::*;
-       import SystemBehavior::*;
-       // CRITICAL: Import all sibling packages to avoid orphaned files
-       import TestMappings::*;
-       import CoverageAnalysis::*;
-
-       doc /*Verification and test coverage */
-
-       // Test category enumeration
-       enum def TestCategory {
-           Unit;
-           Integration;
-           E2E;
-           Performance;
-           Security;
-           Smoke;
-           Regression;
-       }
-
-       // Test case definition
-       verification def TestCase {
-           attribute testFile : FilePath;
-           attribute testName : String;
-           attribute category : TestCategory;
-           attribute description : String;
-       }
-   }
+   **STEP 1: Create sibling packages first** (empty, before imports):
+   ```
+   SysMLCreate(path="verification/test-mapping.sysml", package="TestMappings")
+   SysMLCreate(path="verification/coverage.sysml", package="CoverageAnalysis")
    ```
 
-   **verification/test-mapping.sysml** - Add test mappings:
+   **STEP 2: Add imports to verification/_index.sysml** (after packages exist):
+   ```sysml
+   // Add these imports to the existing Verification package:
+   import TestMappings::*;
+   import CoverageAnalysis::*;
+   ```
+
+   Note: The base Verification package already has TestCategory enum and TestCase definition from initial generation.
+   You only need to add the imports for sibling packages.
+
+   **STEP 3: verification/test-mapping.sysml** - Add test mappings:
    ```sysml
    package TestMappings {
        import SysMLPrimitives::*;

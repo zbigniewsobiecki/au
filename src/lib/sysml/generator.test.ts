@@ -173,6 +173,20 @@ describe("SysML Generator - Syntax Validation", () => {
 });
 
 describe("SysML Generator - Stdlib Content", () => {
+  it("contains base item types with correct naming", () => {
+    const stdlib = generateStdlib();
+    // Base types use "Base" prefix
+    expect(stdlib).toContain("item def BaseEntity :> Item");
+    expect(stdlib).toContain("item def BaseDTO :> Item");
+    expect(stdlib).toContain("item def BaseDomainEvent :> Item");
+    expect(stdlib).toContain("requirement def BaseRequirement");
+    // No backward compatibility aliases - clean break
+    expect(stdlib).not.toContain("alias Entity for");
+    expect(stdlib).not.toContain("alias DTO for");
+    expect(stdlib).not.toContain("alias DomainEvent for");
+    expect(stdlib).not.toContain("alias DiscoveredRequirement for");
+  });
+
   it("contains application component types", () => {
     const stdlib = generateStdlib();
     expect(stdlib).toContain("part def Application");
@@ -347,6 +361,53 @@ package TestWorker {
 }
 `;
     const result = await validateSysml(stdlib + "\n\n" + usage);
+    expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
+  });
+});
+
+describe("SysML Generator - Behavioral Packages", () => {
+  it("generates behavior template with all required packages", () => {
+    const behavior = generateBehaviorTemplate();
+
+    // Original packages (backward compatibility)
+    expect(behavior).toContain("package Operations {");
+    expect(behavior).toContain("package StateMachines {");
+    expect(behavior).toContain("package EventHandlers {");
+
+    // New packages for agents to write into
+    expect(behavior).toContain("package SystemOperations {");
+    expect(behavior).toContain("package ServiceBehaviors {");
+    expect(behavior).toContain("package EntityStateMachines {");
+    expect(behavior).toContain("package DomainEvents {");
+  });
+
+  it("new behavioral packages have correct imports", () => {
+    const behavior = generateBehaviorTemplate();
+
+    // SystemOperations should import DataModel
+    const systemOpsMatch = behavior.match(/package SystemOperations \{[\s\S]*?import DataModel::\*;[\s\S]*?\}/);
+    expect(systemOpsMatch).not.toBeNull();
+
+    // ServiceBehaviors should import SystemArchitecture
+    const serviceBehaviorsMatch = behavior.match(/package ServiceBehaviors \{[\s\S]*?import SystemArchitecture::\*;[\s\S]*?\}/);
+    expect(serviceBehaviorsMatch).not.toBeNull();
+
+    // EntityStateMachines should import DataModel
+    const entitySMMatch = behavior.match(/package EntityStateMachines \{[\s\S]*?import DataModel::\*;[\s\S]*?\}/);
+    expect(entitySMMatch).not.toBeNull();
+
+    // DomainEvents should import DataModel
+    const domainEventsMatch = behavior.match(/package DomainEvents \{[\s\S]*?import DataModel::\*;[\s\S]*?\}/);
+    expect(domainEventsMatch).not.toBeNull();
+  });
+
+  it("validates behavior template with all new packages", async () => {
+    const projectFile = generateProjectFile(mockMetadata);
+    const systemContext = generateSystemContext(mockMetadata);
+    const dataModel = generateDataModelTemplate();
+    const structure = generateStructureTemplate();
+    const content = generateBehaviorTemplate();
+    const result = await validateWithDeps(content, [projectFile, systemContext, dataModel, structure]);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 });

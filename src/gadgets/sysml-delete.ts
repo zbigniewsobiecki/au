@@ -35,7 +35,7 @@ SysMLDelete(path="data/entities.sysml", element="DomainEntities::Legacy", recurs
       .describe("File path relative to .sysml/ (e.g., 'data/entities.sysml')"),
     element: z
       .string()
-      .describe("Element path to delete (e.g., 'Pkg::OldEntity')"),
+      .describe("Element path or pattern to delete. Supports: 'Pkg::Element' (exact), 'Pkg::*' (direct children), 'Pkg::**' (all descendants)"),
     recursive: z
       .boolean()
       .optional()
@@ -53,8 +53,9 @@ SysMLDelete(path="data/entities.sysml", element="DomainEntities::Legacy", recurs
 
     const fullPath = join(".sysml", path);
 
-    // Build the delete pattern
-    const pattern = recursive ? `${element}::**` : element;
+    // Build the delete pattern - detect if element already contains wildcards
+    const hasWildcard = element.includes("::*");
+    const pattern = hasWildcard ? element : (recursive ? `${element}::**` : element);
 
     try {
       const result = await deleteElements(fullPath, [pattern], { dryRun });
