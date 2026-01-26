@@ -6,9 +6,22 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { execSync } from "node:child_process";
 import { setElement } from "./sysml2-cli.js";
 
-describe("sysml2 CLI wrapper", () => {
+// Check if sysml2 CLI is available
+function hasSysml2(): boolean {
+  try {
+    execSync("which sysml2", { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const describeSysml2 = hasSysml2() ? describe : describe.skip;
+
+describeSysml2("sysml2 CLI wrapper", () => {
   let testDir: string;
 
   beforeEach(async () => {
