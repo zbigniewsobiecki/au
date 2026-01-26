@@ -6,8 +6,32 @@
 - Expected files: ~**<%= it.expectedCount %>**
 <% const coveragePercent = it.docCoveragePercent ?? (it.expectedCount > 0 ? Math.round((it.readCount / it.expectedCount) * 100) : 100); %>
 - Documentation Coverage: **<%= coveragePercent %>%**
+
+<% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
+<% const hasValidationWarnings = it.validationExitCode === 0 && it.validationOutput && it.validationOutput.includes('warning'); %>
+
+<% if (it.validationOutput && it.validationOutput.trim().length > 0) { %>
+<% if (it.validationExitCode === 0) { %>
+## ⚠️ Model Validation Warnings
+<% } else if (it.validationExitCode === 1) { %>
+## ❌ Model Validation Errors (syntax)
+<% } else if (it.validationExitCode === 2) { %>
+## ❌ Model Validation Errors (semantic)
+<% } %>
+
+```
+<%= it.validationOutput.trim() %>
+```
+
+<% } %>
+
+<%~ include("./partials/validation-actions", it) %>
+
+<% if (!hasValidationErrors) { %>
+<% /* Only show exploration instructions when no errors */ %>
+
 <% if (coveragePercent < 50) { %>
-⚠️ **COVERAGE TOO LOW** - You MUST document more files with @SourceFile metadata!
+⚠️ **COVERAGE TOO LOW** - Document more files with @SourceFile metadata!
 <% } else if (coveragePercent < 80) { %>
 📊 Coverage acceptable but continue to improve
 <% } %>
@@ -23,27 +47,12 @@
 <% } %>
 <% } %>
 
-<% if (it.validationExitCode && it.validationExitCode !== 0 && it.validationOutput) { %>
-## ⚠️ Model Validation Errors (exit code <%= it.validationExitCode %>)
-
-<% if (it.validationExitCode === 1) { %>
-**Syntax errors must be fixed first before semantic validation can run.**
-<% } else if (it.validationExitCode === 2) { %>
-**Semantic errors - fix undefined references by creating the missing types.**
-<% } %>
-
-```
-<%= it.validationOutput.trim() %>
-```
-
-<% } %>
-
 ## Required Actions
 
 <% if (coveragePercent < 80) { %>
 1. Use `FileDiscover` or `ReadFiles` to find more files
 2. Analyze and write SysML for discovered elements
-3. Include `@SourceFile { :>> path = "<filepath>"; }` metadata before definitions to track coverage
+3. Include `@SourceFile { :>> path = "<filepath>"; }` metadata
 4. Request next batch with `FileViewerNextFileSet(paths="...")`
 
 **DO NOT call `FileViewerNextFileSet(paths="")` until coverage >= 80%**
@@ -53,5 +62,11 @@ Coverage is good. You may finish if you've:
 - Included `@SourceFile { :>> path = "<filepath>"; }` metadata for each covered file
 <% } %>
 
-**REQUIRED**: At least 2 SysMLWrite calls per response when there are files to analyze.
-**IMPORTANT**: Include `@SourceFile { :>> path = "<filepath>"; }` metadata to track which source files are covered.
+<%~ include("./partials/maximize-extraction", it) %>
+
+<% } else { %>
+<% /* When there ARE errors, don't show exploration instructions */ %>
+
+**After fixing all validation errors**, you can continue with file exploration.
+
+<% } %>

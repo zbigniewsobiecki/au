@@ -302,7 +302,7 @@ function parseDiagnosticOutput(stderr: string): Sysml2Diagnostic[] {
  *
  * Format: filename:line:column: error[CODE]: message
  */
-function parseMultiFileDiagnosticOutput(stderr: string): Sysml2MultiDiagnostic[] {
+export function parseMultiFileDiagnosticOutput(stderr: string): Sysml2MultiDiagnostic[] {
   const diagnostics: Sysml2MultiDiagnostic[] = [];
   const cleanStderr = stripAnsi(stderr);
   const pattern =

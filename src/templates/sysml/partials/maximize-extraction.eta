@@ -1,0 +1,16 @@
+## Maximize Extraction This Turn
+
+You have file contents available NOW. Extract **everything** you can infer from them in this single response.
+
+**Call `SysMLWrite` multiple times in parallel** - one call per logical grouping (e.g., one for interfaces, one for data types, one for actions). Do NOT serialize writes across multiple turns when you can batch them now.
+
+From each file, extract:
+- Port definitions and interface contracts
+- Data structures and their attributes
+- Actions/functions with their signatures
+- Connections and dependencies between components
+- Constraints and validation rules
+
+**Be aggressive**: If you can reasonably infer a type, relationship, or behavior from the code, write it. It's better to capture more structure now than to lose context between turns. You can always refine definitions later, but you cannot recover context you've lost.
+
+Aim for **3-5+ SysMLWrite calls** per response when you have substantial file content to analyze.
