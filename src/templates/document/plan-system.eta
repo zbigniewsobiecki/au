@@ -5,7 +5,7 @@ The ONLY way to create a documentation plan is by calling the DocPlan gadget.
 
 ## Your Task
 
-Create a documentation plan based on the AU (Agent Understanding) files provided. List the documents to generate - the actual content structure will be determined when writing each document.
+Create a documentation plan based on the SysML model provided. List the documents to generate - the actual content structure will be determined when writing each document.
 
 ## Documentation Categories
 
@@ -93,7 +93,7 @@ Before creating your documentation plan, you MUST perform this analysis to ensur
 
 3. **Component Documentation Requirements**:
    - Each component doc should have `type: "component"`
-   - Use `mustCoverPaths` to list AU paths this doc must cover
+   - Use `mustCoverPaths` to list SysML paths this doc must cover
    - Include: Purpose, Key Files, Public Interface, Dependencies
 
 ### Step 2: Integration Analysis (Language-Agnostic)
@@ -244,4 +244,4 @@ Call **DocPlan** with:
 Use the optional fields where appropriate:
 - `sourcePaths`: specific files to validate against (in addition to default package.json)
 - `includeDiagram`: type of D2 diagram to include
-- `coverageTarget`: AU path pattern this document covers
+- `coverageTarget`: SysML path pattern this document covers

@@ -9,29 +9,19 @@
 <% const coveragePercent = it.totalMissing > 0 ? Math.round(((it.totalMissing - it.stillMissing) / it.totalMissing) * 100) : 100; %>
 - Retry coverage: **<%= coveragePercent %>%** (<%= it.totalMissing - it.stillMissing %>/<%= it.totalMissing %> files)
 
-<% if (it.validationErrors && it.validationErrors.length > 0) { %>
-## Model Validation Errors
+<% if (it.validationExitCode && it.validationExitCode !== 0 && it.validationOutput) { %>
+## Model Validation Errors (exit code <%= it.validationExitCode %>)
 
-Fix these semantic errors:
+<% if (it.validationExitCode === 1) { %>
+**Syntax errors must be fixed first.**
+<% } else if (it.validationExitCode === 2) { %>
+**Semantic errors - fix undefined references by creating the missing types.**
+<% } %>
 
-<%
-// Group errors by code
-const byCode = {};
-for (const err of it.validationErrors) {
-  const code = err.code || 'Unknown';
-  if (!byCode[code]) byCode[code] = [];
-  byCode[code].push(err);
-}
-%>
-<% for (const [code, errors] of Object.entries(byCode)) { %>
-### <%= code %><% if (code === 'E3001') { %> (Undefined Reference)<% } else if (code === 'E3004') { %> (Duplicate Definition)<% } %>
-<% for (const err of errors.slice(0, 5)) { %>
-- `<%= err.file %>:<%= err.line %>`: <%= err.message %>
-<% } %>
-<% if (errors.length > 5) { %>
-*(+<%= errors.length - 5 %> more <%= code %> errors)*
-<% } %>
-<% } %>
+```
+<%= it.validationOutput.trim() %>
+```
+
 <% } %>
 
 <% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
