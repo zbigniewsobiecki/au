@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { access, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   sysmlRead,
@@ -19,15 +19,23 @@ import {
   loadManifest,
   type VerificationFinding,
 } from "../gadgets/index.js";
-import { SysMLModelValidator, type SysMLValidationResult } from "../lib/sysml-model-validator.js";
-import { validateModelFull } from "../lib/sysml/sysml2-cli.js";
+import {
+  SysMLCoverageValidator,
+  type CoverageValidationResult,
+} from "../lib/sysml-model-validator.js";
+import {
+  validateModelFull,
+  parseMultiFileDiagnosticOutput,
+  type Sysml2MultiDiagnostic,
+} from "../lib/sysml/sysml2-cli.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import {
-  prioritizeStaticIssues,
+  prioritizeSysml2Diagnostics,
   prioritizeAgenticFindings,
   sortIssuesByPriority,
   groupByPriority,
+  type PrioritizedIssue,
 } from "../lib/issue-priority.js";
 import {
   agentFlags,
@@ -85,30 +93,56 @@ export default class Validate extends Command {
 
     const { restore } = withWorkingDirectory(flags.path, out);
 
-    // Phase 1: Static validation (always runs)
-    out.info("Phase 1: Static validation...");
+    // Phase 1: sysml2 validation
+    out.info("Phase 1: sysml2 validation...");
 
-    const validator = new SysMLModelValidator();
-    const result = await validator.validate(".");
+    // Basic existence check
+    if (!(await this.fileExists(".sysml"))) {
+      out.error("No .sysml directory found");
+      restore();
+      process.exit(1);
+    }
 
-    // Display validation results
-    this.displayResults(result, flags.verbose);
+    // Run sysml2 directly
+    const validation = await validateModelFull(".sysml");
+    const diagnostics = parseMultiFileDiagnosticOutput(validation.output || "");
 
-    // Calculate total issues
-    const staticIssues = SysMLModelValidator.getIssueCount(result);
+    // Display sysml2 results
+    this.displaySysml2Results(validation.exitCode, validation.output, diagnostics, flags.verbose);
+
+    const hasErrors = validation.exitCode !== 0;
+    const hasWarnings = diagnostics.some(d => d.severity === "warning");
+
+    // Run coverage validation
+    const coverageValidator = new SysMLCoverageValidator();
+    const coverageResult = await coverageValidator.validate(".");
+
+    // Display coverage results
+    this.displayCoverageResults(coverageResult, flags.verbose);
+
+    const coverageIssues = SysMLCoverageValidator.getIssueCount(coverageResult);
 
     // Summary of static phase
     console.log();
-    if (staticIssues === 0) {
+    const totalStaticIssues = diagnostics.filter(d => d.severity === "error").length + coverageIssues;
+    if (totalStaticIssues === 0 && !hasWarnings) {
       out.success("Static validation passed");
     } else {
-      out.warn(`Static: ${staticIssues} issue${staticIssues === 1 ? "" : "s"} found`);
+      if (hasErrors) {
+        out.warn(`sysml2: ${diagnostics.filter(d => d.severity === "error").length} error(s)`);
+      }
+      if (hasWarnings) {
+        out.info(`sysml2: ${diagnostics.filter(d => d.severity === "warning").length} warning(s)`);
+      }
+      if (coverageIssues > 0) {
+        out.warn(`Coverage: ${coverageIssues} issue(s)`);
+      }
     }
 
     // If --quick, exit after static checks
     if (flags.quick) {
       restore();
-      if (staticIssues > 0) {
+      if (hasErrors || coverageIssues > 0) {
         process.exit(1);
       }
       return;
@@ -116,7 +150,13 @@ export default class Validate extends Command {
 
     // Phase 2: Agentic verification (skip if --quick)
     out.info("\nPhase 2: Agentic verification...");
-    const agenticFindings = await this.runAgenticVerification(result, flags, out);
+    const agenticFindings = await this.runAgenticVerification(
+      validation.exitCode,
+      validation.output || "",
+      diagnostics,
+      flags,
+      out
+    );
 
     // Display agentic findings summary
     const errors = agenticFindings.filter((f) => f.category === "error").length;
@@ -151,28 +191,40 @@ export default class Validate extends Command {
       }
     }
 
-    const hasIssues = staticIssues > 0 || errors > 0;
+    const hasIssues = hasErrors || coverageIssues > 0 || errors > 0;
 
     // Phase 3: Fix (if --fix and issues found)
     if (flags.fix && hasIssues) {
       out.info("\nPhase 3: Running agentic fix...");
 
-      const fixesApplied = await this.runFixPhase(result, agenticFindings, flags, out);
+      const fixesApplied = await this.runFixPhase(
+        validation.exitCode,
+        diagnostics,
+        coverageResult,
+        agenticFindings,
+        flags,
+        out
+      );
 
       if (fixesApplied > 0) {
         out.success(`Applied ${fixesApplied} fix${fixesApplied === 1 ? "" : "es"}`);
 
         // Re-validate to show updated status
         out.info("\nRe-validating...");
-        const newResult = await validator.validate(".");
-        this.displayResults(newResult, flags.verbose);
+        const newValidation = await validateModelFull(".sysml");
+        const newDiagnostics = parseMultiFileDiagnosticOutput(newValidation.output || "");
+        this.displaySysml2Results(newValidation.exitCode, newValidation.output, newDiagnostics, flags.verbose);
 
-        const newTotalIssues = SysMLModelValidator.getIssueCount(newResult);
+        const newCoverageResult = await coverageValidator.validate(".");
+        this.displayCoverageResults(newCoverageResult, flags.verbose);
+
+        const newErrorCount = newDiagnostics.filter(d => d.severity === "error").length;
+        const newCoverageIssues = SysMLCoverageValidator.getIssueCount(newCoverageResult);
         console.log();
-        if (newTotalIssues === 0) {
+        if (newErrorCount === 0 && newCoverageIssues === 0) {
           out.success("All validations passed after fixes");
         } else {
-          out.warn(`${newTotalIssues} issue${newTotalIssues === 1 ? "" : "s"} remaining`);
+          out.warn(`${newErrorCount + newCoverageIssues} issue${newErrorCount + newCoverageIssues === 1 ? "" : "s"} remaining`);
         }
       } else {
         out.info("No fixes were applied");
@@ -188,96 +240,64 @@ export default class Validate extends Command {
   }
 
   /**
-   * Display validation results to console.
+   * Check if a file/directory exists.
    */
-  private displayResults(result: SysMLValidationResult, verbose: boolean): void {
-    console.log("\n━━━ SysML Model Validation ━━━\n");
+  private async fileExists(path: string): Promise<boolean> {
+    try {
+      await access(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
-    // Manifest check
-    if (result.manifestExists) {
-      console.log("✓ Manifest exists");
+  /**
+   * Display sysml2 validation results.
+   */
+  private displaySysml2Results(
+    exitCode: number,
+    output: string | undefined,
+    diagnostics: Sysml2MultiDiagnostic[],
+    verbose: boolean
+  ): void {
+    console.log("\n━━━ sysml2 Validation ━━━\n");
+
+    if (exitCode === 0) {
+      const warningCount = diagnostics.filter(d => d.severity === "warning").length;
+      if (warningCount === 0) {
+        console.log("✓ No errors or warnings");
+      } else {
+        console.log(`✓ No errors, ${warningCount} warning(s)`);
+      }
     } else {
-      console.log("✗ Manifest missing");
-      if (result.manifestErrors.length > 0) {
-        for (const error of result.manifestErrors) {
-          console.log(`  ${error}`);
-        }
-      }
+      const errorType = exitCode === 1 ? "Syntax" : "Semantic";
+      const errorCount = diagnostics.filter(d => d.severity === "error").length;
+      console.log(`✗ ${errorType} errors: ${errorCount}`);
     }
 
-    // Manifest errors
-    if (result.manifestErrors.length > 0 && result.manifestExists) {
-      console.log("⚠ Manifest issues:");
-      for (const error of result.manifestErrors) {
-        console.log(`  ${error}`);
+    // Show diagnostics
+    if (diagnostics.length > 0) {
+      const displayDiags = verbose ? diagnostics : diagnostics.slice(0, 10);
+      for (const diag of displayDiags) {
+        const icon = diag.severity === "error" ? "✗" : "⚠";
+        const codeInfo = diag.code ? `[${diag.code}] ` : "";
+        console.log(`  ${icon} ${diag.file}:${diag.line}:${diag.column}: ${codeInfo}${diag.message}`);
+      }
+      if (!verbose && diagnostics.length > 10) {
+        console.log(`  ... and ${diagnostics.length - 10} more (use --verbose)`);
       }
     }
+  }
 
-    // Expected outputs
-    const existingOutputs = result.expectedOutputs.filter((o) => o.exists).length;
-    const totalOutputs = result.expectedOutputs.length;
-
-    if (totalOutputs > 0) {
-      if (existingOutputs === totalOutputs) {
-        console.log(`✓ Expected outputs: ${existingOutputs}/${totalOutputs} exist`);
-      } else {
-        console.log(`⚠ Expected outputs: ${existingOutputs}/${totalOutputs} exist`);
-        if (verbose) {
-          for (const output of result.expectedOutputs) {
-            if (!output.exists) {
-              console.log(`  ✗ Missing: ${output.path}`);
-            }
-          }
-        } else {
-          const missing = result.expectedOutputs.filter((o) => !o.exists);
-          if (missing.length <= 3) {
-            for (const output of missing) {
-              console.log(`  ✗ Missing: ${output.path}`);
-            }
-          } else {
-            console.log(`  (${missing.length} missing files, use --verbose to see all)`);
-          }
-        }
-      }
-    }
-
-    // Syntax validation
-    if (result.totalFileCount > 0) {
-      if (result.syntaxErrors.length === 0) {
-        console.log(`✓ SysML syntax: ${result.validFileCount} files valid`);
-      } else {
-        const errorCount = result.syntaxErrors.length;
-        console.log(`⚠ SysML syntax: ${result.validFileCount}/${result.totalFileCount} files valid (${errorCount} with errors)`);
-
-        if (verbose) {
-          for (const syntaxError of result.syntaxErrors) {
-            console.log(`  ✗ ${syntaxError.file}:`);
-            for (const error of syntaxError.errors.slice(0, 3)) {
-              console.log(`    ${error}`);
-            }
-            if (syntaxError.errors.length > 3) {
-              console.log(`    ... and ${syntaxError.errors.length - 3} more errors`);
-            }
-          }
-        } else {
-          const first3 = result.syntaxErrors.slice(0, 3);
-          for (const syntaxError of first3) {
-            console.log(`  ✗ ${syntaxError.file}: ${syntaxError.errors[0]}`);
-          }
-          if (result.syntaxErrors.length > 3) {
-            console.log(`  ... and ${result.syntaxErrors.length - 3} more files with errors`);
-          }
-        }
-      }
-    }
+  /**
+   * Display coverage validation results.
+   */
+  private displayCoverageResults(result: CoverageValidationResult, verbose: boolean): void {
+    console.log("\n━━━ Coverage Validation ━━━\n");
 
     // File coverage validation
     if (result.fileCoverageMismatches.length === 0) {
-      // Only show success if there were expected source files to validate
-      const hasSourceFiles = result.expectedOutputs.length > 0;
-      if (hasSourceFiles) {
-        console.log("✓ Source file coverage: all files covered");
-      }
+      console.log("✓ Source file coverage: all files covered");
     } else {
       console.log("⚠ Coverage mismatches:");
       for (const mismatch of result.fileCoverageMismatches) {
@@ -292,38 +312,6 @@ export default class Validate extends Command {
             console.log(`    ... and ${mismatch.uncoveredFiles.length - 5} more`);
           }
         }
-      }
-    }
-
-    // Orphaned files
-    if (result.orphanedFiles.length === 0) {
-      console.log("✓ No orphaned files");
-    } else {
-      console.log("⚠ Orphaned files:");
-      for (const orphan of result.orphanedFiles.slice(0, 5)) {
-        console.log(`  ${orphan}`);
-      }
-      if (result.orphanedFiles.length > 5) {
-        console.log(`  ... and ${result.orphanedFiles.length - 5} more`);
-      }
-    }
-
-    // Reference integrity
-    if (result.missingReferences.length === 0) {
-      console.log("✓ References: all resolved");
-    } else {
-      console.log(`⚠ Missing references (${result.missingReferences.length}):`);
-      const displayRefs = verbose
-        ? result.missingReferences
-        : result.missingReferences.slice(0, 5);
-      for (const ref of displayRefs) {
-        console.log(`  ${ref.file}:${ref.line}: ${ref.type} '${ref.reference}'`);
-        if (verbose && ref.context) {
-          console.log(`    context: ${ref.context}`);
-        }
-      }
-      if (!verbose && result.missingReferences.length > 5) {
-        console.log(`  ... and ${result.missingReferences.length - 5} more (use --verbose)`);
       }
     }
 
@@ -343,39 +331,6 @@ export default class Validate extends Command {
         console.log(`  ... and ${result.coverageIssues.length - 5} more (use --verbose)`);
       }
     }
-
-    // Model index integrity
-    if (!result.modelIndexMismatches) {
-      console.log("✓ Model index: imports match discovered packages");
-    } else {
-      const { importedButMissing, existingButNotImported } = result.modelIndexMismatches;
-      const totalMismatches = importedButMissing.length + existingButNotImported.length;
-      console.log(`⚠ Model index mismatches (${totalMismatches}):`);
-
-      if (importedButMissing.length > 0) {
-        console.log(`  Imported but package not found:`);
-        const displayMissing = verbose ? importedButMissing : importedButMissing.slice(0, 3);
-        for (const pkg of displayMissing) {
-          console.log(`    ✗ ${pkg}`);
-        }
-        if (!verbose && importedButMissing.length > 3) {
-          console.log(`    ... and ${importedButMissing.length - 3} more`);
-        }
-      }
-
-      if (existingButNotImported.length > 0) {
-        console.log(`  Package exists but not imported in _model.sysml:`);
-        const displayNotImported = verbose ? existingButNotImported : existingButNotImported.slice(0, 3);
-        for (const pkg of displayNotImported) {
-          console.log(`    ✗ ${pkg}`);
-        }
-        if (!verbose && existingButNotImported.length > 3) {
-          console.log(`    ... and ${existingButNotImported.length - 3} more`);
-        }
-      }
-
-      console.log(`  Run 'au sysml-ingest' to regenerate _model.sysml`);
-    }
   }
 
   /**
@@ -383,7 +338,9 @@ export default class Validate extends Command {
    * Returns all findings discovered by the agent.
    */
   private async runAgenticVerification(
-    staticResult: SysMLValidationResult,
+    sysml2ExitCode: number,
+    sysml2Output: string,
+    diagnostics: Sysml2MultiDiagnostic[],
     flags: { model: string; rpm: number; tpm: number; "verify-iterations": number; verbose: boolean },
     out: Output
   ): Promise<VerificationFinding[]> {
@@ -400,15 +357,17 @@ export default class Validate extends Command {
     // Get manifest summary
     const manifestSummary = await this.getManifestSummary();
 
-    // Format static results for context
-    const staticResults = this.formatStaticResults(staticResult);
+    // Format sysml2 status
+    const sysml2HasWarnings = diagnostics.some(d => d.severity === "warning");
 
     // Render prompts
     const systemPrompt = render("sysml-verify/system", {});
     const userPrompt = render("sysml-verify/user", {
       sysmlContent,
       manifestSummary,
-      staticResults,
+      sysml2ExitCode,
+      sysml2Output: sysml2Output.trim(),
+      sysml2HasWarnings,
     });
 
     // Build agent with gadgets
@@ -462,17 +421,6 @@ export default class Validate extends Command {
       if (!(error instanceof Error && error.message.includes("SysML verification complete"))) {
         out.warn(`Verification phase stopped: ${error instanceof Error ? error.message : error}`);
       }
-    }
-
-    // Display current validation errors
-    try {
-      const validation = await validateModelFull(".sysml");
-      if (validation.exitCode !== 0 && validation.output) {
-        const errorType = validation.exitCode === 1 ? "Syntax" : "Semantic";
-        out.warn(`${errorType} validation errors (exit code ${validation.exitCode})`);
-      }
-    } catch {
-      // sysml2 not available
     }
 
     return getCollectedFindings();
@@ -573,39 +521,34 @@ export default class Validate extends Command {
   }
 
   /**
-   * Format static validation results for context.
+   * Convert coverage validation results to prioritized issues.
    */
-  private formatStaticResults(result: SysMLValidationResult): string {
-    const lines: string[] = [];
+  private prioritizeCoverageIssues(result: CoverageValidationResult): PrioritizedIssue[] {
+    const issues: PrioritizedIssue[] = [];
 
-    lines.push(`Manifest: ${result.manifestExists ? "exists" : "MISSING"}`);
-
-    if (result.manifestErrors.length > 0) {
-      lines.push(`Manifest errors: ${result.manifestErrors.length}`);
+    // P4 - MEDIUM: File coverage mismatches
+    for (const mismatch of result.fileCoverageMismatches) {
+      issues.push({
+        priority: 4,
+        priorityLabel: "MEDIUM",
+        category: "coverage-mismatch",
+        description: `${mismatch.cycle}: ${mismatch.covered}/${mismatch.expected} source files covered`,
+        recommendation: `Uncovered files: ${mismatch.uncoveredFiles.slice(0, 3).join(", ")}${mismatch.uncoveredFiles.length > 3 ? ` (+${mismatch.uncoveredFiles.length - 3} more)` : ""}`,
+      });
     }
 
-    lines.push(`Files: ${result.validFileCount}/${result.totalFileCount} valid`);
-
-    if (result.syntaxErrors.length > 0) {
-      lines.push(`Syntax errors: ${result.syntaxErrors.length} files`);
+    // P5 - LOW: Coverage issues
+    for (const issue of result.coverageIssues) {
+      issues.push({
+        priority: 5,
+        priorityLabel: "LOW",
+        category: `coverage-${issue.type}`,
+        description: `${issue.cycle}: ${issue.type} - ${issue.path}`,
+        recommendation: issue.detail,
+      });
     }
 
-    if (result.missingReferences.length > 0) {
-      lines.push(`Missing references: ${result.missingReferences.length}`);
-    }
-
-    if (result.orphanedFiles.length > 0) {
-      lines.push(`Orphaned files: ${result.orphanedFiles.length}`);
-    }
-
-    if (result.coverageIssues.length > 0) {
-      lines.push(`Coverage issues: ${result.coverageIssues.length}`);
-    }
-
-    const totalIssues = SysMLModelValidator.getIssueCount(result);
-    lines.push(`\nTotal static issues: ${totalIssues}`);
-
-    return lines.join("\n");
+    return issues;
   }
 
   /**
@@ -613,7 +556,9 @@ export default class Validate extends Command {
    * Returns the number of fixes applied.
    */
   private async runFixPhase(
-    result: SysMLValidationResult,
+    sysml2ExitCode: number,
+    diagnostics: Sysml2MultiDiagnostic[],
+    coverageResult: CoverageValidationResult,
     agenticFindings: VerificationFinding[],
     flags: { model: string; rpm: number; tpm: number; "fix-iterations": number; verbose: boolean },
     out: Output
@@ -622,11 +567,12 @@ export default class Validate extends Command {
     const systemPrompt = render("sysml-fix/system", {});
 
     // Prioritize and sort all issues
-    const staticIssues = prioritizeStaticIssues(result);
+    const sysml2Issues = prioritizeSysml2Diagnostics(sysml2ExitCode, diagnostics);
+    const coverageIssues = this.prioritizeCoverageIssues(coverageResult);
     const agenticIssues = prioritizeAgenticFindings(
       agenticFindings.filter((f) => f.category === "error" || f.category === "warning")
     );
-    const allIssues = sortIssuesByPriority([...staticIssues, ...agenticIssues]);
+    const allIssues = sortIssuesByPriority([...sysml2Issues, ...coverageIssues, ...agenticIssues]);
     const groupedIssues = groupByPriority(allIssues);
 
     const initialPrompt = render("sysml-fix/initial", {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  prioritizeStaticIssues,
+  prioritizeSysml2Diagnostics,
   prioritizeAgenticFindings,
   sortIssuesByPriority,
   groupByPriority,
@@ -8,7 +8,7 @@ import {
   getPrioritySummary,
   type PrioritizedIssue,
 } from "./issue-priority.js";
-import type { SysMLValidationResult } from "./sysml-model-validator.js";
+import type { Sysml2MultiDiagnostic } from "./sysml/sysml2-cli.js";
 import type { VerificationFinding } from "../gadgets/verify-finding.js";
 
 describe("issue-priority", () => {
@@ -22,183 +22,105 @@ describe("issue-priority", () => {
     });
   });
 
-  describe("prioritizeStaticIssues", () => {
-    const emptyResult: SysMLValidationResult = {
-      manifestExists: true,
-      manifestErrors: [],
-      expectedOutputs: [],
-      syntaxErrors: [],
-      fileCoverageMismatches: [],
-      orphanedFiles: [],
-      missingReferences: [],
-      coverageIssues: [],
-      validFileCount: 0,
-      totalFileCount: 0,
-    };
-
-    it("returns empty array for clean result", () => {
-      const issues = prioritizeStaticIssues(emptyResult);
+  describe("prioritizeSysml2Diagnostics", () => {
+    it("returns empty array for no diagnostics", () => {
+      const issues = prioritizeSysml2Diagnostics(0, []);
       expect(issues).toEqual([]);
     });
 
-    it("assigns P1 BLOCKING to manifest errors", () => {
-      const result: SysMLValidationResult = {
-        ...emptyResult,
-        manifestErrors: ["Manifest not found"],
-      };
-      const issues = prioritizeStaticIssues(result);
+    it("assigns P1 BLOCKING to syntax errors (exit code 1)", () => {
+      const diagnostics: Sysml2MultiDiagnostic[] = [
+        {
+          file: "data/entities.sysml",
+          line: 5,
+          column: 10,
+          severity: "error",
+          code: "",
+          message: "Missing semicolon",
+        },
+      ];
+      const issues = prioritizeSysml2Diagnostics(1, diagnostics);
 
       expect(issues).toHaveLength(1);
       expect(issues[0]).toMatchObject({
         priority: 1,
         priorityLabel: "BLOCKING",
-        category: "manifest-error",
-        description: "Manifest not found",
-      });
-    });
-
-    it("assigns P1 BLOCKING to syntax errors", () => {
-      const result: SysMLValidationResult = {
-        ...emptyResult,
-        syntaxErrors: [
-          {
-            file: "data/entities.sysml",
-            errors: ["Line 5:10: Missing semicolon"],
-          },
-        ],
-      };
-      const issues = prioritizeStaticIssues(result);
-
-      expect(issues).toHaveLength(1);
-      expect(issues[0]).toMatchObject({
-        priority: 1,
-        priorityLabel: "BLOCKING",
-        category: "syntax-error",
+        category: "sysml2-error",
         file: "data/entities.sysml",
+        line: 5,
       });
     });
 
-    it("assigns P2 CRITICAL to missing references", () => {
-      const result: SysMLValidationResult = {
-        ...emptyResult,
-        missingReferences: [
-          {
-            file: "structure/modules.sysml",
-            line: 15,
-            type: "import",
-            reference: "DataModels",
-            context: "import DataModels::*;",
-          },
-        ],
-      };
-      const issues = prioritizeStaticIssues(result);
+    it("assigns P2 CRITICAL to semantic errors (exit code 2)", () => {
+      const diagnostics: Sysml2MultiDiagnostic[] = [
+        {
+          file: "structure/modules.sysml",
+          line: 15,
+          column: 1,
+          severity: "error",
+          code: "E3001",
+          message: "Undefined reference 'DataModels'",
+        },
+      ];
+      const issues = prioritizeSysml2Diagnostics(2, diagnostics);
 
       expect(issues).toHaveLength(1);
       expect(issues[0]).toMatchObject({
         priority: 2,
         priorityLabel: "CRITICAL",
-        category: "missing-import",
+        category: "sysml2-error",
         file: "structure/modules.sysml",
         line: 15,
       });
+      expect(issues[0].description).toContain("[E3001]");
     });
 
-    it("assigns P3 HIGH to missing expected outputs", () => {
-      const result: SysMLValidationResult = {
-        ...emptyResult,
-        expectedOutputs: [
-          { path: "data/entities.sysml", exists: true },
-          { path: "data/enums.sysml", exists: false },
-        ],
-      };
-      const issues = prioritizeStaticIssues(result);
+    it("assigns P3 HIGH to warnings", () => {
+      const diagnostics: Sysml2MultiDiagnostic[] = [
+        {
+          file: "data/entities.sysml",
+          line: 10,
+          column: 5,
+          severity: "warning",
+          code: "W1001",
+          message: "Unused import",
+        },
+      ];
+      const issues = prioritizeSysml2Diagnostics(0, diagnostics);
 
       expect(issues).toHaveLength(1);
       expect(issues[0]).toMatchObject({
         priority: 3,
         priorityLabel: "HIGH",
-        category: "missing-output",
-        file: "data/enums.sysml",
+        category: "sysml2-warning",
+        file: "data/entities.sysml",
       });
     });
 
-    it("assigns P4 MEDIUM to file coverage mismatches", () => {
-      const result: SysMLValidationResult = {
-        ...emptyResult,
-        fileCoverageMismatches: [
-          {
-            cycle: "cycle3",
-            patterns: ["src/models/*.ts"],
-            expected: 10,
-            covered: 7,
-            uncoveredFiles: ["src/models/User.ts", "src/models/Order.ts", "src/models/Product.ts"],
-          },
-        ],
-      };
-      const issues = prioritizeStaticIssues(result);
-
-      expect(issues).toHaveLength(1);
-      expect(issues[0]).toMatchObject({
-        priority: 4,
-        priorityLabel: "MEDIUM",
-        category: "coverage-mismatch",
-      });
-      expect(issues[0].description).toContain("7/10 source files covered");
-    });
-
-    it("assigns P5 LOW to orphaned files", () => {
-      const result: SysMLValidationResult = {
-        ...emptyResult,
-        orphanedFiles: ["old/legacy.sysml"],
-      };
-      const issues = prioritizeStaticIssues(result);
-
-      expect(issues).toHaveLength(1);
-      expect(issues[0]).toMatchObject({
-        priority: 5,
-        priorityLabel: "LOW",
-        category: "orphaned-file",
-        file: "old/legacy.sysml",
-      });
-    });
-
-    it("assigns P5 LOW to coverage issues", () => {
-      const result: SysMLValidationResult = {
-        ...emptyResult,
-        coverageIssues: [
-          {
-            cycle: "cycle2",
-            type: "missing-directory",
-            path: "src/legacy",
-            detail: "Directory does not exist",
-          },
-        ],
-      };
-      const issues = prioritizeStaticIssues(result);
-
-      expect(issues).toHaveLength(1);
-      expect(issues[0]).toMatchObject({
-        priority: 5,
-        priorityLabel: "LOW",
-        category: "coverage-missing-directory",
-      });
-    });
-
-    it("handles multiple syntax errors in same file", () => {
-      const result: SysMLValidationResult = {
-        ...emptyResult,
-        syntaxErrors: [
-          {
-            file: "data/entities.sysml",
-            errors: ["Line 5: error 1", "Line 10: error 2"],
-          },
-        ],
-      };
-      const issues = prioritizeStaticIssues(result);
+    it("handles mixed errors and warnings", () => {
+      const diagnostics: Sysml2MultiDiagnostic[] = [
+        {
+          file: "a.sysml",
+          line: 1,
+          column: 1,
+          severity: "error",
+          code: "E3001",
+          message: "Error 1",
+        },
+        {
+          file: "b.sysml",
+          line: 2,
+          column: 1,
+          severity: "warning",
+          code: "",
+          message: "Warning 1",
+        },
+      ];
+      const issues = prioritizeSysml2Diagnostics(2, diagnostics);
 
       expect(issues).toHaveLength(2);
-      expect(issues[0].file).toBe("data/entities.sysml");
-      expect(issues[1].file).toBe("data/entities.sysml");
+      expect(issues[0].priority).toBe(2); // Error with exit code 2 = CRITICAL
+      expect(issues[1].priority).toBe(3); // Warning = HIGH
     });
   });
 

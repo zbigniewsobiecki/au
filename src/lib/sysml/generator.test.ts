@@ -21,6 +21,13 @@ async function validateWithStdlib(content: string) {
   return validateSysml(stdlib + "\n\n" + content);
 }
 
+// Helper: validate with stdlib and additional dependencies
+async function validateWithDeps(content: string, deps: string[] = []) {
+  const stdlib = generateStdlib();
+  const allContent = [stdlib, ...deps, content].join("\n\n");
+  return validateSysml(allContent);
+}
+
 const mockMetadata: ProjectMetadata = {
   name: "test-project",
   version: "1.0.0",
@@ -56,8 +63,19 @@ describe("SysML Generator - Syntax Validation", () => {
   });
 
   it("generates valid _model.sysml", async () => {
+    // _model.sysml imports all packages, so we need to provide them all
+    const projectFile = generateProjectFile(mockMetadata);
+    const requirements = generateRequirements(mockMetadata);
+    const systemContext = generateSystemContext(mockMetadata);
+    const dataModel = generateDataModelTemplate();
+    const structure = generateStructureTemplate();
+    const behavior = generateBehaviorTemplate();
+    const verification = generateVerificationTemplate();
+    const analysis = generateAnalysisTemplate();
+
     const content = generateModelIndex(mockMetadata);
-    const result = await validateSysml(content);
+    const deps = [projectFile, requirements, systemContext, dataModel, structure, behavior, verification, analysis];
+    const result = await validateWithDeps(content, deps);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 
@@ -68,14 +86,19 @@ describe("SysML Generator - Syntax Validation", () => {
   });
 
   it("generates valid context/boundaries.sysml", async () => {
+    // SystemContext imports ProjectMetadata
+    const projectFile = generateProjectFile(mockMetadata);
     const content = generateSystemContext(mockMetadata);
-    const result = await validateWithStdlib(content);
+    const result = await validateWithDeps(content, [projectFile]);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 
   it("generates valid structure/_index.sysml", async () => {
+    // Structure imports ProjectMetadata and SystemContext
+    const projectFile = generateProjectFile(mockMetadata);
+    const systemContext = generateSystemContext(mockMetadata);
     const content = generateStructureTemplate();
-    const result = await validateWithStdlib(content);
+    const result = await validateWithDeps(content, [projectFile, systemContext]);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 
@@ -86,34 +109,66 @@ describe("SysML Generator - Syntax Validation", () => {
   });
 
   it("generates valid behavior/_index.sysml", async () => {
+    // Behavior imports ProjectMetadata, SystemContext, DataModel, and Structure
+    const projectFile = generateProjectFile(mockMetadata);
+    const systemContext = generateSystemContext(mockMetadata);
+    const dataModel = generateDataModelTemplate();
+    const structure = generateStructureTemplate();
     const content = generateBehaviorTemplate();
-    const result = await validateWithStdlib(content);
+    const result = await validateWithDeps(content, [projectFile, systemContext, dataModel, structure]);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 
   it("generates valid verification/_index.sysml", async () => {
+    // Verification imports ProjectMetadata, SystemContext, Requirements, DataModel, Structure, and Behavior
+    const projectFile = generateProjectFile(mockMetadata);
+    const requirements = generateRequirements(mockMetadata);
+    const systemContext = generateSystemContext(mockMetadata);
+    const dataModel = generateDataModelTemplate();
+    const structure = generateStructureTemplate();
+    const behavior = generateBehaviorTemplate();
     const content = generateVerificationTemplate();
-    const result = await validateWithStdlib(content);
+    const result = await validateWithDeps(content, [projectFile, requirements, systemContext, dataModel, structure, behavior]);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 
   it("generates valid analysis/_index.sysml", async () => {
+    // Analysis imports ProjectMetadata, SystemContext, DataModel, Structure, and Behavior
+    const projectFile = generateProjectFile(mockMetadata);
+    const systemContext = generateSystemContext(mockMetadata);
+    const dataModel = generateDataModelTemplate();
+    const structure = generateStructureTemplate();
+    const behavior = generateBehaviorTemplate();
     const content = generateAnalysisTemplate();
-    const result = await validateWithStdlib(content);
+    const result = await validateWithDeps(content, [projectFile, systemContext, dataModel, structure, behavior]);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 
   it("generates all initial files with valid syntax", async () => {
     const files = generateInitialFiles(mockMetadata);
-    const stdlib = files["SysMLPrimitives.sysml"];
 
-    for (const [fileName, content] of Object.entries(files)) {
-      // Stdlib validates on its own, others need stdlib prepended
-      const result = fileName === "SysMLPrimitives.sysml"
-        ? await validateSysml(content)
-        : await validateSysml(stdlib + "\n\n" + content);
-      expect(result.valid, `${fileName} validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
-    }
+    // Validate all files together (as they would be in a real project)
+    // The order matters: stdlib first, then project, then packages in dependency order
+    const orderedFiles = [
+      "SysMLPrimitives.sysml",
+      "_project.sysml",
+      "context/requirements.sysml",
+      "context/boundaries.sysml",
+      "data/_index.sysml",
+      "structure/_index.sysml",
+      "behavior/_index.sysml",
+      "verification/_index.sysml",
+      "analysis/_index.sysml",
+      "_model.sysml",
+    ];
+
+    const allContent = orderedFiles
+      .filter(name => files[name])
+      .map(name => files[name])
+      .join("\n\n");
+
+    const result = await validateSysml(allContent);
+    expect(result.valid, `Combined validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 });
 
@@ -142,9 +197,7 @@ describe("SysML Generator - Stdlib Content", () => {
     const stdlib = generateStdlib();
     expect(stdlib).toContain("part def ExternalService");
     expect(stdlib).toContain("part def AuthProvider");
-    expect(stdlib).toContain("part def PaymentProvider");
-    expect(stdlib).toContain("part def EmailProvider");
-    expect(stdlib).toContain("part def StorageProvider");
+    // PaymentProvider, EmailProvider, StorageProvider removed - too specific
   });
 
   it("contains service port definitions", () => {
@@ -155,9 +208,8 @@ describe("SysML Generator - Stdlib Content", () => {
     expect(stdlib).toContain("port def CachePort");
     expect(stdlib).toContain("port def MessagePort");
     expect(stdlib).toContain("port def AuthPort");
-    expect(stdlib).toContain("port def PaymentPort");
-    expect(stdlib).toContain("port def EmailPort");
     expect(stdlib).toContain("port def StoragePort");
+    // PaymentPort, EmailPort removed - too specific
   });
 
   it("contains API item types", () => {
@@ -169,12 +221,8 @@ describe("SysML Generator - Stdlib Content", () => {
     expect(stdlib).toContain("item def QueryResult");
     expect(stdlib).toContain("item def Credentials");
     expect(stdlib).toContain("item def AuthToken");
-    expect(stdlib).toContain("item def AuthError");
-    expect(stdlib).toContain("item def PaymentRequest");
-    expect(stdlib).toContain("item def PaymentResult");
-    expect(stdlib).toContain("item def EmailMessage");
-    expect(stdlib).toContain("item def DeliveryResult");
     expect(stdlib).toContain("item def FileData");
+    // AuthError, PaymentRequest, PaymentResult, EmailMessage, DeliveryResult removed - too specific
   });
 
   it("contains connection definitions", () => {
@@ -254,18 +302,6 @@ package TestServices {
         :>> provider = "auth0";
         :>> apiKey = "test-key";
     }
-
-    part paymentService : PaymentProvider {
-        :>> provider = "stripe";
-    }
-
-    part emailService : EmailProvider {
-        :>> provider = "sendgrid";
-    }
-
-    part fileStorage : StorageProvider {
-        :>> provider = "cloudflare-r2";
-    }
 }
 `;
     const result = await validateSysml(stdlib + "\n\n" + usage);
@@ -333,8 +369,9 @@ describe("SysML Generator - Edge Cases", () => {
       ...mockMetadata,
       externalDependencies: [],
     };
+    const projectFile = generateProjectFile(metadata);
     const content = generateSystemContext(metadata);
-    const result = await validateWithStdlib(content);
+    const result = await validateWithDeps(content, [projectFile]);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 
@@ -343,8 +380,9 @@ describe("SysML Generator - Edge Cases", () => {
       ...mockMetadata,
       ports: { http: false, grpc: false, cli: false, websocket: false, tcp: false, embedded: false },
     };
+    const projectFile = generateProjectFile(metadata);
     const content = generateSystemContext(metadata);
-    const result = await validateWithStdlib(content);
+    const result = await validateWithDeps(content, [projectFile]);
     expect(result.valid, `Validation failed: ${result.issues.map((i) => i.message).join(", ")}`).toBe(true);
   });
 
