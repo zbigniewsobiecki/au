@@ -3,6 +3,8 @@
  * Provides functions for generating SysML v2 code from discovered project metadata.
  */
 
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { ProjectMetadata, ExternalDependency } from "./discovery.js";
 
 /**
@@ -214,7 +216,7 @@ export function generateStdlib(): string {
         doc /*Full-stack web application */
         part frontend : Frontend [0..1];
         part backend : Backend [0..1];
-        part database : Database [0..*];
+        part database [0..*];
     }
 
     part def Frontend :> Part {
@@ -559,8 +561,17 @@ ${externalDeps}
     part def System {
         doc /*The ${escapeSysmlString(metadata.name)} system */
 
-        // Entry points
-${metadata.entryPoints.map((ep) => `        attribute entryPoint_${pathToIdentifier(ep)} : FilePath = "${escapeSysmlString(ep)}";`).join("\n")}
+        // Application entry points
+${metadata.entryPoints
+  .filter(ep => ep.startsWith("apps/"))
+  .map((ep) => `        attribute appEntryPoint_${pathToIdentifier(ep)} : FilePath = "${escapeSysmlString(ep)}";`)
+  .join("\n") || "        // No application entry points discovered"}
+
+        // Library entry points (for reference)
+${metadata.entryPoints
+  .filter(ep => ep.startsWith("packages/"))
+  .map((ep) => `        attribute libEntryPoint_${pathToIdentifier(ep)} : FilePath = "${escapeSysmlString(ep)}";`)
+  .join("\n") || "        // No library entry points discovered"}
 
         // System ports (discovered interfaces)
 ${portDefs.length > 0 ? portDefs.join("\n") : "        // No ports discovered"}
@@ -667,8 +678,46 @@ export function generateStructureTemplate(): string {
 
 /**
  * Generate data model template (Cycle 3).
+ * Optionally includes entity stubs and auth types based on discovered entities/domains.
  */
-export function generateDataModelTemplate(): string {
+export function generateDataModelTemplate(
+  discoveredEntities?: string[],
+  discoveredDomains?: string[]
+): string {
+  // Generate entity stubs
+  const entityStubs = (discoveredEntities ?? []).map(name => `
+        // Stub - attributes populated in Cycle 3
+        item def ${name} :> BaseEntity {
+            doc /* ${name} domain entity */
+        }
+
+        item def Create${name}Dto :> BaseDTO {
+            doc /* Request DTO for creating a ${name} */
+        }
+
+        item def Update${name}Dto :> BaseDTO {
+            doc /* Request DTO for updating a ${name} */
+        }`).join('\n');
+
+  // Generate auth types if auth domain discovered
+  const hasAuth = (discoveredDomains ?? []).some(d =>
+    d.toLowerCase() === 'auth'
+  );
+
+  const authStubs = hasAuth ? `
+        // Authentication types - stub for Cycle 2 ports
+        item def LoginRequest :> BaseDTO {
+            doc /* Login credentials */
+        }
+
+        item def AuthResponse :> BaseDTO {
+            doc /* Authentication response with token */
+        }
+
+        item def TokenPayload :> BaseDTO {
+            doc /* JWT token payload */
+        }` : '';
+
   return `package DataModel {
     import SysMLPrimitives::*;
 
@@ -704,12 +753,14 @@ export function generateDataModelTemplate(): string {
 
     // Entity definitions (to be populated by analysis)
     package Entities {
-        doc /*Domain entities - specialize from BaseEntity */
+        import DataModel::*;
+${entityStubs || '        // No entities discovered - populated in Cycle 3'}
     }
 
     // Data transfer objects (to be populated by analysis)
     package DTOs {
-        doc /*Request/Response shapes - specialize from BaseDTO */
+        import DataModel::*;
+${authStubs || '        // Auth types populated in Cycle 3'}
     }
 
     // Events (to be populated by analysis)
@@ -1017,4 +1068,88 @@ export function generateInitialFiles(metadata: ProjectMetadata): GeneratedFiles 
     "verification/_index.sysml": generateVerificationTemplate(),
     "analysis/_index.sysml": generateAnalysisTemplate(),
   };
+}
+
+/**
+ * Discover all top-level package names in the SysML directory.
+ * Scans all .sysml files (excluding _model.sysml) and extracts package names.
+ */
+export async function discoverModelPackages(sysmlDir: string): Promise<string[]> {
+  const packages = new Set<string>();
+  const packageRegex = /^package\s+(\w+)/gm;
+
+  async function scanDir(dir: string): Promise<void> {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          await scanDir(fullPath);
+        } else if (entry.name.endsWith(".sysml") && entry.name !== "_model.sysml") {
+          try {
+            const content = await readFile(fullPath, "utf-8");
+            let match;
+            while ((match = packageRegex.exec(content)) !== null) {
+              packages.add(match[1]);
+            }
+          } catch {
+            // Skip unreadable files
+          }
+        }
+      }
+    } catch {
+      // Directory doesn't exist
+    }
+  }
+
+  await scanDir(sysmlDir);
+  return [...packages].sort();
+}
+
+/**
+ * Standard package aliases for known packages.
+ */
+const STANDARD_ALIASES: Record<string, string> = {
+  SystemRequirements: "Requirements",
+  SystemContext: "Context",
+  SystemArchitecture: "Architecture",
+  DataModel: "Data",
+  SystemBehavior: "Behavior",
+  Verification: "Tests",
+  Analysis: "QualityAnalysis",
+};
+
+/**
+ * Regenerate _model.sysml content with imports for all discovered packages.
+ */
+export async function regenerateModelIndex(
+  sysmlDir: string,
+  projectName: string
+): Promise<string> {
+  const packages = await discoverModelPackages(sysmlDir);
+
+  // Generate imports for all packages
+  const imports = packages
+    .map((pkg) => `    import ${pkg}::*;`)
+    .join("\n");
+
+  // Generate aliases for known packages
+  const aliases = packages
+    .filter((pkg) => STANDARD_ALIASES[pkg])
+    .map((pkg) => `    alias ${STANDARD_ALIASES[pkg]} for ${pkg};`)
+    .join("\n");
+
+  const modelName = pathToIdentifier(projectName);
+
+  return `package ${modelName}Model {
+    doc /*${escapeSysmlString(projectName)} - SysML v2 Model. Master index file importing all model packages. Generated: ${new Date().toISOString()}. */
+
+    // Import all model packages by their package names
+${imports}
+
+    // Re-export key packages for convenience
+${aliases}
+}
+`;
 }

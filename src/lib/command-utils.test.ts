@@ -61,4 +61,22 @@ describe("parsePathList", () => {
   it("handles single path", () => {
     expect(parsePathList("src/index.ts")).toEqual(["src/index.ts"]);
   });
+
+  it("strips surrounding double quotes", () => {
+    expect(parsePathList('"src/a.ts"')).toEqual(["src/a.ts"]);
+  });
+
+  it("strips surrounding single quotes", () => {
+    expect(parsePathList("'src/a.ts'")).toEqual(["src/a.ts"]);
+  });
+
+  it("returns empty array for quoted empty string", () => {
+    expect(parsePathList('""')).toEqual([]);
+    expect(parsePathList("''")).toEqual([]);
+  });
+
+  it("handles mixed quoted and unquoted paths", () => {
+    const result = parsePathList('"src/a.ts"\nsrc/b.ts\n"src/c.ts"');
+    expect(result).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"]);
+  });
 });

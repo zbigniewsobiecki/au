@@ -240,6 +240,7 @@ export function parsePathList(pathsString: string): string[] {
   return pathsString
     .split("\n")
     .map((p) => p.trim())
+    .map((p) => p.replace(/^["']|["']$/g, "")) // Strip surrounding quotes
     .filter((p) => p.length > 0);
 }
 

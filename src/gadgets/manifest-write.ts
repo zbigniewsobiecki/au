@@ -4,7 +4,7 @@
  */
 
 import { createGadget, z } from "llmist";
-import { writeFile, mkdir, readFile } from "node:fs/promises";
+import { writeFile, mkdir, readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 import {
@@ -77,6 +77,8 @@ export interface Manifest {
   directories?: DirectoryAssignment[];
   cycles: Record<string, ManifestCycle>;
   statistics?: ManifestStatistics;
+  discoveredEntities?: string[];  // Entity names discovered from model/entity files
+  discoveredDomains?: string[];   // Domain names discovered from controllers/services
 }
 
 const MANIFEST_PATH = ".sysml/_manifest.json";
@@ -123,6 +125,10 @@ const manifestObjectSchema = z.object({
     totalFiles: z.number().optional(),
     relevantFiles: z.number().optional(),
   }).optional().describe("Overall statistics"),
+  discoveredEntities: z.array(z.string()).optional()
+    .describe("Entity names discovered from model/entity files"),
+  discoveredDomains: z.array(z.string()).optional()
+    .describe("Domain names discovered from controllers/services"),
 });
 
 export const manifestWrite = createGadget({
@@ -521,4 +527,72 @@ export async function getManifestDirectoryPatterns(
   }
 
   return result.length > 0 ? result : null;
+}
+
+/**
+ * Scan directory recursively for .sysml files.
+ */
+async function scanSysmlFilesInDir(dir: string, prefix: string): Promise<string[]> {
+  const files: string[] = [];
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const relativePath = `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        files.push(...await scanSysmlFilesInDir(join(dir, entry.name), relativePath));
+      } else if (entry.name.endsWith(".sysml")) {
+        files.push(relativePath);
+      }
+    }
+  } catch { /* directory doesn't exist */ }
+  return files;
+}
+
+/**
+ * Sync manifest expectedOutputs with actual files on disk for a cycle.
+ * This ensures files created during a cycle are registered in the manifest.
+ */
+export async function syncManifestOutputs(
+  cycle: number,
+  basePath: string = "."
+): Promise<{ added: string[]; total: number }> {
+  const manifest = await loadManifest();
+  if (!manifest) return { added: [], total: 0 };
+
+  const cycleKey = `cycle${cycle}`;
+  const cycleData = manifest.cycles[cycleKey];
+  if (!cycleData) return { added: [], total: 0 };
+
+  // Map cycle to output directory
+  const outputDirs: Record<number, string> = {
+    1: "context", 2: "structure", 3: "data",
+    4: "behavior", 5: "verification", 6: "analysis"
+  };
+  const outputDir = outputDirs[cycle];
+  if (!outputDir) return { added: [], total: 0 };
+
+  // Scan for all .sysml files in the cycle's output directory
+  const sysmlDir = join(basePath, ".sysml", outputDir);
+  const actualFiles = await scanSysmlFilesInDir(sysmlDir, outputDir);
+
+  // Get current expected outputs
+  const currentOutputs = new Set(cycleData.expectedOutputs ?? []);
+  const added: string[] = [];
+
+  for (const file of actualFiles) {
+    // Skip index files
+    if (file.endsWith("/_index.sysml")) continue;
+    if (!currentOutputs.has(file)) {
+      currentOutputs.add(file);
+      added.push(file);
+    }
+  }
+
+  // Write updated manifest if changes
+  if (added.length > 0) {
+    cycleData.expectedOutputs = Array.from(currentOutputs).sort();
+    await writeFile(MANIFEST_PATH, JSON.stringify(manifest, null, 2), "utf-8");
+  }
+
+  return { added, total: currentOutputs.size };
 }

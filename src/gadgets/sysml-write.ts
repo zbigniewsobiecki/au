@@ -17,6 +17,11 @@ import {
 } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 import { generateColoredDiff } from "../lib/diff-utils.js";
+import {
+  isDebugEnabled,
+  writeEditDebug,
+  type EditDebugMetadata,
+} from "../lib/edit-debug.js";
 
 /**
  * Clean up stale .tmp files for a given target file.
@@ -72,6 +77,13 @@ export const sysmlWrite = createGadget({
    - createScope=true: Create scope hierarchy if missing
    - UPSERT semantics: replaces if element exists, adds if new
    - ATOMIC: On failure, file is restored to original state
+
+   ⚠️ **IMPORTANT**: Do NOT wrap your element in a package matching the \`at\` scope!
+
+   WRONG: element="package Foo { item def X; }", at="Foo"
+   RIGHT: element="item def X;", at="Foo"
+
+   The \`at\` parameter specifies WHERE to place the element - don't duplicate the scope.
 
 2. **DELETE mode** (remove elements):
    SysMLWrite(path="data/entities.sysml", delete="DataModel::Entities::OldUser")
@@ -186,6 +198,21 @@ File does not exist. Create it first:
       // Read original content before modification (for atomic rollback)
       const originalContent = await readFile(fullPath, "utf-8");
 
+      // Prepare debug metadata
+      const debugEnabled = isDebugEnabled();
+      const baseDebugMetadata: Partial<EditDebugMetadata> = debugEnabled
+        ? {
+            timestamp: new Date().toISOString(),
+            operation: "upsert",
+            gadget: "SysMLWrite",
+            path: fullPath,
+            scope: at,
+            createScope,
+            bytesOriginal: Buffer.byteLength(originalContent, "utf-8"),
+            dryRun,
+          }
+        : {};
+
       try {
         const result = await setElement(fullPath, element!, at!, {
           createScope,
@@ -197,6 +224,31 @@ File does not exist. Create it first:
         if (!result.syntaxValid) {
           // ATOMIC ROLLBACK: Restore original content on syntax errors
           await writeFile(fullPath, originalContent, "utf-8");
+
+          // Debug logging for rollback
+          if (debugEnabled) {
+            const errorDiags = result.diagnostics.filter((d) => d.severity === "error");
+            writeEditDebug({
+              metadata: {
+                ...baseDebugMetadata,
+                status: "rollback",
+                bytesResult: Buffer.byteLength(originalContent, "utf-8"),
+                byteDelta: 0,
+                added: result.added,
+                replaced: result.replaced,
+                errorMessage: errorDiags[0]?.message || "Syntax error",
+                diagnostics: errorDiags.map((d) => ({
+                  severity: d.severity,
+                  message: d.message,
+                  line: d.line,
+                  column: d.column,
+                })),
+              } as EditDebugMetadata,
+              original: originalContent,
+              fragment: element!,
+              result: originalContent,
+            }).catch(() => {});
+          }
 
           const errorDiags = result.diagnostics.filter((d) => d.severity === "error");
 
@@ -233,7 +285,6 @@ Check the element syntax and try again.`;
           return `path=${fullPath} status=error mode=upsert (rolled back)\n\nSyntax error:\n${errors || result.stderr || "Unknown error"}`;
         }
 
-        const actionDesc = result.replaced > 0 ? "replaced" : "added";
         const dryRunNote = dryRun ? " (dry run)" : "";
 
         // Get new file size for delta calculation
@@ -242,11 +293,40 @@ Check the element syntax and try again.`;
         const newBytes = Buffer.byteLength(newContent, "utf-8");
         const delta = formatByteDelta(originalBytes, newBytes);
 
-        // Generate diff for CLI display (colors for human, plain +/- for LLM)
-        let diffOutput = "";
-        if (originalContent !== newContent) {
-          diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent);
+        // Debug logging for success
+        if (debugEnabled) {
+          writeEditDebug({
+            metadata: {
+              ...baseDebugMetadata,
+              status: "success",
+              bytesResult: newBytes,
+              byteDelta: newBytes - originalBytes,
+              added: result.added,
+              replaced: result.replaced,
+              diagnostics: result.diagnostics
+                .filter((d) => d.severity === "error")
+                .map((d) => ({
+                  severity: d.severity,
+                  message: d.message,
+                  line: d.line,
+                  column: d.column,
+                })),
+            } as EditDebugMetadata,
+            original: originalContent,
+            fragment: element!,
+            result: newContent,
+          }).catch(() => {});
         }
+
+        // Check if content is unchanged - tell LLM clearly so it doesn't keep retrying
+        if (originalContent === newContent) {
+          return `path=${fullPath} status=unchanged mode=upsert delta=+0 bytes
+Content identical - no changes made. The fix may already be applied, or the error is elsewhere.
+Check if another file has the issue, or if the element name/scope is different than expected.`;
+        }
+
+        // Generate diff for CLI display (colors for human, plain +/- for LLM)
+        const diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent);
 
         // Warn if no changes were made but element was provided
         if (result.added === 0 && result.replaced === 0 && element && element.trim()) {
@@ -258,12 +338,46 @@ Fragment attempted:
 ${element.slice(0, 300)}${element.length > 300 ? '...' : ''}`;
         }
 
+        const actionDesc = result.replaced > 0 ? "replaced" : "added";
+
+        // Include validation status based on exit code
+        // Exit 0 = all good, Exit 2 = semantic errors remain
+        let validationNote = "";
+        if (result.exitCode === 0) {
+          validationNote = "\n✓ Model validation passed";
+        } else if (result.exitCode === 2) {
+          const semanticErrors = result.diagnostics
+            .filter((d) => d.severity === "error" && d.code?.startsWith("E3"))
+            .slice(0, 5);
+          if (semanticErrors.length > 0) {
+            validationNote = "\n⚠ Semantic errors remain:\n" +
+              semanticErrors.map((d) => `  Line ${d.line}: ${d.message}`).join("\n");
+          }
+        }
+
         return `path=${fullPath} status=success mode=upsert${dryRunNote} delta=${delta}
 Element ${actionDesc} at scope: ${at}
-Added: ${result.added}, Replaced: ${result.replaced}${diffOutput}`;
+Added: ${result.added}, Replaced: ${result.replaced}${validationNote}${diffOutput}`;
       } catch (err) {
         // ATOMIC ROLLBACK: Restore original content on exception
         await writeFile(fullPath, originalContent, "utf-8");
+
+        // Debug logging for error
+        if (debugEnabled) {
+          writeEditDebug({
+            metadata: {
+              ...baseDebugMetadata,
+              status: "error",
+              bytesResult: Buffer.byteLength(originalContent, "utf-8"),
+              byteDelta: 0,
+              errorMessage: err instanceof Error ? err.message : String(err),
+            } as EditDebugMetadata,
+            original: originalContent,
+            fragment: element!,
+            result: originalContent,
+          }).catch(() => {});
+        }
+
         return `path=${fullPath} status=error mode=upsert (rolled back)\n\nError: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
@@ -277,19 +391,73 @@ Added: ${result.added}, Replaced: ${result.replaced}${diffOutput}`;
       const originalContent = await readFile(fullPath, "utf-8");
       const originalBytes = Buffer.byteLength(originalContent, "utf-8");
 
+      // Prepare debug metadata
+      const debugEnabled = isDebugEnabled();
+      const baseDebugMetadata: Partial<EditDebugMetadata> = debugEnabled
+        ? {
+            timestamp: new Date().toISOString(),
+            operation: "delete",
+            gadget: "SysMLWrite",
+            path: fullPath,
+            scope: deletePattern,
+            bytesOriginal: originalBytes,
+            dryRun,
+          }
+        : {};
+
       try {
         const result = await deleteElements(fullPath, [deletePattern!], { dryRun });
 
         if (!result.success) {
-          const errors = result.diagnostics
-            .filter((d) => d.severity === "error")
+          const errorDiags = result.diagnostics.filter((d) => d.severity === "error");
+          const errors = errorDiags
             .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
             .join("\n");
+
+          // Debug logging for delete error
+          if (debugEnabled) {
+            writeEditDebug({
+              metadata: {
+                ...baseDebugMetadata,
+                status: "error",
+                bytesResult: originalBytes,
+                byteDelta: 0,
+                deleted: 0,
+                errorMessage: errorDiags[0]?.message || result.stderr || "Unknown error",
+                diagnostics: errorDiags.map((d) => ({
+                  severity: d.severity,
+                  message: d.message,
+                  line: d.line,
+                  column: d.column,
+                })),
+              } as EditDebugMetadata,
+              original: originalContent,
+              fragment: deletePattern!,
+              result: originalContent,
+            }).catch(() => {});
+          }
+
           return `path=${fullPath} status=error mode=delete\n\nCLI delete failed:\n${errors || result.stderr || "Unknown error"}`;
         }
 
         const dryRunNote = dryRun ? " (dry run)" : "";
         if (result.deleted === 0) {
+          // Debug logging for no-op delete
+          if (debugEnabled) {
+            writeEditDebug({
+              metadata: {
+                ...baseDebugMetadata,
+                status: "success",
+                bytesResult: originalBytes,
+                byteDelta: 0,
+                deleted: 0,
+              } as EditDebugMetadata,
+              original: originalContent,
+              fragment: deletePattern!,
+              result: originalContent,
+            }).catch(() => {});
+          }
+
           return `path=${fullPath} status=success mode=delete${dryRunNote} delta=+0 bytes
 Element not found: ${deletePattern}
 (Nothing was deleted)`;
@@ -300,9 +468,42 @@ Element not found: ${deletePattern}
         const newBytes = Buffer.byteLength(newContent, "utf-8");
         const delta = formatByteDelta(originalBytes, newBytes);
 
+        // Debug logging for successful delete
+        if (debugEnabled) {
+          writeEditDebug({
+            metadata: {
+              ...baseDebugMetadata,
+              status: "success",
+              bytesResult: newBytes,
+              byteDelta: newBytes - originalBytes,
+              deleted: result.deleted,
+            } as EditDebugMetadata,
+            original: originalContent,
+            fragment: deletePattern!,
+            result: newContent,
+          }).catch(() => {});
+        }
+
         return `path=${fullPath} status=success mode=delete${dryRunNote} delta=${delta}
 Deleted: ${result.deleted} element(s) matching: ${deletePattern}`;
       } catch (err) {
+        // Debug logging for delete exception
+        if (debugEnabled) {
+          writeEditDebug({
+            metadata: {
+              ...baseDebugMetadata,
+              status: "error",
+              bytesResult: originalBytes,
+              byteDelta: 0,
+              deleted: 0,
+              errorMessage: err instanceof Error ? err.message : String(err),
+            } as EditDebugMetadata,
+            original: originalContent,
+            fragment: deletePattern!,
+            result: originalContent,
+          }).catch(() => {});
+        }
+
         return `path=${fullPath} status=error mode=delete\n\nError: ${err instanceof Error ? err.message : String(err)}`;
       }
     }

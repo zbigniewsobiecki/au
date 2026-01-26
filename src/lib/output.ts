@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { GadgetName } from "./constants.js";
+import type { Sysml2MultiDiagnostic } from "./sysml/sysml2-cli.js";
 
 export interface OutputOptions {
   verbose: boolean;
@@ -301,5 +302,72 @@ export class Output {
       return `${(bytes / 1024).toFixed(1)}KB`;
     }
     return `${bytes}B`;
+  }
+
+  /**
+   * Display validation errors to CLI user.
+   * Shows compact summary by default, detailed with verbose flag.
+   */
+  displayValidationErrors(
+    syntaxErrors: Sysml2MultiDiagnostic[],
+    semanticErrors: Sysml2MultiDiagnostic[]
+  ): void {
+    const totalErrors = syntaxErrors.length + semanticErrors.length;
+    if (totalErrors === 0) return;
+
+    console.log();
+
+    // Header with counts
+    if (syntaxErrors.length > 0 && semanticErrors.length > 0) {
+      console.log(chalk.yellow(`⚠ Validation: ${syntaxErrors.length} syntax, ${semanticErrors.length} semantic errors`));
+    } else if (syntaxErrors.length > 0) {
+      console.log(chalk.red(`✗ Syntax errors: ${syntaxErrors.length}`));
+    } else {
+      console.log(chalk.yellow(`⚠ Semantic errors: ${semanticErrors.length}`));
+    }
+
+    if (this.verbose) {
+      // Detailed: show all, grouped by error code
+      if (syntaxErrors.length > 0) {
+        console.log(chalk.dim("  Syntax:"));
+        for (const err of syntaxErrors.slice(0, 10)) {
+          console.log(chalk.red(`    ${err.file}:${err.line}: ${err.message}`));
+        }
+        if (syntaxErrors.length > 10) {
+          console.log(chalk.dim(`    ... +${syntaxErrors.length - 10} more`));
+        }
+      }
+
+      if (semanticErrors.length > 0) {
+        const byCode = new Map<string, Sysml2MultiDiagnostic[]>();
+        for (const err of semanticErrors) {
+          const code = err.code || "Unknown";
+          if (!byCode.has(code)) byCode.set(code, []);
+          byCode.get(code)!.push(err);
+        }
+
+        for (const [code, errors] of byCode) {
+          const label = code === "E3001" ? "Undefined Reference"
+            : code === "E3004" ? "Duplicate Definition" : code;
+          console.log(chalk.dim(`  ${label} (${errors.length}):`));
+          for (const err of errors.slice(0, 5)) {
+            console.log(chalk.yellow(`    ${err.file}:${err.line}: ${err.message}`));
+          }
+          if (errors.length > 5) {
+            console.log(chalk.dim(`    ... +${errors.length - 5} more`));
+          }
+        }
+      }
+    } else {
+      // Compact: top 3 errors
+      const allErrors = [...syntaxErrors, ...semanticErrors].slice(0, 3);
+      for (const err of allErrors) {
+        const tag = syntaxErrors.includes(err) ? chalk.red("[syntax]") : chalk.yellow("[semantic]");
+        console.log(`  ${err.file}:${err.line}: ${err.message} ${tag}`);
+      }
+      if (totalErrors > 3) {
+        console.log(chalk.dim(`  ... +${totalErrors - 3} more (use -v for details)`));
+      }
+    }
   }
 }

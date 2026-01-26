@@ -7,6 +7,7 @@ import {
   sysmlList,
   sysmlQuery,
   sysmlWrite,
+  sysmlCreate,
   readFiles,
   readDirs,
   ripGrep,
@@ -19,6 +20,7 @@ import {
   type VerificationFinding,
 } from "../gadgets/index.js";
 import { SysMLModelValidator, type SysMLValidationResult } from "../lib/sysml-model-validator.js";
+import { validateModelFull } from "../lib/sysml/sysml2-cli.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import {
@@ -341,6 +343,39 @@ export default class Validate extends Command {
         console.log(`  ... and ${result.coverageIssues.length - 5} more (use --verbose)`);
       }
     }
+
+    // Model index integrity
+    if (!result.modelIndexMismatches) {
+      console.log("✓ Model index: imports match discovered packages");
+    } else {
+      const { importedButMissing, existingButNotImported } = result.modelIndexMismatches;
+      const totalMismatches = importedButMissing.length + existingButNotImported.length;
+      console.log(`⚠ Model index mismatches (${totalMismatches}):`);
+
+      if (importedButMissing.length > 0) {
+        console.log(`  Imported but package not found:`);
+        const displayMissing = verbose ? importedButMissing : importedButMissing.slice(0, 3);
+        for (const pkg of displayMissing) {
+          console.log(`    ✗ ${pkg}`);
+        }
+        if (!verbose && importedButMissing.length > 3) {
+          console.log(`    ... and ${importedButMissing.length - 3} more`);
+        }
+      }
+
+      if (existingButNotImported.length > 0) {
+        console.log(`  Package exists but not imported in _model.sysml:`);
+        const displayNotImported = verbose ? existingButNotImported : existingButNotImported.slice(0, 3);
+        for (const pkg of displayNotImported) {
+          console.log(`    ✗ ${pkg}`);
+        }
+        if (!verbose && existingButNotImported.length > 3) {
+          console.log(`    ... and ${existingButNotImported.length - 3} more`);
+        }
+      }
+
+      console.log(`  Run 'au sysml-ingest' to regenerate _model.sysml`);
+    }
   }
 
   /**
@@ -427,6 +462,17 @@ export default class Validate extends Command {
       if (!(error instanceof Error && error.message.includes("SysML verification complete"))) {
         out.warn(`Verification phase stopped: ${error instanceof Error ? error.message : error}`);
       }
+    }
+
+    // Display current validation errors
+    try {
+      const validation = await validateModelFull(".sysml");
+      if (validation.exitCode !== 0 && validation.output) {
+        const errorType = validation.exitCode === 1 ? "Syntax" : "Semantic";
+        out.warn(`${errorType} validation errors (exit code ${validation.exitCode})`);
+      }
+    } catch {
+      // sysml2 not available
     }
 
     return getCollectedFindings();
@@ -594,6 +640,7 @@ export default class Validate extends Command {
     const client = new LLMist();
     const gadgets = [
       sysmlWrite,
+      sysmlCreate,
       finishSysmlFix,
       sysmlRead,
       sysmlList,
@@ -658,6 +705,17 @@ export default class Validate extends Command {
       if (!(error instanceof Error && error.message.includes("SysML fix complete"))) {
         out.warn(`Fix phase stopped: ${error instanceof Error ? error.message : error}`);
       }
+    }
+
+    // Display current validation errors
+    try {
+      const validation = await validateModelFull(".sysml");
+      if (validation.exitCode !== 0 && validation.output) {
+        const errorType = validation.exitCode === 1 ? "Syntax" : "Semantic";
+        out.warn(`${errorType} validation errors (exit code ${validation.exitCode})`);
+      }
+    } catch {
+      // sysml2 not available
     }
 
     return fixesApplied;

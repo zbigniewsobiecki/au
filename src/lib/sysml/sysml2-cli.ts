@@ -619,18 +619,17 @@ export async function deleteElements(
 
 /**
  * Validation result from full model validation.
- * Separates syntax errors (exit code 1) from semantic errors (exit code 2).
+ * Exit codes: 0=success, 1=syntax errors, 2=semantic errors
  */
 export interface ValidationResult {
   success: boolean;
   exitCode: number;
-  syntaxErrors: Sysml2MultiDiagnostic[];   // From exit code 1
-  semanticErrors: Sysml2MultiDiagnostic[]; // From exit code 2 (E3001, E3004, etc.)
+  output: string;  // Raw stderr output, unfiltered
 }
 
 /**
  * Run full validation on all SysML files in a directory.
- * Returns structured result separating syntax from semantic errors.
+ * Returns exit code and raw output - no parsing.
  *
  * Exit codes:
  * - 0: Success (no errors)
@@ -638,28 +637,33 @@ export interface ValidationResult {
  * - 2: Semantic errors (undefined types, duplicate definitions, etc.)
  *
  * @param sysmlDir - Directory containing SysML files (default: ".sysml")
- * @returns Promise resolving to validation result with categorized errors
+ * @param files - Optional pre-scanned file list (avoids fast-glob overhead)
+ * @returns Promise resolving to validation result with raw output
  */
-export async function validateModelFull(sysmlDir: string = ".sysml"): Promise<ValidationResult> {
-  const fg = await import("fast-glob");
+export async function validateModelFull(
+  sysmlDir: string = ".sysml",
+  files?: string[]
+): Promise<ValidationResult> {
+  // If files not provided, scan directory using fast-glob
+  let filesToValidate = files;
+  if (!filesToValidate) {
+    const fg = await import("fast-glob");
+    filesToValidate = await fg.default(`${sysmlDir}/**/*.sysml`, {
+      onlyFiles: true,
+      ignore: ["**/node_modules/**"],
+    });
+  }
 
-  // Find all .sysml files in directory
-  const files = await fg.default(`${sysmlDir}/**/*.sysml`, {
-    onlyFiles: true,
-    ignore: ["**/node_modules/**"],
-  });
-
-  if (files.length === 0) {
+  if (filesToValidate.length === 0) {
     return {
       success: true,
       exitCode: 0,
-      syntaxErrors: [],
-      semanticErrors: [],
+      output: "",
     };
   }
 
   // Run sysml2 on all files (full validation, not parse-only)
-  const args = ["--color=never", ...getLibraryPathArgs(), ...files];
+  const args = ["--color=never", ...getLibraryPathArgs(), ...filesToValidate];
 
   return new Promise((resolve, reject) => {
     const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
@@ -671,30 +675,10 @@ export async function validateModelFull(sysmlDir: string = ".sysml"): Promise<Va
     });
 
     proc.on("close", (code) => {
-      const diagnostics = parseMultiFileDiagnosticOutput(stderr);
-
-      // Categorize errors by code prefix
-      // Syntax errors: no code (parse errors) or E1xxx/E2xxx
-      // Semantic errors: E3xxx (undefined types, duplicate definitions, etc.)
-      const syntaxErrors: Sysml2MultiDiagnostic[] = [];
-      const semanticErrors: Sysml2MultiDiagnostic[] = [];
-
-      for (const diag of diagnostics) {
-        if (diag.severity === "error") {
-          // E3xxx are semantic errors (E3001=undefined ref, E3004=duplicate, etc.)
-          if (diag.code && diag.code.startsWith("E3")) {
-            semanticErrors.push(diag);
-          } else {
-            syntaxErrors.push(diag);
-          }
-        }
-      }
-
       resolve({
         success: code === 0,
         exitCode: code ?? -1,
-        syntaxErrors,
-        semanticErrors,
+        output: stderr,
       });
     });
 

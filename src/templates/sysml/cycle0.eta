@@ -121,7 +121,44 @@ Store patterns in `manifest.cycles[N].sourceFiles`:
 
 ---
 
-### Phase 4.5: Coverage Verification (CRITICAL)
+### Phase 4.5: Entity Discovery
+
+**Goal**: Identify domain entity names for type stub generation.
+
+Type stubs will be generated from this list so Cycle 2 can reference them in ports.
+
+**Step 4.5.1: Find and read model/entity files**
+Look for files in directories like:
+- `src/models/`, `models/`, `src/entities/`, `entities/`
+- Schema files (`.prisma`, `.graphql`, `.proto`)
+
+Use `FileRead` to read a sample of model files.
+
+**Step 4.5.2: Extract entity names**
+From the files, identify entity/model names:
+- Prisma: `model User`, `model Customer`
+- TypeScript: `class User`, `interface User`, `type User`
+- GraphQL: `type User`, `type Order`
+
+**Step 4.5.3: Identify domains from controllers/services**
+Look for patterns:
+- `AuthController`, `auth.controller.ts` → "Auth"
+- `UserService`, `users.service.ts` → "User"
+
+**Step 4.5.4: Include in manifest**
+Add to your ManifestWrite call:
+
+```
+ManifestWrite(manifest={
+  // ...existing fields...
+  "discoveredEntities": ["User", "Customer", "Vehicle", "Sale"],
+  "discoveredDomains": ["Auth", "User", "Customer"]
+})
+```
+
+---
+
+### Phase 4.6: Coverage Verification (CRITICAL)
 
 **The ManifestWrite gadget will REJECT manifests with <80% coverage.**
 
@@ -262,9 +299,10 @@ Before writing the manifest, verify:
 - [ ] **Phase 4**: Source file patterns identified for each cycle
   - Glob patterns for file groups (e.g., `src/models/**/*.ts`)
   - Literal paths for specific files (e.g., `prisma/schema.prisma`)
-- [ ] **Phase 4.5**: Coverage verification - patterns cover ≥80% of repository source files
+- [ ] **Phase 4.5**: Entity discovery - identify entity names from model/schema files
+- [ ] **Phase 4.6**: Coverage verification - patterns cover ≥80% of repository source files
 - [ ] **Phase 5**: Context files gathered for Cycle 1
-- [ ] **Phase 6**: Manifest v2 written with ALL directory assignments and sourceFiles
+- [ ] **Phase 6**: Manifest v2 written with ALL directory assignments, sourceFiles, discoveredEntities, and discoveredDomains
 
 **CRITICAL**:
 - Use glob patterns to capture groups of files (e.g., `src/**/*.service.ts`)

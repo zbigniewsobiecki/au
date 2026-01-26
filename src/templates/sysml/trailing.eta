@@ -4,49 +4,38 @@
 
 - Files analyzed: **<%= it.readCount %>**
 - Expected files: ~**<%= it.expectedCount %>**
-<% const coveragePercent = it.expectedCount > 0 ? Math.round((it.readCount / it.expectedCount) * 100) : 100; %>
-- Coverage: **<%= coveragePercent %>%**
+<% const coveragePercent = it.docCoveragePercent ?? (it.expectedCount > 0 ? Math.round((it.readCount / it.expectedCount) * 100) : 100); %>
+- Documentation Coverage: **<%= coveragePercent %>%**
 <% if (coveragePercent < 50) { %>
-⚠️ **COVERAGE TOO LOW** - You MUST continue exploring!
+⚠️ **COVERAGE TOO LOW** - You MUST document more files with @SourceFile metadata!
 <% } else if (coveragePercent < 80) { %>
 📊 Coverage acceptable but continue to improve
 <% } %>
 
-<% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
-### Files Not Yet Covered (first 15)
-<% for (const file of it.unreadFiles.slice(0, 15)) { %>
+<% const missingFiles = it.docMissingFiles ?? []; %>
+<% if (missingFiles.length > 0) { %>
+### Files Missing @SourceFile Documentation (first 15)
+<% for (const file of missingFiles.slice(0, 15)) { %>
 - `<%= file %>`
 <% } %>
-<% if (it.unreadFiles.length > 15) { %>
-*(+<%= it.unreadFiles.length - 15 %> more)*
+<% if (missingFiles.length > 15) { %>
+*(+<%= missingFiles.length - 15 %> more)*
 <% } %>
 <% } %>
 
-<% if (it.validationErrors && it.validationErrors.length > 0) { %>
-## ⚠️ Model Validation Errors
+<% if (it.validationExitCode && it.validationExitCode !== 0 && it.validationOutput) { %>
+## ⚠️ Model Validation Errors (exit code <%= it.validationExitCode %>)
 
-Fix these semantic errors in the SysML model:
-
-<%
-// Group errors by code
-const byCode = {};
-for (const err of it.validationErrors) {
-  const code = err.code || 'Unknown';
-  if (!byCode[code]) byCode[code] = [];
-  byCode[code].push(err);
-}
-%>
-<% for (const [code, errors] of Object.entries(byCode)) { %>
-### <%= code %><% if (code === 'E3001') { %> (Undefined Reference)<% } else if (code === 'E3004') { %> (Duplicate Definition)<% } %>
-<% for (const err of errors.slice(0, 10)) { %>
-- `<%= err.file %>:<%= err.line %>`: <%= err.message %>
-<% } %>
-<% if (errors.length > 10) { %>
-*(+<%= errors.length - 10 %> more <%= code %> errors)*
-<% } %>
+<% if (it.validationExitCode === 1) { %>
+**Syntax errors must be fixed first before semantic validation can run.**
+<% } else if (it.validationExitCode === 2) { %>
+**Semantic errors - fix undefined references by creating the missing types.**
 <% } %>
 
-**To fix undefined references (E3001)**: Create the missing types using SysMLWrite before referencing them.
+```
+<%= it.validationOutput.trim() %>
+```
+
 <% } %>
 
 ## Required Actions

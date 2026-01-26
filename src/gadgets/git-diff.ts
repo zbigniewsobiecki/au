@@ -6,7 +6,7 @@ export const gitDiff = createGadget({
   name: "GitDiff",
   description: `Get the git diff for specific file(s) to see exactly what changed.
 Returns the diff output showing lines added (+) and removed (-).
-Use this to understand the actual code changes before updating AU files.
+Use this to understand the actual code changes before updating SysML files.
 
 IMPORTANT: Pay attention to:
 - Lines starting with '-' were REMOVED from the codebase

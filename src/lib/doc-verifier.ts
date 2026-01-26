@@ -152,7 +152,7 @@ export class DocVerifier {
     const crossRefIssues = await this.checkCrossReferences(doc.path, content);
     issues.push(...crossRefIssues);
 
-    // Check 5: Source/AU paths existence
+    // Check 5: Source/SysML paths existence
     const pathIssues = await this.checkSourcePathsExist(doc);
     issues.push(...pathIssues);
 
@@ -352,7 +352,7 @@ export class DocVerifier {
       }
     }
 
-    // Check mustCoverPaths (these reference AU paths, check if source exists)
+    // Check mustCoverPaths (these reference SysML paths, check if source exists)
     if (doc.mustCoverPaths) {
       for (const coverPath of doc.mustCoverPaths) {
         const fullPath = join(this.projectPath, coverPath);
