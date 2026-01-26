@@ -467,7 +467,7 @@ Check if another file has the issue, or if the element name/scope is different t
         }
 
         // Generate diff for CLI display (colors for human, plain +/- for LLM)
-        const diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent);
+        const diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent, Infinity);
 
         // Warn if no changes were made but element was provided
         if (result.added === 0 && result.replaced === 0 && element && element.trim()) {
