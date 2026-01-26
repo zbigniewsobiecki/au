@@ -49,6 +49,7 @@ export {
   readExistingModel,
   generateInitialModel,
   validateInitialModel,
+  updateModelIndex,
 } from "./model-io.js";
 
 // Manifest hints

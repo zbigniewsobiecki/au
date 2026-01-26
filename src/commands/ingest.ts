@@ -12,7 +12,7 @@ import {
   generateDataModelTemplate,
   type ProjectMetadata,
 } from "../lib/sysml/index.js";
-import { validateModelFull, type Sysml2MultiDiagnostic } from "../lib/sysml/sysml2-cli.js";
+import { validateModelFull, type Sysml2MultiDiagnostic, type ValidationResult } from "../lib/sysml/sysml2-cli.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import { agentFlags, withWorkingDirectory } from "../lib/command-utils.js";
@@ -32,6 +32,7 @@ import {
   readExistingModel,
   generateInitialModel,
   validateInitialModel,
+  updateModelIndex,
   getManifestHintsForCycle,
   verifyCoverageHeuristically,
   formatCost,
@@ -229,6 +230,9 @@ export default class Ingest extends Command {
           console.log(`\x1b[2m   Registered ${syncResult.added.length} new output files in manifest\x1b[0m`);
         }
 
+        // Update _model.sysml to import all discovered packages
+        await updateModelIndex(state.metadata, flags.verbose);
+
         state.cycleHistory.push(cycleResult);
 
         state.totalInputTokens += cycleResult.inputTokens;
@@ -400,6 +404,14 @@ export default class Ingest extends Command {
           docMissingFiles: docCoverage.missingFiles,
         }
       );
+
+      // Display validation errors to CLI user
+      if (turnResult.validationResult) {
+        out.displayValidationErrors(
+          turnResult.validationResult.syntaxErrors,
+          turnResult.validationResult.semanticErrors
+        );
+      }
 
       totalTurns += turnResult.turns;
 
@@ -580,6 +592,11 @@ export default class Ingest extends Command {
         totalMissing,
         cycleOutputDir
       );
+
+      // Display validation errors to CLI user
+      if (validationErrors.length > 0) {
+        out.displayValidationErrors([], validationErrors);
+      }
 
       // Track read files
       for (const file of iterState.currentBatch) {

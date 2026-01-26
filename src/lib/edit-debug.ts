@@ -4,7 +4,7 @@
  * Enable with environment variable: AU_DEBUG_EDITS=1
  * Disable auto-cleanup with: AU_DEBUG_EDITS_KEEP_ALL=1
  *
- * Creates debug files in .sysml/.debug/{timestamp}-{operation}-{sanitized-path}/
+ * Creates debug files in .sysml.debug/{timestamp}-{operation}-{sanitized-path}/
  */
 
 import { mkdir, writeFile, readdir, rm } from "node:fs/promises";
@@ -52,7 +52,7 @@ export interface EditDebugData {
 const MAX_DEBUG_SESSIONS = 50;
 
 /** Debug output base directory */
-const DEBUG_BASE_DIR = ".sysml/.debug";
+const DEBUG_BASE_DIR = ".sysml.debug";
 
 /**
  * Sanitize a file path for use in directory names.

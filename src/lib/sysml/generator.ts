@@ -3,6 +3,8 @@
  * Provides functions for generating SysML v2 code from discovered project metadata.
  */
 
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { ProjectMetadata, ExternalDependency } from "./discovery.js";
 
 /**
@@ -1066,4 +1068,88 @@ export function generateInitialFiles(metadata: ProjectMetadata): GeneratedFiles 
     "verification/_index.sysml": generateVerificationTemplate(),
     "analysis/_index.sysml": generateAnalysisTemplate(),
   };
+}
+
+/**
+ * Discover all top-level package names in the SysML directory.
+ * Scans all .sysml files (excluding _model.sysml) and extracts package names.
+ */
+export async function discoverModelPackages(sysmlDir: string): Promise<string[]> {
+  const packages = new Set<string>();
+  const packageRegex = /^package\s+(\w+)/gm;
+
+  async function scanDir(dir: string): Promise<void> {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          await scanDir(fullPath);
+        } else if (entry.name.endsWith(".sysml") && entry.name !== "_model.sysml") {
+          try {
+            const content = await readFile(fullPath, "utf-8");
+            let match;
+            while ((match = packageRegex.exec(content)) !== null) {
+              packages.add(match[1]);
+            }
+          } catch {
+            // Skip unreadable files
+          }
+        }
+      }
+    } catch {
+      // Directory doesn't exist
+    }
+  }
+
+  await scanDir(sysmlDir);
+  return [...packages].sort();
+}
+
+/**
+ * Standard package aliases for known packages.
+ */
+const STANDARD_ALIASES: Record<string, string> = {
+  SystemRequirements: "Requirements",
+  SystemContext: "Context",
+  SystemArchitecture: "Architecture",
+  DataModel: "Data",
+  SystemBehavior: "Behavior",
+  Verification: "Tests",
+  Analysis: "QualityAnalysis",
+};
+
+/**
+ * Regenerate _model.sysml content with imports for all discovered packages.
+ */
+export async function regenerateModelIndex(
+  sysmlDir: string,
+  projectName: string
+): Promise<string> {
+  const packages = await discoverModelPackages(sysmlDir);
+
+  // Generate imports for all packages
+  const imports = packages
+    .map((pkg) => `    import ${pkg}::*;`)
+    .join("\n");
+
+  // Generate aliases for known packages
+  const aliases = packages
+    .filter((pkg) => STANDARD_ALIASES[pkg])
+    .map((pkg) => `    alias ${STANDARD_ALIASES[pkg]} for ${pkg};`)
+    .join("\n");
+
+  const modelName = pathToIdentifier(projectName);
+
+  return `package ${modelName}Model {
+    doc /*${escapeSysmlString(projectName)} - SysML v2 Model. Master index file importing all model packages. Generated: ${new Date().toISOString()}. */
+
+    // Import all model packages by their package names
+${imports}
+
+    // Re-export key packages for convenience
+${aliases}
+}
+`;
 }

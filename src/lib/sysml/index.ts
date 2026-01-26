@@ -41,6 +41,8 @@ export {
   generateAnalysisTemplate,
   generateModelIndex,
   generateInitialFiles,
+  discoverModelPackages,
+  regenerateModelIndex,
   escapeSysmlString,
   pathToIdentifier,
   indent,

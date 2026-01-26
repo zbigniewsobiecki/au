@@ -23,22 +23,34 @@
 <% } %>
 <% } %>
 
-<% if (it.validationErrors && it.validationErrors.length > 0) { %>
+<% if ((it.syntaxErrors && it.syntaxErrors.length > 0) || (it.semanticErrors && it.semanticErrors.length > 0)) { %>
 ## ⚠️ Model Validation Errors
 
-Fix these semantic errors in the SysML model:
+<% if (it.syntaxErrors && it.syntaxErrors.length > 0) { %>
+### Syntax Errors (must fix first)
+<% for (const err of it.syntaxErrors.slice(0, 10)) { %>
+- `<%= err.file %>:<%= err.line %>`: <%= err.message %>
+<% } %>
+<% if (it.syntaxErrors.length > 10) { %>
+*(+<%= it.syntaxErrors.length - 10 %> more syntax errors)*
+<% } %>
 
+**Fix syntax errors before semantic validation can run.**
+<% } %>
+
+<% if (it.semanticErrors && it.semanticErrors.length > 0) { %>
+### Semantic Errors
 <%
 // Group errors by code
 const byCode = {};
-for (const err of it.validationErrors) {
+for (const err of it.semanticErrors) {
   const code = err.code || 'Unknown';
   if (!byCode[code]) byCode[code] = [];
   byCode[code].push(err);
 }
 %>
 <% for (const [code, errors] of Object.entries(byCode)) { %>
-### <%= code %><% if (code === 'E3001') { %> (Undefined Reference)<% } else if (code === 'E3004') { %> (Duplicate Definition)<% } %>
+#### <%= code %><% if (code === 'E3001') { %> (Undefined Reference)<% } else if (code === 'E3004') { %> (Duplicate Definition)<% } %>
 <% for (const err of errors.slice(0, 10)) { %>
 - `<%= err.file %>:<%= err.line %>`: <%= err.message %>
 <% } %>
@@ -48,6 +60,7 @@ for (const err of it.validationErrors) {
 <% } %>
 
 **To fix undefined references (E3001)**: Create the missing types using SysMLWrite before referencing them.
+<% } %>
 <% } %>
 
 ## Required Actions

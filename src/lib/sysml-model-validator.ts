@@ -7,6 +7,7 @@ import { readFile, readdir, stat, access } from "node:fs/promises";
 import { join } from "node:path";
 import { validateModelFull } from "./sysml/sysml2-cli.js";
 import { loadManifest, type Manifest } from "../gadgets/manifest-write.js";
+import { discoverModelPackages } from "./sysml/index.js";
 import fg from "fast-glob";
 
 const SYSML_DIR = ".sysml";
@@ -238,6 +239,11 @@ export interface CoverageIssue {
   detail?: string;
 }
 
+export interface ModelIndexMismatch {
+  importedButMissing: string[];
+  existingButNotImported: string[];
+}
+
 export interface SysMLValidationResult {
   manifestExists: boolean;
   manifestErrors: string[];
@@ -247,6 +253,7 @@ export interface SysMLValidationResult {
   orphanedFiles: string[];
   missingReferences: ReferenceMissing[];
   coverageIssues: CoverageIssue[];
+  modelIndexMismatches?: ModelIndexMismatch;
   validFileCount: number;
   totalFileCount: number;
 }
@@ -266,10 +273,6 @@ async function scanSysmlFiles(basePath: string): Promise<string[]> {
         const fullPath = join(dir, entry.name);
 
         if (entry.isDirectory()) {
-          // Skip .debug/ directory (contains partial fragments from edit history)
-          if (entry.name === ".debug") {
-            continue;
-          }
           await scanDir(fullPath, relativePath);
         } else if (entry.name.endsWith(".sysml")) {
           files.push(relativePath);
@@ -406,10 +409,11 @@ export class SysMLModelValidator {
     const sysmlFiles = await scanSysmlFiles(basePath);
     result.totalFileCount = sysmlFiles.length;
 
-    // Validate syntax using batch validation (single sysml2 invocation)
+    // Validate syntax using single-file validation via _model.sysml
+    // Since _model.sysml imports all packages, sysml2 follows imports transitively
     const sysmlDirPath = join(basePath, SYSML_DIR);
-    const absoluteFiles = sysmlFiles.map(f => join(sysmlDirPath, f));
-    const validationResult = await validateModelFull(sysmlDirPath, absoluteFiles);
+    const modelFile = join(sysmlDirPath, "_model.sysml");
+    const validationResult = await validateModelFull(sysmlDirPath, [modelFile]);
 
     // Map diagnostics to SyntaxError format
     for (const diag of validationResult.syntaxErrors) {
@@ -455,6 +459,9 @@ export class SysMLModelValidator {
     // Check coverage completeness (target files exist)
     await this.validateCoverage(manifest, basePath, result);
 
+    // Check model index imports match discovered packages
+    await this.validateModelIndex(sysmlDirPath, fileContents, result);
+
     return result;
   }
 
@@ -469,6 +476,10 @@ export class SysMLModelValidator {
     count += result.orphanedFiles.length;
     count += result.missingReferences.length;
     count += result.coverageIssues.length;
+    if (result.modelIndexMismatches) {
+      count += result.modelIndexMismatches.importedButMissing.length;
+      count += result.modelIndexMismatches.existingButNotImported.length;
+    }
     return count;
   }
 
@@ -586,11 +597,6 @@ export class SysMLModelValidator {
 
       // Skip index files (subdirectory/_index.sysml)
       if (file.endsWith("/_index.sysml") || file === "_index.sysml") {
-        continue;
-      }
-
-      // Skip .debug/ directory (debug history files)
-      if (file.startsWith(".debug/")) {
         continue;
       }
 
@@ -736,6 +742,58 @@ export class SysMLModelValidator {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Validate that _model.sysml imports match discovered packages.
+   */
+  private async validateModelIndex(
+    sysmlDirPath: string,
+    fileContents: Map<string, string>,
+    result: SysMLValidationResult
+  ): Promise<void> {
+    // Get _model.sysml content
+    const modelContent = fileContents.get("_model.sysml");
+    if (!modelContent) {
+      return; // No model file to validate
+    }
+
+    // Extract imported package names from _model.sysml
+    const importedPackages = new Set<string>();
+    const importMatches = modelContent.matchAll(/import\s+(\w+)::/g);
+    for (const match of importMatches) {
+      importedPackages.add(match[1]);
+    }
+
+    // Discover all packages that exist in the model
+    const discoveredPackages = await discoverModelPackages(sysmlDirPath);
+    const discoveredSet = new Set(discoveredPackages);
+
+    // Find mismatches
+    const importedButMissing: string[] = [];
+    const existingButNotImported: string[] = [];
+
+    // Check for imports that reference non-existent packages
+    for (const pkg of importedPackages) {
+      if (!discoveredSet.has(pkg)) {
+        importedButMissing.push(pkg);
+      }
+    }
+
+    // Check for packages that exist but aren't imported
+    for (const pkg of discoveredPackages) {
+      if (!importedPackages.has(pkg)) {
+        existingButNotImported.push(pkg);
+      }
+    }
+
+    // Only set mismatches if there are any
+    if (importedButMissing.length > 0 || existingButNotImported.length > 0) {
+      result.modelIndexMismatches = {
+        importedButMissing,
+        existingButNotImported,
+      };
     }
   }
 }

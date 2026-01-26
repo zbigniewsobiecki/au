@@ -5,6 +5,7 @@
 
 import { AgentBuilder, LLMist } from "llmist";
 import chalk from "chalk";
+import { join } from "node:path";
 
 import type { CycleState, CycleIterationState, CycleTurnOptions, CycleTurnResult } from "./types.js";
 import { extractEntitiesFromSysml } from "./entity-parser.js";
@@ -34,7 +35,7 @@ import {
   fileViewerNextFileSet,
 } from "../../gadgets/index.js";
 import { checkCycleCoverage, type CoverageResult } from "../sysml/index.js";
-import { validateModelFull, type Sysml2MultiDiagnostic } from "../sysml/sysml2-cli.js";
+import { validateModelFull, type Sysml2MultiDiagnostic, type ValidationResult } from "../sysml/sysml2-cli.js";
 
 /**
  * Gadget sets for different cycle types.
@@ -83,7 +84,8 @@ export interface TrailingMessageContext {
   expectedCount: number;
   docCoveragePercent?: number;
   docMissingFiles?: string[];
-  validationErrors?: Sysml2MultiDiagnostic[];
+  syntaxErrors?: Sysml2MultiDiagnostic[];
+  semanticErrors?: Sysml2MultiDiagnostic[];
 }
 
 /**
@@ -354,14 +356,14 @@ export async function runCycleTurn(
     docCoveragePercent: number;
     docMissingFiles: string[];
   }
-): Promise<{ nextFiles: string[]; summary: string[]; turns: number }> {
+): Promise<{ nextFiles: string[]; summary: string[]; turns: number; validationResult: ValidationResult | null }> {
   const { expectedCount, cycle, docCoveragePercent, docMissingFiles } = trailingContext;
 
-  // Run full model validation before turn
-  let validationErrors: Sysml2MultiDiagnostic[] = [];
+  // Run full model validation before turn (single-file via _model.sysml)
+  let validationResult: ValidationResult | null = null;
   try {
-    const validation = await validateModelFull(".sysml");
-    validationErrors = validation.semanticErrors;
+    const modelFile = join(".sysml", "_model.sysml");
+    validationResult = await validateModelFull(".sysml", [modelFile]);
   } catch {
     // sysml2 not available - skip validation
   }
@@ -384,7 +386,8 @@ export async function runCycleTurn(
         expectedCount,
         docCoveragePercent,
         docMissingFiles: docMissingFiles.slice(0, 20),
-        validationErrors,
+        syntaxErrors: validationResult?.syntaxErrors ?? [],
+        semanticErrors: validationResult?.semanticErrors ?? [],
       });
     },
     onFileWrite: async (path, mode, delta, diff) => {
@@ -418,6 +421,7 @@ export async function runCycleTurn(
     nextFiles: result.nextFiles,
     summary: result.summary,
     turns: result.turns,
+    validationResult,
   };
 }
 

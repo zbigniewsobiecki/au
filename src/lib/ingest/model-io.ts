@@ -7,7 +7,7 @@ import { join } from "node:path";
 import fg from "fast-glob";
 
 import { SYSML_DIR, CYCLE_SYSML_PATTERNS } from "./constants.js";
-import { generateInitialFiles, type ProjectMetadata } from "../sysml/index.js";
+import { generateInitialFiles, regenerateModelIndex, type ProjectMetadata } from "../sysml/index.js";
 import { runSysml2Multi } from "../sysml/sysml2-cli.js";
 import { Output } from "../output.js";
 
@@ -138,5 +138,41 @@ export async function validateInitialModel(
       console.log(`⚠ Skipping validation: ${err instanceof Error ? err.message : String(err)}`);
     }
     return true;
+  }
+}
+
+/**
+ * Update the _model.sysml file to import all discovered packages.
+ * Should be called after each ingestion cycle to ensure the model index
+ * reflects the current state of the model.
+ */
+export async function updateModelIndex(
+  metadata: ProjectMetadata | null,
+  verbose: boolean
+): Promise<void> {
+  if (!metadata) {
+    return;
+  }
+
+  const newContent = await regenerateModelIndex(SYSML_DIR, metadata.name);
+  const modelPath = join(SYSML_DIR, "_model.sysml");
+
+  // Read existing content to check if update is needed
+  let existingContent = "";
+  try {
+    existingContent = await readFile(modelPath, "utf-8");
+  } catch {
+    // File doesn't exist yet, will be created
+  }
+
+  // Only write if content has changed (ignoring timestamp in doc comment)
+  const normalizeForComparison = (content: string) =>
+    content.replace(/Generated: [^*]+\*/, "Generated: TIMESTAMP */");
+
+  if (normalizeForComparison(existingContent) !== normalizeForComparison(newContent)) {
+    await writeFile(modelPath, newContent, "utf-8");
+    if (verbose) {
+      console.log(`\x1b[2m   Updated _model.sysml with current package imports\x1b[0m`);
+    }
   }
 }

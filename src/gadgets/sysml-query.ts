@@ -98,7 +98,7 @@ async function scanSysmlFiles(): Promise<{
         const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
         const fullPath = join(dir, entry.name);
 
-        if (entry.isDirectory() && entry.name !== ".debug") {
+        if (entry.isDirectory()) {
           await scanDir(fullPath, relativePath);
         } else if (entry.name.endsWith(".sysml")) {
           try {
@@ -207,7 +207,7 @@ Uses sysml2 CLI --select for semantic element selection:
           const entries = await readdir(dir, { withFileTypes: true });
           for (const entry of entries) {
             const fullPath = join(dir, entry.name);
-            if (entry.isDirectory() && entry.name !== ".debug") {
+            if (entry.isDirectory()) {
               await collectFiles(fullPath);
             } else if (entry.name.endsWith(".sysml")) {
               allFiles.push(fullPath);
