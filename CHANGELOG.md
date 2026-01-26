@@ -1,3 +1,9 @@
+## [2.2.0](https://github.com/zbigniewsobiecki/au/compare/v2.1.1...v2.2.0) (2026-01-26)
+
+### Features
+
+* enhance SysML tooling with improved validation and CLI support ([eff6f3f](https://github.com/zbigniewsobiecki/au/commit/eff6f3f35c68e40ad88598673a77e216c8b59615))
+
 ## [2.1.1](https://github.com/zbigniewsobiecki/au/compare/v2.1.0...v2.1.1) (2026-01-26)
 
 ## [2.1.0](https://github.com/zbigniewsobiecki/au/compare/v2.0.2...v2.1.0) (2026-01-25)
