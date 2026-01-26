@@ -7,15 +7,17 @@
 - Files documented this session: **<%= it.readCount %>**
 - Remaining in current batch: **<%= it.remainingFiles %>**
 <% const coveragePercent = it.totalMissing > 0 ? Math.round(((it.totalMissing - it.stillMissing) / it.totalMissing) * 100) : 100; %>
-- Retry coverage: **<%= coveragePercent %>%** (<%= it.totalMissing - it.stillMissing %>/<%= it.totalMissing %> files)
+- Retry coverage: **<%= coveragePercent %>%**
 
-<% if (it.validationExitCode && it.validationExitCode !== 0 && it.validationOutput) { %>
-## Model Validation Errors (exit code <%= it.validationExitCode %>)
+<% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
 
-<% if (it.validationExitCode === 1) { %>
-**Syntax errors must be fixed first.**
+<% if (it.validationOutput && it.validationOutput.trim().length > 0) { %>
+<% if (it.validationExitCode === 0) { %>
+## ⚠️ Model Validation Warnings
+<% } else if (it.validationExitCode === 1) { %>
+## ❌ Model Validation Errors (syntax)
 <% } else if (it.validationExitCode === 2) { %>
-**Semantic errors - fix undefined references by creating the missing types.**
+## ❌ Model Validation Errors (semantic)
 <% } %>
 
 ```
@@ -24,10 +26,14 @@
 
 <% } %>
 
+<%~ include("./partials/validation-actions", it) %>
+
+<% if (!hasValidationErrors) { %>
+
 <% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
 ## Files Still Missing Coverage
 
-These files need `@SourceFile { :>> path = "..."; }` metadata in `.sysml/<%= it.cycleOutputDir %>/`:
+These files need `@SourceFile { :>> path = "..."; }` metadata:
 <% for (const file of it.unreadFiles.slice(0, 15)) { %>
 - `<%= file %>`
 <% } %>
@@ -40,7 +46,14 @@ These files need `@SourceFile { :>> path = "..."; }` metadata in `.sysml/<%= it.
 
 1. Write SysML definitions to `.sysml/<%= it.cycleOutputDir %>/` directory
 2. Include `@SourceFile { :>> path = "<filepath>"; }` metadata for EACH missing file
-3. When done with current batch, call `FileViewerNextFileSet(paths="")` to check coverage
-4. Or request specific files: `FileViewerNextFileSet(paths="file1.ts,file2.ts")`
+3. When done, call `FileViewerNextFileSet(paths="")` to check coverage
 
-**IMPORTANT**: Keep iterating until ALL missing files have been covered. Do NOT stop early.
+**IMPORTANT**: Keep iterating until ALL missing files have been covered.
+
+<%~ include("./partials/maximize-extraction", it) %>
+
+<% } else { %>
+
+**After fixing all validation errors**, continue with coverage improvements.
+
+<% } %>

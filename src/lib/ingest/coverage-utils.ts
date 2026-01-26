@@ -84,7 +84,14 @@ export async function verifyCoverageHeuristically(
     onlyFiles: true,
   });
 
-  const readFromPotential = potentialFiles.filter((f) => readFiles.has(f)).length;
+  // Normalize path by removing leading ./ to handle format mismatches
+  // (fast-glob returns "src/foo.ts", but LLM may send "./src/foo.ts")
+  const normalizePath = (p: string) => p.replace(/^\.\//, "");
+  const normalizedReadFiles = new Set([...readFiles].map(normalizePath));
+
+  const readFromPotential = potentialFiles.filter((f) =>
+    normalizedReadFiles.has(normalizePath(f))
+  ).length;
   const percentage = potentialFiles.length > 0
     ? Math.round((readFromPotential / potentialFiles.length) * 100)
     : 100;

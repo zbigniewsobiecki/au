@@ -294,20 +294,6 @@ export function generateStdlib(): string {
         port auth : AuthPort;
     }
 
-    part def PaymentProvider :> ExternalService {
-        doc /*Payment processing (Stripe, etc.) */
-        port payments : PaymentPort;
-    }
-
-    part def EmailProvider :> ExternalService {
-        doc /*Email service (Mailgun, SendGrid, etc.) */
-        port email : EmailPort;
-    }
-
-    part def StorageProvider :> ExternalService {
-        doc /*File storage service */
-        port storage : StoragePort;
-    }
 
     // ========== SERVICE PORTS ==========
     port def HTTPPort :> ServicePort {
@@ -346,19 +332,6 @@ export function generateStdlib(): string {
         doc /*Authentication port */
         in item credentials : Credentials;
         out item token : AuthToken [0..1];
-        out item error : AuthError [0..1];
-    }
-
-    port def PaymentPort :> Port {
-        doc /*Payment processing port */
-        in item paymentRequest : PaymentRequest;
-        out item paymentResult : PaymentResult;
-    }
-
-    port def EmailPort :> Port {
-        doc /*Email sending port */
-        in item email : EmailMessage;
-        out item result : DeliveryResult;
     }
 
     port def StoragePort :> Port {
@@ -413,40 +386,6 @@ export function generateStdlib(): string {
         attribute accessToken : String;
         attribute refreshToken : String [0..1];
         attribute expiresAt : DateTime [0..1];
-    }
-
-    item def AuthError :> DTO {
-        doc /*Authentication error */
-        attribute code : String;
-        attribute message : String;
-    }
-
-    item def PaymentRequest :> DTO {
-        doc /*Payment request */
-        attribute amount : Real;
-        attribute currency : String;
-        attribute customerId : String [0..1];
-    }
-
-    item def PaymentResult :> DTO {
-        doc /*Payment result */
-        attribute success : Boolean;
-        attribute transactionId : String [0..1];
-        attribute error : String [0..1];
-    }
-
-    item def EmailMessage :> DTO {
-        doc /*Email message */
-        attribute recipient : String;
-        attribute subject : String;
-        attribute bodyText : String;
-        attribute sender : String [0..1];
-    }
-
-    item def DeliveryResult :> DTO {
-        doc /*Delivery result */
-        attribute delivered : Boolean;
-        attribute messageId : String [0..1];
     }
 
     item def FileData :> DTO {

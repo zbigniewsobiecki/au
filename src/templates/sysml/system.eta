@@ -849,19 +849,66 @@ SysMLPrimitives provides ready-to-use types for common components. Use these ins
 
 **External Services:**
 - `AuthProvider` - Auth service (Auth0, Clerk, etc.)
-- `PaymentProvider` - Payment processing (Stripe, etc.)
-- `EmailProvider` - Email service (Mailgun, SendGrid, etc.)
-- `StorageProvider` - File storage service
 
 **Service Ports:**
 - `HTTPPort`, `WebSocketPort` - Web communication ports
 - `DatabasePort`, `CachePort` - Data storage ports
-- `AuthPort`, `PaymentPort`, `EmailPort`, `StoragePort` - Service integration ports
+- `AuthPort`, `StoragePort` - Service integration ports
 
 **Connections:**
 - `APIConnection` - Frontend to Backend API connection
 - `DatabaseConnection` - App to Database connection
 - `CacheConnection` - App to Cache connection
+
+## Extending WebApplication (CRITICAL for E3002 errors)
+
+When creating a project-specific system type that extends `WebApplication`, you MUST use `:>>` to redefine inherited features like `frontend` and `backend`. Without `:>>`, you create NEW features that shadow the inherited ones, causing E3002 "feature not found" errors.
+
+**CORRECT - Redefine inherited features with `:>>`:**
+```sysml
+// Define a project-specific system type
+part def CarDealershipSystem :> WebApplication {
+    // Use :>> to REDEFINE the inherited frontend feature
+    part :>> frontend : Frontend {
+        :>> framework = "react";
+        :>> port = 3000;
+    }
+
+    // Use :>> to REDEFINE the inherited backend feature
+    part :>> backend : APIServer {
+        :>> framework = "express";
+        :>> port = 3010;
+    }
+}
+
+// Instantiate the system
+part system : CarDealershipSystem;
+
+// Now you can reference system.frontend and system.backend
+connection apiConn : APIConnection connect
+    system.frontend.api to system.backend.api;
+```
+
+**WRONG - Forgetting `:>>` causes E3002 errors:**
+```sysml
+part def MySystem :> WebApplication {
+    // WRONG! Creates NEW features that shadow inherited ones
+    part frontend : Frontend { ... }   // Missing :>> !
+    part backend : APIServer { ... }   // Missing :>> !
+}
+
+part system : MySystem;
+
+// ERROR E3002: feature 'frontend' not found in 'MySystem'
+// The inherited WebApplication.frontend is hidden by the new one!
+connection connect system.frontend.api to system.backend.api;
+```
+
+**Why this happens:**
+- `WebApplication` defines `part frontend : Frontend [0..1];` and `part backend : Backend [0..1];`
+- Without `:>>`, you declare a NEW feature with the same name, which shadows the inherited one
+- The SysML validator sees the shadowing and reports E3002 because the feature hierarchy is broken
+- With `:>>`, you REDEFINE the inherited feature, keeping the type hierarchy intact
 
 **Example - Model a full-stack app:**
 ```sysml

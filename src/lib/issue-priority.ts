@@ -3,8 +3,8 @@
  * Prioritizes validation issues for the fix workflow.
  */
 
-import type { SysMLValidationResult } from "./sysml-model-validator.js";
 import type { VerificationFinding } from "../gadgets/verify-finding.js";
+import type { Sysml2MultiDiagnostic } from "./sysml/sysml2-cli.js";
 
 /**
  * Priority levels from highest (1) to lowest (5).
@@ -44,98 +44,47 @@ export function getPriorityLabel(level: PriorityLevel): PriorityLabel {
 }
 
 /**
- * Convert static validation results to prioritized issues.
+ * Convert sysml2 diagnostics to prioritized issues.
  *
  * Priority mapping:
- * - P1 BLOCKING: manifestErrors, syntaxErrors (prevent parsing)
- * - P2 CRITICAL: missingReferences (broken imports/specializations)
- * - P3 HIGH: missing expectedOutputs (files that should exist)
- * - P4 MEDIUM: fileCoverageMismatches (incomplete coverage)
- * - P5 LOW: orphanedFiles, coverageIssues (cleanup)
+ * - P1 BLOCKING: syntax errors (exit code 1)
+ * - P2 CRITICAL: semantic errors (exit code 2)
+ * - P3 HIGH: warnings (exit code 0 with warnings)
  */
-export function prioritizeStaticIssues(result: SysMLValidationResult): PrioritizedIssue[] {
+export function prioritizeSysml2Diagnostics(
+  exitCode: number,
+  diagnostics: Sysml2MultiDiagnostic[]
+): PrioritizedIssue[] {
   const issues: PrioritizedIssue[] = [];
 
-  // P1 - BLOCKING: Manifest errors
-  for (const error of result.manifestErrors) {
-    issues.push({
-      priority: 1,
-      priorityLabel: "BLOCKING",
-      category: "manifest-error",
-      description: error,
-    });
-  }
+  for (const diag of diagnostics) {
+    let priority: PriorityLevel;
+    let priorityLabel: PriorityLabel;
 
-  // P1 - BLOCKING: Syntax errors
-  for (const syntaxError of result.syntaxErrors) {
-    for (const error of syntaxError.errors) {
-      issues.push({
-        priority: 1,
-        priorityLabel: "BLOCKING",
-        category: "syntax-error",
-        description: error,
-        file: syntaxError.file,
-      });
+    if (diag.severity === "error") {
+      if (exitCode === 1) {
+        // Syntax errors are blocking
+        priority = 1;
+        priorityLabel = "BLOCKING";
+      } else {
+        // Semantic errors (exit code 2) are critical
+        priority = 2;
+        priorityLabel = "CRITICAL";
+      }
+    } else {
+      // Warnings
+      priority = 3;
+      priorityLabel = "HIGH";
     }
-  }
 
-  // P2 - CRITICAL: Missing references (imports/specializations)
-  for (const ref of result.missingReferences) {
+    const codeInfo = diag.code ? ` [${diag.code}]` : "";
     issues.push({
-      priority: 2,
-      priorityLabel: "CRITICAL",
-      category: `missing-${ref.type}`,
-      description: `Missing ${ref.type} '${ref.reference}'`,
-      file: ref.file,
-      line: ref.line,
-      recommendation: ref.context ? `Context: ${ref.context}` : undefined,
-    });
-  }
-
-  // P3 - HIGH: Missing expected outputs
-  const missingOutputs = result.expectedOutputs.filter((o) => !o.exists);
-  for (const output of missingOutputs) {
-    issues.push({
-      priority: 3,
-      priorityLabel: "HIGH",
-      category: "missing-output",
-      description: `Expected output file does not exist: ${output.path}`,
-      file: output.path,
-      recommendation: "Create the file with appropriate SysML content",
-    });
-  }
-
-  // P4 - MEDIUM: File coverage mismatches
-  for (const mismatch of result.fileCoverageMismatches) {
-    issues.push({
-      priority: 4,
-      priorityLabel: "MEDIUM",
-      category: "coverage-mismatch",
-      description: `${mismatch.cycle}: ${mismatch.covered}/${mismatch.expected} source files covered`,
-      recommendation: `Uncovered files: ${mismatch.uncoveredFiles.slice(0, 3).join(", ")}${mismatch.uncoveredFiles.length > 3 ? ` (+${mismatch.uncoveredFiles.length - 3} more)` : ""}`,
-    });
-  }
-
-  // P5 - LOW: Orphaned files
-  for (const file of result.orphanedFiles) {
-    issues.push({
-      priority: 5,
-      priorityLabel: "LOW",
-      category: "orphaned-file",
-      description: `File not listed in manifest expectedOutputs: ${file}`,
-      file,
-      recommendation: "Either add to manifest expectedOutputs or delete if obsolete",
-    });
-  }
-
-  // P5 - LOW: Coverage issues
-  for (const issue of result.coverageIssues) {
-    issues.push({
-      priority: 5,
-      priorityLabel: "LOW",
-      category: `coverage-${issue.type}`,
-      description: `${issue.cycle}: ${issue.type} - ${issue.path}`,
-      recommendation: issue.detail,
+      priority,
+      priorityLabel,
+      category: `sysml2-${diag.severity}`,
+      description: `${diag.message}${codeInfo}`,
+      file: diag.file,
+      line: diag.line,
     });
   }
 
