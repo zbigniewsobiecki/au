@@ -1,0 +1,66 @@
+
+---
+## Fix Turn <%= it.iteration %>/<%= it.maxIterations %>
+
+- Fixes applied: **<%= it.fixesApplied %>**
+<% if (it.totalFiles > 0) { %>
+- Source file coverage: **<%= it.coveredFiles %>/<%= it.totalFiles %>** (<%= it.coveragePercent %>%)
+<% } %>
+
+<% if (it.validationOutput && it.validationOutput.trim().length > 0) { %>
+<% if (it.validationExitCode === 0) { %>
+## ⚠️ Model Validation Warnings
+<% } else if (it.validationExitCode === 1) { %>
+## ❌ Model Validation Errors (syntax)
+<% } else if (it.validationExitCode === 2) { %>
+## ❌ Model Validation Errors (semantic)
+<% } %>
+
+```
+<%= it.validationOutput.trim() %>
+```
+<% } %>
+
+<% const threshold = it.coverageThreshold ?? 80; %>
+<% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
+<% const coverageMet = it.totalFiles === 0 || it.coveragePercent >= threshold; %>
+
+<% if (hasValidationErrors) { %>
+
+**Fix validation errors first** before continuing with coverage work.
+
+<% } else if (!coverageMet) { %>
+
+<% if (it.coveragePercent < 50) { %>
+## ⚠️ COVERAGE TOO LOW (<%= it.coveragePercent %>%)
+<% } else { %>
+## Coverage Progress (<%= it.coveragePercent %>% / <%= threshold %>% target)
+<% } %>
+
+<% if (it.uncoveredFiles && it.uncoveredFiles.length > 0) { %>
+Files still missing `@SourceFile` metadata:
+<% for (const file of it.uncoveredFiles) { %>
+- `<%= file %>`
+<% } %>
+<% if (it.uncoveredFiles.length >= 20) { %>
+*(showing first 20 of <%= it.totalFiles - it.coveredFiles %> uncovered)*
+<% } %>
+<% } %>
+
+<% const batch = it.batchSize ?? 10; %>
+**DO NOT call `FinishSysmlFix` until coverage >= <%= threshold %>%**
+
+Process ~<%= batch %> files per turn. For each file:
+1. Read with `ReadFiles`
+2. Find/create appropriate SysML definition
+3. Add `@SourceFile { :>> path = "<filepath>"; }` metadata
+
+Make multiple `SysMLWrite` calls per turn to maximize progress.
+
+<% } else if (coverageMet) { %>
+
+✅ Coverage threshold met (<%= it.coveragePercent %>% >= <%= threshold %>%).
+
+You may call `FinishSysmlFix` with a summary of work completed.
+
+<% } %>

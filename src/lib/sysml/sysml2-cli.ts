@@ -300,16 +300,24 @@ function parseDiagnosticOutput(stderr: string): Sysml2Diagnostic[] {
  * Parse clang-style diagnostic output from stderr for multi-file validation.
  * Includes file path in each diagnostic.
  *
- * Format: filename:line:column: error[CODE]: message
+ * Format 1 (with file/line): filename:line:column: error[CODE]: message
+ * Format 2 (without file/line): error[CODE]: message
  */
 export function parseMultiFileDiagnosticOutput(stderr: string): Sysml2MultiDiagnostic[] {
   const diagnostics: Sysml2MultiDiagnostic[] = [];
   const cleanStderr = stripAnsi(stderr);
-  const pattern =
+
+  // Pattern 1: With file/line info - filename:line:column: error[CODE]: message
+  const withFilePattern =
     /^(.+?):(\d+):(\d+):\s*(error|warning)(?:\[([A-Z]\d+)\])?:\s*(.+)$/gm;
 
+  // Pattern 2: Without file/line info - error[CODE]: message
+  const withoutFilePattern = /^(error|warning)\[([A-Z]\d+)\]:\s*(.+)$/gm;
+
   let match;
-  while ((match = pattern.exec(cleanStderr)) !== null) {
+
+  // First, match diagnostics with file/line info
+  while ((match = withFilePattern.exec(cleanStderr)) !== null) {
     diagnostics.push({
       file: match[1],
       line: parseInt(match[2], 10),
@@ -317,6 +325,18 @@ export function parseMultiFileDiagnosticOutput(stderr: string): Sysml2MultiDiagn
       severity: match[4] as "error" | "warning",
       code: match[5] || "",
       message: match[6],
+    });
+  }
+
+  // Then, match diagnostics without file/line info
+  while ((match = withoutFilePattern.exec(cleanStderr)) !== null) {
+    diagnostics.push({
+      file: "<unknown>",
+      line: 0,
+      column: 0,
+      severity: match[1] as "error" | "warning",
+      code: match[2],
+      message: match[3],
     });
   }
 

@@ -86,19 +86,27 @@ export const sysmlWrite = createGadget({
 
    The \`at\` parameter specifies WHERE to place the element - don't duplicate the scope.
 
-   **When to use replaceScope=true:**
-   Use this when fixing E3002 "feature not found" errors caused by wrong element order.
-   Declarations must come before redefinitions in SysML. When you provide the full
-   scope content with correct order and replaceScope=true, the fragment's order is preserved.
+   **When to use replaceScope=true (DANGER - READ CAREFULLY!):**
 
-   Example - fixing E3002 ordering error:
+   ⚠️ **DATA LOSS WARNING**: replaceScope=true CLEARS the entire scope first!
+   You MUST include ALL existing elements in your element parameter, not just the
+   ones you're modifying. If you only provide partial content, the rest will be
+   PERMANENTLY DELETED.
+
+   Use this when fixing E3002 "feature not found" errors caused by wrong element order:
+   1. First, use SysMLRead to get the COMPLETE current content of the scope
+   2. Include ALL existing elements in your element parameter
+   3. Reorder them correctly (declarations before redefinitions)
+   4. Then use replaceScope=true
+
    \`\`\`
-   // Before: Scope has redefinition before declaration (E3002 error)
-   // Fix by providing full scope content with correct order:
+   // WRONG - Only includes 2 elements - everything else in the scope will be DELETED!
+   SysMLWrite(element="part def B;\\npart def C :> B;", at="Pkg", replaceScope=true)
+
+   // CORRECT - Includes ALL elements from the scope, in correct order:
    SysMLWrite(
-     path="structure/modules.sysml",
-     element="part def BaseModule;\\npart def ExtendedModule :> BaseModule;",
-     at="SystemModules",
+     element="part def A;\\npart def B;\\npart def C :> B;\\npart def D;\\npart def E;",
+     at="Pkg",
      replaceScope=true
    )
    \`\`\`
@@ -467,7 +475,7 @@ Check if another file has the issue, or if the element name/scope is different t
         }
 
         // Generate diff for CLI display (colors for human, plain +/- for LLM)
-        const diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent);
+        const diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent, Infinity);
 
         // Warn if no changes were made but element was provided
         if (result.added === 0 && result.replaced === 0 && element && element.trim()) {

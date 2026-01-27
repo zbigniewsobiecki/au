@@ -64,12 +64,17 @@ Total: **<%= issues.length %> issue<%= issues.length === 1 ? "" : "s" %>**
 <% } %>
 <% if (p4.length > 0) { %>
 ### P4 - MEDIUM (<%= p4.length %>)
-**Fix after higher priorities** - incomplete coverage and warnings.
+**Fix after higher priorities** - coverage gaps and warnings.
 
 <% p4.forEach(function(issue) { %>
-- **[<%= issue.category %>]**<% if (issue.file) { %> `<%= issue.file %>`<% if (issue.line) { %>:<%= issue.line %><% } %><% } %>
-  <%= issue.description %>
+- **[<%= issue.category %>]** <%= issue.description %>
 <% if (issue.recommendation) { %>  → <%= issue.recommendation %><% } %>
+<% if (issue.uncoveredFiles && issue.uncoveredFiles.length > 0) { %>
+  Files to cover:
+<% issue.uncoveredFiles.forEach(function(file) { %>
+    - `<%= file %>` → requires `@SourceFile { :>> path = "<%= file %>"; }`
+<% }); %>
+<% } %>
 <% }); %>
 
 <% } %>
@@ -86,6 +91,18 @@ Total: **<%= issues.length %> issue<%= issues.length === 1 ? "" : "s" %>**
 <% } %>
 <% } %>
 
+<% const nonActionable = it.nonActionableIssues || []; %>
+<% if (nonActionable.length > 0) { %>
+## Informational (Not Actionable)
+
+These issues are tracked but don't require fixing in this phase. Coverage mismatches should be addressed during the ingest cycle, not the fix cycle.
+
+<% nonActionable.forEach(function(issue) { %>
+- **[<%= issue.category %>]** <%= issue.description %>
+<% if (issue.recommendation) { %>  → <%= issue.recommendation %><% } %>
+<% }); %>
+
+<% } %>
 ## Start Fixing
 
 Begin with the highest priority issue (P1 first, then P2, etc.):
@@ -93,4 +110,4 @@ Begin with the highest priority issue (P1 first, then P2, etc.):
 2. Read the relevant source code with ReadFiles/RipGrep
 3. Apply the fix with SysMLWrite
 
-When all issues are resolved (or no more can be fixed), call FinishSysmlFix with a summary.
+When all actionable issues are resolved (or no more can be fixed), call FinishSysmlFix with a summary.

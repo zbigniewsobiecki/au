@@ -131,6 +131,13 @@ export class SysMLCoverageValidator {
   }
 
   /**
+   * Get actionable issue count (includes all issues - coverage-mismatch is now actionable).
+   */
+  static getActionableIssueCount(result: CoverageValidationResult): number {
+    return result.fileCoverageMismatches.length + result.coverageIssues.length;
+  }
+
+  /**
    * Validate that source files are covered by SysML definitions.
    * Checks for @SourceFile { :>> path = "<path>"; } metadata in SysML files.
    */

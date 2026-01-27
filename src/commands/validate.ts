@@ -79,7 +79,19 @@ export default class Validate extends Command {
     }),
     "fix-iterations": Flags.integer({
       description: "Max iterations for fix phase",
-      default: 30,
+      default: 50,
+    }),
+    "coverage-threshold": Flags.integer({
+      description: "Minimum coverage % for fix phase to complete (default: 80)",
+      default: 80,
+      min: 0,
+      max: 100,
+    }),
+    "fix-batch-size": Flags.integer({
+      description: "Suggested files to cover per turn (default: 10)",
+      default: 10,
+      min: 1,
+      max: 50,
     }),
     "verify-iterations": Flags.integer({
       description: "Max iterations for verification phase",
@@ -202,6 +214,7 @@ export default class Validate extends Command {
         diagnostics,
         coverageResult,
         agenticFindings,
+        coverageValidator,
         flags,
         out
       );
@@ -219,12 +232,13 @@ export default class Validate extends Command {
         this.displayCoverageResults(newCoverageResult, flags.verbose);
 
         const newErrorCount = newDiagnostics.filter(d => d.severity === "error").length;
-        const newCoverageIssues = SysMLCoverageValidator.getIssueCount(newCoverageResult);
+        const newCoverageIssues = SysMLCoverageValidator.getActionableIssueCount(newCoverageResult);
+        const totalRemaining = newErrorCount + newCoverageIssues;
         console.log();
-        if (newErrorCount === 0 && newCoverageIssues === 0) {
+        if (totalRemaining === 0) {
           out.success("All validations passed after fixes");
         } else {
-          out.warn(`${newErrorCount + newCoverageIssues} issue${newErrorCount + newCoverageIssues === 1 ? "" : "s"} remaining`);
+          out.warn(`${totalRemaining} issue${totalRemaining === 1 ? "" : "s"} remaining`);
         }
       } else {
         out.info("No fixes were applied");
@@ -378,6 +392,8 @@ export default class Validate extends Command {
       sysmlRead,
       sysmlQuery,
       readFiles,
+      readDirs,
+      ripGrep,
     ];
 
     let builder = new AgentBuilder(client)
@@ -526,18 +542,28 @@ export default class Validate extends Command {
   private prioritizeCoverageIssues(result: CoverageValidationResult): PrioritizedIssue[] {
     const issues: PrioritizedIssue[] = [];
 
-    // P4 - MEDIUM: File coverage mismatches
+    // P4 - MEDIUM: File coverage mismatches (now actionable - add @SourceFile metadata)
+    // Create batched issues (groups of 10 files) to avoid overwhelming the agent
     for (const mismatch of result.fileCoverageMismatches) {
-      issues.push({
-        priority: 4,
-        priorityLabel: "MEDIUM",
-        category: "coverage-mismatch",
-        description: `${mismatch.cycle}: ${mismatch.covered}/${mismatch.expected} source files covered`,
-        recommendation: `Uncovered files: ${mismatch.uncoveredFiles.slice(0, 3).join(", ")}${mismatch.uncoveredFiles.length > 3 ? ` (+${mismatch.uncoveredFiles.length - 3} more)` : ""}`,
-      });
+      const batches: string[][] = [];
+      for (let i = 0; i < mismatch.uncoveredFiles.length; i += 10) {
+        batches.push(mismatch.uncoveredFiles.slice(i, i + 10));
+      }
+
+      for (const batch of batches) {
+        issues.push({
+          priority: 4,
+          priorityLabel: "MEDIUM",
+          category: "coverage-mismatch",
+          description: `${mismatch.cycle}: Add @SourceFile coverage for: ${batch.slice(0, 3).join(", ")}${batch.length > 3 ? ` (+${batch.length - 3} more)` : ""}`,
+          recommendation: `Read these source files and add @SourceFile metadata to appropriate SysML definitions`,
+          actionable: true,
+          uncoveredFiles: batch,
+        });
+      }
     }
 
-    // P5 - LOW: Coverage issues
+    // P5 - LOW: Coverage issues (actionable - can be fixed by updating manifest/model)
     for (const issue of result.coverageIssues) {
       issues.push({
         priority: 5,
@@ -545,6 +571,7 @@ export default class Validate extends Command {
         category: `coverage-${issue.type}`,
         description: `${issue.cycle}: ${issue.type} - ${issue.path}`,
         recommendation: issue.detail,
+        actionable: true,
       });
     }
 
@@ -560,7 +587,8 @@ export default class Validate extends Command {
     diagnostics: Sysml2MultiDiagnostic[],
     coverageResult: CoverageValidationResult,
     agenticFindings: VerificationFinding[],
-    flags: { model: string; rpm: number; tpm: number; "fix-iterations": number; verbose: boolean },
+    coverageValidator: SysMLCoverageValidator,
+    flags: { model: string; rpm: number; tpm: number; "fix-iterations": number; "coverage-threshold": number; "fix-batch-size": number; verbose: boolean },
     out: Output
   ): Promise<number> {
     // Render prompts
@@ -573,11 +601,17 @@ export default class Validate extends Command {
       agenticFindings.filter((f) => f.category === "error" || f.category === "warning")
     );
     const allIssues = sortIssuesByPriority([...sysml2Issues, ...coverageIssues, ...agenticIssues]);
-    const groupedIssues = groupByPriority(allIssues);
+
+    // Separate actionable from non-actionable issues
+    // Only pass actionable issues to the fix agent
+    const actionableIssues = allIssues.filter(issue => issue.actionable !== false);
+    const nonActionableIssues = allIssues.filter(issue => issue.actionable === false);
+    const groupedIssues = groupByPriority(actionableIssues);
 
     const initialPrompt = render("sysml-fix/initial", {
-      prioritizedIssues: allIssues,
+      prioritizedIssues: actionableIssues,
       groupedIssues: groupedIssues,
+      nonActionableIssues: nonActionableIssues,
       basePath: ".",
     });
 
@@ -596,6 +630,27 @@ export default class Validate extends Command {
       ripGrep,
     ];
 
+    // Track state for trailing message
+    let currentIteration = 0;
+    let validationExitCode = 0;
+    let validationOutput = "";
+
+    // Initialize coverage stats from initial coverageResult
+    const initialUncovered: string[] = [];
+    let initialTotal = 0;
+    let initialCovered = 0;
+    for (const mismatch of coverageResult.fileCoverageMismatches) {
+      initialTotal += mismatch.expected;
+      initialCovered += mismatch.covered;
+      initialUncovered.push(...mismatch.uncoveredFiles);
+    }
+    let coverageStats = {
+      covered: initialCovered,
+      total: initialTotal,
+      percent: initialTotal > 0 ? Math.round((initialCovered / initialTotal) * 100) : 100,
+      uncoveredFiles: initialUncovered.slice(0, 20),
+    };
+
     let builder = new AgentBuilder(client)
       .withModel(flags.model)
       .withSystem(systemPrompt)
@@ -605,6 +660,25 @@ export default class Validate extends Command {
       .withGadgets(...gadgets);
 
     builder = configureBuilder(builder, out, flags.rpm, flags.tpm);
+
+    // Add trailing message with validation AND coverage feedback
+    builder = builder.withTrailingMessage(() => {
+      return render("sysml-fix/trailing", {
+        iteration: currentIteration,
+        maxIterations: flags["fix-iterations"],
+        fixesApplied,
+        // Coverage stats (dynamic - updated in onGadgetResult)
+        coveragePercent: coverageStats.percent,
+        coveredFiles: coverageStats.covered,
+        totalFiles: coverageStats.total,
+        uncoveredFiles: coverageStats.uncoveredFiles,
+        coverageThreshold: flags["coverage-threshold"],
+        batchSize: flags["fix-batch-size"],
+        // Validation
+        validationExitCode,
+        validationOutput,
+      });
+    });
 
     const agent = builder.ask(initialPrompt);
 
@@ -617,7 +691,10 @@ export default class Validate extends Command {
     setupIterationTracking(tree, {
       out,
       showCumulativeCostEvery: 5,
-      onIterationChange: () => endTextBlock(textState, out),
+      onIterationChange: (iteration) => {
+        currentIteration = iteration;
+        endTextBlock(textState, out);
+      },
     });
 
     // Run agent
@@ -626,9 +703,37 @@ export default class Validate extends Command {
         out,
         textState,
         verbose: flags.verbose,
-        onGadgetResult: (gadgetName, gadgetResult) => {
+        onGadgetResult: async (gadgetName, gadgetResult) => {
           if (gadgetName === "SysMLWrite" && gadgetResult && !gadgetResult.includes("Error")) {
             fixesApplied++;
+            // Re-run validation for trailing message feedback
+            try {
+              const validation = await validateModelFull(".sysml");
+              validationExitCode = validation.exitCode;
+              validationOutput = validation.output || "";
+            } catch {
+              // sysml2 not available, skip validation update
+            }
+            // Re-validate coverage dynamically for trailing message
+            try {
+              const result = await coverageValidator.validate(".");
+              let total = 0;
+              let covered = 0;
+              const uncovered: string[] = [];
+              for (const mismatch of result.fileCoverageMismatches) {
+                total += mismatch.expected;
+                covered += mismatch.covered;
+                uncovered.push(...mismatch.uncoveredFiles);
+              }
+              coverageStats = {
+                covered,
+                total,
+                percent: total > 0 ? Math.round((covered / total) * 100) : 100,
+                uncoveredFiles: uncovered.slice(0, 20), // Show first 20
+              };
+            } catch {
+              // Ignore coverage validation errors
+            }
             if (!flags.verbose) {
               // Extract path from result for brief output
               const pathMatch = gadgetResult.match(/path=([^\s]+)/);

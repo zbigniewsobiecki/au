@@ -215,7 +215,7 @@ Fix the syntax errors and try again.`;
     // Generate diff for force overwrite cases (shows what was replaced)
     let diffOutput = "";
     if (fileExists && originalContent !== finalContent) {
-      diffOutput = "\n\n" + generateColoredDiff(originalContent, finalContent);
+      diffOutput = "\n\n" + generateColoredDiff(originalContent, finalContent, Infinity);
     }
 
     return `path=${fullPath} status=success delta=${delta}
