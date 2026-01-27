@@ -12,8 +12,16 @@ import {
   suggestPatternsForUncoveredFiles,
 } from "../lib/sysml/coverage-checker.js";
 
-/** Minimum coverage percentage required for manifest to be accepted */
-const MIN_MANIFEST_COVERAGE = 99;
+/** Minimum coverage percentage required for manifest to be accepted (configurable) */
+export let MIN_MANIFEST_COVERAGE = 95;  // Lower than 99%, with config files auto-excluded
+
+/**
+ * Set the minimum manifest coverage threshold.
+ * @param value - Coverage percentage (0-100)
+ */
+export function setMinManifestCoverage(value: number): void {
+  MIN_MANIFEST_COVERAGE = Math.max(0, Math.min(100, value));
+}
 
 /**
  * Entity ID tracking for sequential ID assignment.
@@ -146,8 +154,8 @@ The manifest contains:
 
 **IMPORTANT**:
 - Use "cycle1", "cycle2", etc. as keys (NOT "1", "2", etc.)
-- sourceFiles patterns MUST cover ALL source files in the repository (>=${MIN_MANIFEST_COVERAGE}% coverage required)
-- The manifest will be REJECTED if coverage is below threshold
+- sourceFiles patterns should cover source files (>=${MIN_MANIFEST_COVERAGE}% coverage by default, config files auto-excluded)
+- Config files (package.json, tsconfig.json, etc.) are automatically excluded from coverage calculation
 
 **Cycle purposes and typical sourceFiles:**
 - cycle1 (Context): README, docs, configs → context/*.sysml

@@ -56,6 +56,19 @@ export interface CoverageContext {
 const DEBUG_COVERAGE = process.env.AU_DEBUG_COVERAGE === "1";
 
 /**
+ * Normalize file extensions for comparison.
+ * Maps .js/.jsx to .ts/.tsx to handle TypeScript ESM conventions
+ * where compiled .ts files are referenced as .js in imports.
+ */
+function normalizeExtension(path: string): string {
+  return path
+    .replace(/\.mjs$/, ".mts")
+    .replace(/\.cjs$/, ".cts")
+    .replace(/\.js$/, ".ts")
+    .replace(/\.jsx$/, ".tsx");
+}
+
+/**
  * Scan all .sysml files and extract paths from `@SourceFile` metadata.
  * This metadata indicates which source files have been documented.
  */
@@ -98,10 +111,10 @@ export async function findCoveredFiles(sysmlDir: string = SYSML_DIR): Promise<Se
             while ((match = metadataPattern.exec(content)) !== null) {
               const sourcePath = match[1].trim();
               if (sourcePath) {
-                coveredFiles.add(sourcePath);
+                coveredFiles.add(normalizeExtension(sourcePath));
                 matchCount++;
                 if (DEBUG_COVERAGE) {
-                  console.error(`[coverage]   Found: ${sourcePath}`);
+                  console.error(`[coverage]   Found: ${sourcePath} (normalized: ${normalizeExtension(sourcePath)})`);
                 }
               }
             }
@@ -246,8 +259,8 @@ export async function checkCycleCoverage(
   const coveredSet = await findCoveredFiles(sysmlDir);
   result.coveredFiles = [...coveredSet].sort();
 
-  // Calculate missing files
-  result.missingFiles = expectedFiles.filter(f => !coveredSet.has(f));
+  // Calculate missing files (normalize extensions for comparison)
+  result.missingFiles = expectedFiles.filter(f => !coveredSet.has(normalizeExtension(f)));
 
   // Calculate coverage percentage
   result.coveragePercent = expectedFiles.length > 0
@@ -322,6 +335,26 @@ const DEFAULT_IGNORE_PATTERNS = [
   "**/.output/**",
   "**/vendor/**",
   "**/target/**",
+  // Config files - these can't be meaningfully documented in SysML
+  "**/package.json",
+  "**/turbo.json",
+  "**/pnpm-workspace.yaml",
+  "**/tsconfig.json",
+  "**/tsconfig.*.json",
+  "**/.eslintrc*",
+  "**/.prettierrc*",
+  "**/*.config.js",
+  "**/*.config.ts",
+  "**/*.config.mjs",
+  "**/vitest.config.*",
+  "**/vite.config.*",
+  "**/jest.config.*",
+  "**/tailwind.config.*",
+  "**/.env*",
+  "**/Dockerfile*",
+  "**/docker-compose*.yml",
+  "**/.github/**",
+  "**/.vscode/**",
 ];
 
 /**
@@ -433,8 +466,8 @@ export async function checkManifestCoverage(
   const coveredSet = await expandAllManifestPatterns(manifest, basePath);
   const coveredByPatterns = [...coveredSet].sort();
 
-  // 3. Calculate which files are not covered
-  const notCoveredFiles = discoveredFiles.filter(f => !coveredSet.has(f));
+  // 3. Calculate which files are not covered (normalize extensions for comparison)
+  const notCoveredFiles = discoveredFiles.filter(f => !coveredSet.has(normalizeExtension(f)));
 
   // 4. Calculate coverage percentage
   const coveragePercent = discoveredFiles.length > 0

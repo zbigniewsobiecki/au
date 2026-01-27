@@ -20,7 +20,7 @@ export type { VerificationFinding, FindingCategory, FindingDomain } from "./veri
 export { finishVerify } from "./finish-verify.js";
 export { projectMetaRead, projectMetaDiscover, projectMetaUpdate } from "./project-meta.js";
 export { fileDiscover, fileDiscoverCustom, cycleInfo } from "./file-discover.js";
-export { manifestWrite, manifestRead, loadManifest, getManifestCycleFiles, getManifestCycleSourceFiles, getManifestDirectoryPatterns, syncManifestOutputs } from "./manifest-write.js";
+export { manifestWrite, manifestRead, loadManifest, getManifestCycleFiles, getManifestCycleSourceFiles, getManifestDirectoryPatterns, syncManifestOutputs, setMinManifestCoverage } from "./manifest-write.js";
 export type { Manifest, ManifestCycle, ManifestProject, ManifestStatistics, DirectoryAssignment, DirectoryCycleAssignment } from "./manifest-write.js";
 export { enumerateDirectories } from "./enumerate-directories.js";
 export type { DirectoryInfo, EnumerationResult } from "./enumerate-directories.js";

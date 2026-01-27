@@ -3,7 +3,7 @@ import { LLMist } from "llmist";
 import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { loadManifest, readDirs, setCoverageContext, syncManifestOutputs } from "../gadgets/index.js";
+import { loadManifest, readDirs, setCoverageContext, setMinManifestCoverage, syncManifestOutputs } from "../gadgets/index.js";
 import {
   checkCycleCoverage,
   CYCLE_OUTPUT_DIRS,
@@ -88,12 +88,23 @@ export default class Ingest extends Command {
       min: 0,
       max: 100,
     }),
+    "manifest-coverage-threshold": Flags.integer({
+      description: "Minimum manifest coverage % for Cycle 0 (default: 95). Config files are auto-excluded.",
+      default: 95,
+      min: 0,
+      max: 100,
+    }),
   };
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Ingest);
     const out = new Output({ verbose: flags.verbose });
     const { restore } = withWorkingDirectory(flags.path, out);
+
+    // Set manifest coverage threshold (affects ManifestWrite validation in Cycle 0)
+    if (flags["manifest-coverage-threshold"] !== undefined) {
+      setMinManifestCoverage(flags["manifest-coverage-threshold"]);
+    }
 
     try {
       // Purge existing model if requested
