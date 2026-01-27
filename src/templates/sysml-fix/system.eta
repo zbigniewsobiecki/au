@@ -63,21 +63,30 @@ In SysML, declarations must come before redefinitions.
 - Error: `E3002: feature 'X' not found` even though X is defined in the same file
 - The element X is defined AFTER it's referenced/redefined
 
-**Fix using replaceScope:**
-When the issue is element ordering, use `replaceScope=true` to replace the entire
-scope content with correctly ordered elements:
+**Fix using replaceScope (DANGER - read carefully!):**
+
+⚠️ **DATA LOSS WARNING**: `replaceScope=true` CLEARS the entire scope first!
+You MUST include ALL existing elements, not just the ones you're reordering.
+If you only provide partial content, the rest will be PERMANENTLY DELETED.
+
+When the issue is element ordering:
+1. First, use SysMLRead to get the COMPLETE current content of the scope
+2. Include ALL existing elements in your element parameter
+3. Reorder them correctly (declarations before redefinitions)
+4. Then use replaceScope=true
 
 ```
+// WRONG - Only includes 2 elements - ALL other elements in scope will be DELETED!
+SysMLWrite(element="part def B;\npart def C :> B;", at="Pkg", replaceScope=true)
+
+// CORRECT - Includes ALL elements from the scope, in correct order:
 SysMLWrite(
   path="structure/modules.sysml",
-  element="part def BaseModule;\\npart def ExtendedModule :> BaseModule;",
+  element="part def A;\npart def BaseModule;\npart def ExtendedModule :> BaseModule;\npart def C;\npart def D;",
   at="SystemModules",
   replaceScope=true
 )
 ```
-
-This clears the scope and inserts elements in the order you provide, ensuring
-declarations come before redefinitions.
 
 ### Count Mismatches
 The manifest counts reflect what EXISTS in the codebase. The SysML model is INCOMPLETE.
@@ -114,6 +123,63 @@ Use SysMLRead to examine the orphaned file content before deciding.
 - missing-directory: A directory in manifest doesn't exist
 - pattern-no-match: A glob pattern in manifest matches no files
 Fix by creating missing files/dirs or updating manifest patterns
+
+### Coverage-Mismatch (Adding @SourceFile Metadata)
+
+Coverage-mismatch means source files exist but aren't documented in the SysML model with @SourceFile metadata.
+
+**Workflow for each uncovered file:**
+
+1. **Read the source file** using ReadFiles to understand what it contains
+2. **Find or create appropriate SysML definition:**
+   - For a service file → find/create an `action def` in behavior/
+   - For a type/interface file → find/create an `item def` in data/
+   - For a module file → find/create a `part def` in structure/
+   - For a config file → find/create in context/ or analysis/
+3. **Add @SourceFile metadata** to link the definition to the source:
+   ```sysml
+   @SourceFile { :>> path = "apps/backend/src/services/user.service.ts"; }
+   action def UserService {
+     doc /* User management service */
+     in item createUser : CreateUserDto;
+     out item user : User;
+   }
+   ```
+
+**Key Rules:**
+- Every source file needs at least one `@SourceFile` annotation in the model
+- The path must match EXACTLY (case-sensitive, relative to project root)
+- Multiple definitions can reference the same source file
+- If no suitable definition exists, create a minimal one that represents the file's purpose
+
+**Example - Covering a Service File:**
+```
+ReadFiles(paths: "apps/backend/src/modules/payments/payments.service.ts")
+# Found: PaymentsService with methods processPayment, refund, getHistory
+
+SysMLRead(path: "behavior/services.sysml")
+# Check if PaymentsService already exists
+
+SysMLWrite(
+  path: "behavior/services.sysml",
+  at: "SystemBehavior",
+  element: "@SourceFile { :>> path = \"apps/backend/src/modules/payments/payments.service.ts\"; }\naction def PaymentsService {\n  doc /* Payment processing service */\n  in item processPayment : PaymentRequest;\n  in item refund : RefundRequest;\n  out item history : PaymentHistory;\n}"
+)
+```
+
+**Efficiency Tips:**
+- Group related files and handle them together
+- Use RipGrep to find related source files
+- Make multiple SysMLWrite calls per turn to maximize progress
+
+**CRITICAL: Coverage Threshold**
+
+The trailing message shows real-time coverage progress. You MUST:
+- Continue adding `@SourceFile` metadata until coverage >= threshold
+- Check the trailing message after each write to see updated coverage %
+- **DO NOT call `FinishSysmlFix` if the trailing message says not to**
+
+The trailing message will explicitly tell you when you may finish.
 
 ### Expected Outputs (missing files)
 Files declared in manifest expectedOutputs don't exist.

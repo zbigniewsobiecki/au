@@ -52,7 +52,8 @@ To avoid "undefined type" (E3001) and "undefined namespace" (E3003) errors, foll
 **When you encounter E3001 "undefined type":**
 1. Is the type defined elsewhere? → Add `import PackageName::*;`
 2. Is the type not yet created? → Create it first, then return to current file
-3. Is the type defined later in same file? → Reorder definitions (use `replaceScope=true`)
+3. Is the type defined later in same file? → Reorder definitions using `replaceScope=true`
+   ⚠️ DANGER: replaceScope CLEARS entire scope! Include ALL elements, not just what you're reordering.
 
 **When you encounter E3003 "undefined namespace":**
 1. The imported package doesn't exist yet

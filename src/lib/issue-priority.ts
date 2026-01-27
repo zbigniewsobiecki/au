@@ -27,6 +27,10 @@ export interface PrioritizedIssue {
   file?: string;
   line?: number;
   recommendation?: string;
+  /** Whether the fix agent should attempt to fix this issue. Defaults to true. */
+  actionable?: boolean;
+  /** For coverage-mismatch issues: list of uncovered files to add @SourceFile metadata for. */
+  uncoveredFiles?: string[];
 }
 
 /**
@@ -85,6 +89,7 @@ export function prioritizeSysml2Diagnostics(
       description: `${diag.message}${codeInfo}`,
       file: diag.file,
       line: diag.line,
+      actionable: true,
     });
   }
 
@@ -131,6 +136,7 @@ export function prioritizeAgenticFindings(findings: VerificationFinding[]): Prio
       description: `[${finding.domain}] ${finding.issue}`,
       file: finding.file,
       recommendation: finding.recommendation,
+      actionable: true,
     });
   }
 
