@@ -183,7 +183,7 @@ export class SysMLCoverageValidator {
    * Extract source file references from SysML content.
    * Looks for @SourceFile { :>> path = "<path>"; } metadata.
    */
-  private findCoveredFiles(fileContents: Map<string, string>): Set<string> {
+  findCoveredFiles(fileContents: Map<string, string>): Set<string> {
     const covered = new Set<string>();
 
     for (const [, content] of fileContents) {
@@ -198,6 +198,45 @@ export class SysMLCoverageValidator {
     }
 
     return covered;
+  }
+
+  /**
+   * Get all @SourceFile references from .sysml files at the given path.
+   * Returns a Set of all referenced file paths.
+   */
+  async getCoveredFilesFromPath(basePath: string = "."): Promise<Set<string>> {
+    const sysmlFiles = await scanSysmlFiles(basePath);
+    const fileContents: Map<string, string> = new Map();
+
+    for (const file of sysmlFiles) {
+      const fullPath = join(basePath, SYSML_DIR, file);
+      try {
+        const content = await readFile(fullPath, "utf-8");
+        fileContents.set(file, content);
+      } catch {
+        // Skip files that can't be read
+      }
+    }
+
+    return this.findCoveredFiles(fileContents);
+  }
+
+  /**
+   * Validate that @SourceFile paths in the model reference existing files.
+   * Returns paths that are referenced but don't exist on disk.
+   */
+  async validateSourceFilePaths(basePath: string = "."): Promise<string[]> {
+    const coveredFiles = await this.getCoveredFilesFromPath(basePath);
+    const brokenPaths: string[] = [];
+
+    for (const filePath of coveredFiles) {
+      const fullPath = join(basePath, filePath);
+      if (!(await fileExists(fullPath))) {
+        brokenPaths.push(filePath);
+      }
+    }
+
+    return brokenPaths;
   }
 
   /**

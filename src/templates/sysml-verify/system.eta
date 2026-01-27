@@ -35,6 +35,38 @@ The SysML model must accurately represent the actual codebase. Use ReadFiles and
 - Doc comments present where needed
 - Source comments (`@SourceFile`) reference existing files
 
+### 5. Coverage Gaps (Common Patterns Often Missed)
+
+Check for these commonly missed patterns:
+
+**API Endpoints:**
+- Do all controller/handler methods have corresponding endpoint definitions in `behavior/endpoints.sysml`?
+- Are HTTP methods (GET, POST, etc.) and paths documented?
+- RipGrep for route definitions and compare with SysML
+
+**Business Constraints:**
+- Are uniqueness rules documented in `data/constraints.sysml`?
+- Are validation rules (required fields, formats) captured?
+- Search service files for validation logic (e.g., "if.*exists", "unique", "duplicate")
+
+**Analytics/Aggregation:**
+- Are methods like `getStats()`, `getSummary()`, `getMonthly*()` modeled?
+- Check for dashboard data sources
+- Search for: `Stats`, `Summary`, `Report`, `Aggregate`, `Total`, `Count`
+
+**Access Control:**
+- Is there an `analysis/access-control.sysml` mapping roles to operations?
+- Are admin-only endpoints identified?
+- Search for role checks in middleware/guards (e.g., `role === 'ADMIN'`, `@Roles`, `requireRole`)
+- Are public endpoints (no auth) documented?
+
+**Query/Filtering:**
+- Are filter types/interfaces documented?
+- Do list operations show their filter parameters?
+- Search for filter types with optional fields
+
+For each gap found, report via VerifyFinding with domain "completeness".
+
 ## Gadgets Available
 
 ### VerifyFinding
