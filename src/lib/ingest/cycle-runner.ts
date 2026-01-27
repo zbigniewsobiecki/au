@@ -396,11 +396,10 @@ export async function runCycleTurn(
 ): Promise<{ nextFiles: string[]; summary: string[]; turns: number; validationResult: ValidationResult | null }> {
   const { expectedCount, cycle, docCoveragePercent, docMissingFiles } = trailingContext;
 
-  // Run full model validation before turn (single-file via _model.sysml)
+  // Run full model validation before turn
   let validationResult: ValidationResult | null = null;
   try {
-    const modelFile = join(".sysml", "_model.sysml");
-    validationResult = await validateModelFull(".sysml", [modelFile]);
+    validationResult = await validateModelFull(".sysml");
   } catch {
     // sysml2 not available - skip validation
   }
@@ -442,8 +441,7 @@ export async function runCycleTurn(
 
       // Re-run validation after SysML writes so trailing message shows current state
       try {
-        const modelFile = join(".sysml", "_model.sysml");
-        validationResult = await validateModelFull(".sysml", [modelFile]);
+        validationResult = await validateModelFull(".sysml");
       } catch {
         // sysml2 not available - skip validation
       }
@@ -558,8 +556,7 @@ export async function runRetryTurn(
 
       // Re-run validation after SysML writes so trailing message shows current state
       try {
-        const modelFile = join(".sysml", "_model.sysml");
-        const result = await validateModelFull(".sysml", [modelFile]);
+        const result = await validateModelFull(".sysml");
         validationExitCode = result.exitCode;
         validationOutput = result.output;
       } catch {

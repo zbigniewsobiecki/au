@@ -56,7 +56,129 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
    - Events handled
    - Pub/sub patterns
 
-5. **Generate SysML**:
+5. **Discover API endpoints**:
+   - Find how this codebase defines HTTP routes (varies by framework)
+   - Map HTTP methods (GET, POST, PUT, DELETE, PATCH) to handlers
+   - Capture path parameters, query parameters, request bodies
+   - Document response types and error responses
+
+   **Output file**: `behavior/endpoints.sysml`
+   ```sysml
+   package APIEndpoints {
+       import SysMLPrimitives::*;
+       import DataModel::*;
+
+       doc /*HTTP API endpoints discovered from routes */
+
+       // Use item def :> APIEndpoint to get method/path attributes from stdlib
+       // This allows :>> redefinitions for method and path
+
+       item def ListVehiclesEndpoint :> APIEndpoint {
+           doc /* List vehicles with optional filtering */
+           :>> method = HTTPMethod::GET;
+           :>> path = "/api/vehicles";
+           item filters : VehicleFilters [0..1];
+           item response : Vehicle [0..*];
+       }
+
+       item def GetVehicleByIdEndpoint :> APIEndpoint {
+           doc /* Get a single vehicle by ID */
+           :>> method = HTTPMethod::GET;
+           :>> path = "/api/vehicles/:id";
+           :>> pathParams = ("id");
+           item response : Vehicle;
+       }
+
+       item def CreateVehicleEndpoint :> APIEndpoint {
+           doc /* Create a new vehicle */
+           :>> method = HTTPMethod::POST;
+           :>> path = "/api/vehicles";
+           item request : CreateVehicleDto;
+           item response : Vehicle;
+       }
+
+       item def HealthCheckEndpoint :> APIEndpoint {
+           doc /* Health check endpoint - public, no auth required */
+           :>> method = HTTPMethod::GET;
+           :>> path = "/health";
+           :>> requiresAuth = false;
+           item response : HealthStatus;
+       }
+
+       item def LoginEndpoint :> APIEndpoint {
+           doc /* User authentication endpoint */
+           :>> method = HTTPMethod::POST;
+           :>> path = "/auth/login";
+           :>> requiresAuth = false;
+           item request : LoginRequest;
+           item response : AuthResponse;
+       }
+   }
+   ```
+
+   Search for route definitions specific to this codebase - look for framework patterns like:
+   - Express: `app.get()`, `router.post()`, `app.use('/api', router)`
+   - NestJS: `@Get()`, `@Post()`, `@Controller()` decorators
+   - Fastify: `fastify.get()`, route registration
+   - Flask: `@app.route()`, `@blueprint.route()`
+   - Django: `path()`, `url()` patterns
+
+6. **Discover analytics & aggregation methods**:
+   - Find methods that summarize or aggregate data (not just CRUD)
+   - Look for dashboard data sources
+   - Find time-series aggregations (monthly, weekly, daily stats)
+
+   Model these distinctly from basic CRUD operations:
+   ```sysml
+   action def GetSalesStats {
+       doc /* Returns aggregated sales statistics */
+       out totalSales : Integer;
+       out totalRevenue : Real;
+       out averageOrderValue : Real;
+   }
+
+   action def GetMonthlySalesStats {
+       doc /* Aggregates sales by month for reporting dashboard */
+       in year : Integer[0..1];
+       out stats : MonthlyStat[*];
+   }
+
+   action def GetVehicleStats {
+       doc /* Summary counts of vehicles by status */
+       out available : Integer;
+       out sold : Integer;
+       out reserved : Integer;
+   }
+   ```
+
+7. **Discover query & filtering patterns**:
+   - Find filter types/interfaces with optional fields
+   - Identify which entities support complex querying
+   - Document pagination and sorting parameters
+
+   ```sysml
+   attribute def VehicleFilters {
+       doc /*Filter options for vehicle search */
+       attribute make : String[0..1];
+       attribute model : String[0..1];
+       attribute yearMin : Integer[0..1];
+       attribute yearMax : Integer[0..1];
+       attribute priceMin : Real[0..1];
+       attribute priceMax : Real[0..1];
+       attribute status : VehicleStatus[0..1];
+       attribute condition : VehicleCondition[0..1];
+       attribute search : String[0..1];
+   }
+
+   attribute def CustomerFilters {
+       doc /*Filter options for customer search */
+       attribute email : String[0..1];
+       attribute phone : String[0..1];
+       attribute search : String[0..1];
+   }
+   ```
+
+8. **Generate SysML**:
 
    **behavior/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
@@ -382,6 +504,11 @@ action def {Operation} {
 - **Transactions**: Database transaction boundaries
 - **Middleware**: Pre/post processing
 - **Data transformations**: How data changes between steps
+- **Route definitions**: How HTTP routes map to handlers (app.get, @Get, etc.)
+- **Path parameters**: URL segments like `/vehicles/:id`
+- **Query parameters**: Filter/sort/pagination params for list endpoints
+- **Aggregation methods**: Methods named *Stats, *Summary, *Report, getMonthly*, getTotal*
+- **Filter interfaces**: Types with optional fields for complex querying
 
 ### Deliverables
 
@@ -390,6 +517,7 @@ Write ONLY these files:
 - `behavior/operations.sysml` - System operations/actions with flows
 - `behavior/states.sysml` - Entity state machines
 - `behavior/handlers.sysml` - Event handlers (optional, if event-driven)
+- `behavior/endpoints.sysml` - HTTP API endpoint definitions with routes, methods, params
 
 **IMPORTANT**: Do NOT write to context/, structure/, data/, verification/, or analysis/ directories.
 This cycle focuses ONLY on behavioral modeling. Verification and analysis will be handled in later cycles.
@@ -402,6 +530,10 @@ This cycle focuses ONLY on behavioral modeling. Verification and analysis will b
 - [ ] **Error flows** for error handling paths
 - [ ] Entity state machines with proper transitions
 - [ ] Event handlers with port-based flows (if applicable)
+- [ ] **API endpoints** documented with HTTP methods and paths in `behavior/endpoints.sysml`
+- [ ] **Query parameters** and filter types documented for list endpoints
+- [ ] **Analytics/aggregation methods** captured (getStats, getMonthly*, getSummary)
+- [ ] **Filter interfaces** documented for entities with complex querying
 - [ ] Side effects marked clearly
 - [ ] Output is limited to `behavior/` directory only
 

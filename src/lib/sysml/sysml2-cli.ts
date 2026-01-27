@@ -683,33 +683,13 @@ export interface FormatResult {
  * - 2: Semantic errors (undefined types, duplicate definitions, etc.)
  *
  * @param sysmlDir - Directory containing SysML files (default: ".sysml")
- * @param files - Optional pre-scanned file list (avoids fast-glob overhead)
  * @returns Promise resolving to validation result with raw output
  */
 export async function validateModelFull(
-  sysmlDir: string = ".sysml",
-  files?: string[]
+  sysmlDir: string = ".sysml"
 ): Promise<ValidationResult> {
-  // If files not provided, scan directory using fast-glob
-  let filesToValidate = files;
-  if (!filesToValidate) {
-    const fg = await import("fast-glob");
-    filesToValidate = await fg.default(`${sysmlDir}/**/*.sysml`, {
-      onlyFiles: true,
-      ignore: ["**/node_modules/**"],
-    });
-  }
-
-  if (filesToValidate.length === 0) {
-    return {
-      success: true,
-      exitCode: 0,
-      output: "",
-    };
-  }
-
-  // Run sysml2 on all files (full validation, not parse-only)
-  const args = ["--color=never", ...getLibraryPathArgs(), ...filesToValidate];
+  // Run sysml2 with --recursive flag on directory
+  const args = ["--color=never", "--recursive", ...getLibraryPathArgs(), sysmlDir];
 
   return new Promise((resolve, reject) => {
     const proc = spawn(SYSML2_CMD, args, getSpawnOptions());

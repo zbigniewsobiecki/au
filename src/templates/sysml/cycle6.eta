@@ -46,7 +46,79 @@
    - Tracing
    - Alerting
 
-5. **Generate SysML**:
+5. **Map access control to endpoints/operations**:
+   - Find how this codebase enforces authorization (varies by project)
+   - Map which roles/permissions can access which endpoints
+   - Identify public endpoints (no auth required)
+   - Document admin-only operations
+
+   **Output file**: `analysis/access-control.sysml`
+   ```sysml
+   package AccessControlAnalysis {
+       import SysMLPrimitives::*;
+       import SystemBehavior::*;
+
+       doc /*Access control mapping - which roles can perform which operations */
+
+       // Discovered roles (based on what's in the codebase)
+       enum def SystemRoles {
+           Admin;
+           User;
+           Salesperson;
+       }
+
+       // Access policy mapping
+       part def EndpointAccessPolicy {
+           doc /*Maps endpoints to required authentication/authorization */
+
+           // Public endpoints (no auth required)
+           part publicEndpoints {
+               doc /*Accessible without authentication */
+               // e.g., Login, HealthCheck, public pages
+           }
+
+           // Authenticated (any logged-in user)
+           part authenticatedEndpoints {
+               doc /*Requires authentication but no specific role */
+           }
+
+           // Admin-only
+           part adminOnlyEndpoints {
+               doc /*Requires admin role */
+               // e.g., user registration, system config
+           }
+
+           // Role-specific
+           part salespersonEndpoints {
+               doc /*Requires salesperson or higher role */
+           }
+       }
+
+       // Concrete access mappings
+       allocation def RoutePermissions {
+           doc /*Maps specific operations to access requirements */
+           // Public
+           allocate Login to publicEndpoints;
+           allocate HealthCheck to publicEndpoints;
+
+           // Admin only
+           allocate Register to adminOnlyEndpoints;  // Admin creates users
+
+           // Authenticated
+           allocate ListVehicles to authenticatedEndpoints;
+           allocate CreateVehicle to authenticatedEndpoints;
+           allocate CreateSale to authenticatedEndpoints;
+       }
+   }
+   ```
+
+   Search for authorization patterns specific to this codebase:
+   - Route guards/middleware (e.g., `requireAuth`, `requireRole`)
+   - Role decorators (@Roles, @RequirePermission, etc.)
+   - Conditional checks (if user.role === 'ADMIN')
+   - Policy classes
+
+6. **Generate SysML**:
 
    **analysis/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
@@ -356,6 +428,9 @@
 | Logging | `winston`, `pino`, `bunyan`, `logger` |
 | Metrics | `prometheus`, `statsd`, `metrics`, `gauge` |
 | Tracing | `opentelemetry`, `jaeger`, `zipkin`, `trace` |
+| Role Guards | `@Roles`, `requireRole`, `checkRole`, `isAdmin` |
+| Route Protection | `authMiddleware`, `requireAuth`, `isAuthenticated` |
+| Public Routes | routes without auth middleware, `/health`, `/login` |
 
 ### What to Look For
 
@@ -374,6 +449,7 @@ Write ONLY these files:
 - `analysis/observability.sysml` - Logging, metrics, tracing setup
 - `analysis/allocations.sysml` - Behavior-to-module mappings
 - `analysis/constraints.sysml` - Performance constraints with expressions
+- `analysis/access-control.sysml` - Role-to-operation permission mapping
 
 This is the final cycle. You may also update the master `_model.sysml` index if needed.
 
@@ -431,6 +507,10 @@ action def SearchProducts { /* ... */ }
 - [ ] **Allocations** mapping operations to modules
 - [ ] **Constraints** with actual expressions (not just doc placeholders)
 - [ ] **Metadata annotations** for critical paths
+- [ ] **Access control mapping** in `analysis/access-control.sysml`
+- [ ] **Public endpoints** identified (no auth required)
+- [ ] **Admin-only operations** documented (role-based restrictions)
+- [ ] **Route-to-role mapping** for endpoints with specific role requirements
 - [ ] Recommendations provided for gaps
 - [ ] Output is limited to `analysis/` directory (and optionally `_model.sysml`)
 

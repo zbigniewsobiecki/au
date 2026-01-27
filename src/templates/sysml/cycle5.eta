@@ -176,25 +176,41 @@ SysMLWrite(path="verification/coverage.sysml", element="...", at="CoverageAnalys
 
        doc /*Test coverage analysis */
 
-       analysis def TestCoverageReport {
-           subject testSuite : TestMappings;
+       // IMPORTANT: Specialize from TestCoverage using :> and redefine attributes with :>>
+       // TestCoverage is defined in Verification with: testedOperations, totalOperations, coveragePercent
+       // DO NOT use standalone 'analysis def' with nested 'results {}' block
 
-           results {
-               // Operations coverage
-               attribute testedOperations : Integer = {discovered};
-               attribute totalOperations : Integer = {discovered};
-               attribute operationCoveragePercent : Real;
+       // Correct pattern - specialize and redefine:
+       analysis OperationCoverageReport :> TestCoverage {
+           doc /*Coverage of system operations by tests */
+           :>> testedOperations = 15;
+           :>> totalOperations = 20;
+           :>> coveragePercent = 75.0;
+       }
 
-               // Requirements coverage
-               attribute verifiedRequirements : Integer = {discovered};
-               attribute totalRequirements : Integer = {discovered};
-               attribute requirementCoveragePercent : Real;
+       // Another specialization for requirements coverage
+       analysis RequirementCoverageReport :> TestCoverage {
+           doc /*Coverage of requirements by verification */
+           :>> testedOperations = 8;   // verified requirements
+           :>> totalOperations = 10;   // total requirements
+           :>> coveragePercent = 80.0;
+       }
 
-               // Test categories breakdown
-               attribute unitTestCount : Integer = {discovered};
-               attribute integrationTestCount : Integer = {discovered};
-               attribute e2eTestCount : Integer = {discovered};
-           }
+       // Test category breakdown (standalone, not specializing TestCoverage)
+       analysis def TestCategoryBreakdown {
+           doc /*Breakdown of tests by category */
+           attribute unitTestCount : Integer;
+           attribute integrationTestCount : Integer;
+           attribute e2eTestCount : Integer;
+           attribute totalTestCount : Integer;
+       }
+
+       // Concrete instance with discovered values
+       analysis testBreakdown : TestCategoryBreakdown {
+           :>> unitTestCount = 45;
+           :>> integrationTestCount = 12;
+           :>> e2eTestCount = 5;
+           :>> totalTestCount = 62;
        }
 
        // Coverage gaps

@@ -1,6 +1,6 @@
 import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import { access, readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   sysmlRead,
@@ -23,11 +23,7 @@ import {
   SysMLCoverageValidator,
   type CoverageValidationResult,
 } from "../lib/sysml-model-validator.js";
-import {
-  validateModelFull,
-  parseMultiFileDiagnosticOutput,
-  type Sysml2MultiDiagnostic,
-} from "../lib/sysml/sysml2-cli.js";
+import { validateModelFull, parseMultiFileDiagnosticOutput } from "../lib/sysml/sysml2-cli.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import {
@@ -47,14 +43,18 @@ import {
 } from "../lib/command-utils.js";
 import { runAgentWithEvents } from "../lib/agent-runner.js";
 import { extractDiffFromResult } from "../lib/diff-utils.js";
+import {
+  SysMLStats,
+  type SysMLModelStats,
+  type Sysml2ValidationStats,
+} from "../lib/sysml-stats.js";
 
 export default class Validate extends Command {
   static description =
-    "Validate SysML model with static checks and optional agentic verification. Use --quick for static-only.";
+    "Agentic verification and fix for SysML model. Uses stats data for context. Use 'au stats --check' for static-only CI checks.";
 
   static examples = [
     "<%= config.bin %> validate",
-    "<%= config.bin %> validate --quick",
     "<%= config.bin %> validate --path ./my-project",
     "<%= config.bin %> validate --verbose",
     "<%= config.bin %> validate --fix",
@@ -63,11 +63,6 @@ export default class Validate extends Command {
 
   static flags = {
     ...agentFlags,
-    quick: Flags.boolean({
-      char: "q",
-      description: "Run static validation only (no agentic verification)",
-      default: false,
-    }),
     verbose: Flags.boolean({
       char: "v",
       description: "Show detailed output",
@@ -105,66 +100,63 @@ export default class Validate extends Command {
 
     const { restore } = withWorkingDirectory(flags.path, out);
 
-    // Phase 1: sysml2 validation
-    out.info("Phase 1: sysml2 validation...");
+    // Gather stats (includes sysml2 validation and coverage)
+    out.info("Gathering model stats...");
+    const sysmlStats = new SysMLStats();
+    const statsResult = await sysmlStats.getStats(".");
 
-    // Basic existence check
-    if (!(await this.fileExists(".sysml"))) {
-      out.error("No .sysml directory found");
+    if (statsResult.fileCount === 0) {
+      out.error("No SysML model found. Run 'au ingest' first.");
       restore();
       process.exit(1);
     }
 
-    // Run sysml2 directly
-    const validation = await validateModelFull(".sysml");
-    const diagnostics = parseMultiFileDiagnosticOutput(validation.output || "");
+    // Display summary of stats
+    const sysml2Val = statsResult.sysml2Validation;
+    const hasErrors = sysml2Val ? sysml2Val.exitCode !== 0 : false;
+    const hasWarnings = sysml2Val ? sysml2Val.warningCount > 0 : false;
+    const brokenRefs = statsResult.coverageStats?.brokenReferences ?? 0;
+    const coverageIssues = this.countCoverageIssues(statsResult);
 
-    // Display sysml2 results
-    this.displaySysml2Results(validation.exitCode, validation.output, diagnostics, flags.verbose);
+    // Show brief stats summary
+    if (sysml2Val) {
+      if (sysml2Val.exitCode === 0 && sysml2Val.warningCount === 0) {
+        out.success("sysml2: No errors or warnings");
+      } else if (sysml2Val.exitCode === 0) {
+        out.info(`sysml2: ${sysml2Val.warningCount} warning(s)`);
+      } else {
+        out.warn(`sysml2: ${sysml2Val.errorCount} error(s)`);
+      }
+    } else {
+      out.warn("sysml2: not available");
+    }
 
-    const hasErrors = validation.exitCode !== 0;
-    const hasWarnings = diagnostics.some(d => d.severity === "warning");
+    if (brokenRefs > 0) {
+      out.warn(`Coverage: ${brokenRefs} broken reference(s)`);
+    }
+    if (coverageIssues > 0) {
+      out.info(`Coverage: ${coverageIssues} uncovered file(s)`);
+    }
 
-    // Run coverage validation
+    // Get coverage validator for fix phase (if needed)
     const coverageValidator = new SysMLCoverageValidator();
     const coverageResult = await coverageValidator.validate(".");
 
-    // Display coverage results
-    this.displayCoverageResults(coverageResult, flags.verbose);
+    // Convert sysml2 diagnostics to the format expected by agentic phases
+    const diagnostics: Array<{ file: string; line: number; column: number; severity: "error" | "warning"; code: string; message: string }> = sysml2Val?.diagnostics.map(d => ({
+      file: d.file,
+      line: d.line,
+      column: d.column,
+      severity: d.severity,
+      code: d.code || "",
+      message: d.message,
+    })) ?? [];
 
-    const coverageIssues = SysMLCoverageValidator.getIssueCount(coverageResult);
-
-    // Summary of static phase
-    console.log();
-    const totalStaticIssues = diagnostics.filter(d => d.severity === "error").length + coverageIssues;
-    if (totalStaticIssues === 0 && !hasWarnings) {
-      out.success("Static validation passed");
-    } else {
-      if (hasErrors) {
-        out.warn(`sysml2: ${diagnostics.filter(d => d.severity === "error").length} error(s)`);
-      }
-      if (hasWarnings) {
-        out.info(`sysml2: ${diagnostics.filter(d => d.severity === "warning").length} warning(s)`);
-      }
-      if (coverageIssues > 0) {
-        out.warn(`Coverage: ${coverageIssues} issue(s)`);
-      }
-    }
-
-    // If --quick, exit after static checks
-    if (flags.quick) {
-      restore();
-      if (hasErrors || coverageIssues > 0) {
-        process.exit(1);
-      }
-      return;
-    }
-
-    // Phase 2: Agentic verification (skip if --quick)
-    out.info("\nPhase 2: Agentic verification...");
+    // Phase 1: Agentic verification
+    out.info("\nPhase 1: Agentic verification...");
     const agenticFindings = await this.runAgenticVerification(
-      validation.exitCode,
-      validation.output || "",
+      sysml2Val?.exitCode ?? 0,
+      this.formatDiagnosticsAsOutput(diagnostics),
       diagnostics,
       flags,
       out
@@ -203,18 +195,21 @@ export default class Validate extends Command {
       }
     }
 
-    const hasIssues = hasErrors || coverageIssues > 0 || errors > 0;
+    const hasIssues = hasErrors || brokenRefs > 0 || errors > 0;
 
-    // Phase 3: Fix (if --fix and issues found)
+    // Phase 2: Fix (if --fix and issues found)
     if (flags.fix && hasIssues) {
-      out.info("\nPhase 3: Running agentic fix...");
+      out.info("\nPhase 2: Running agentic fix...");
+
+      const brokenPaths = statsResult.coverageStats?.brokenPaths ?? [];
 
       const fixesApplied = await this.runFixPhase(
-        validation.exitCode,
+        sysml2Val?.exitCode ?? 0,
         diagnostics,
         coverageResult,
         agenticFindings,
         coverageValidator,
+        brokenPaths,
         flags,
         out
       );
@@ -222,23 +217,20 @@ export default class Validate extends Command {
       if (fixesApplied > 0) {
         out.success(`Applied ${fixesApplied} fix${fixesApplied === 1 ? "" : "es"}`);
 
-        // Re-validate to show updated status
-        out.info("\nRe-validating...");
-        const newValidation = await validateModelFull(".sysml");
-        const newDiagnostics = parseMultiFileDiagnosticOutput(newValidation.output || "");
-        this.displaySysml2Results(newValidation.exitCode, newValidation.output, newDiagnostics, flags.verbose);
+        // Re-gather stats to show updated status
+        out.info("\nRe-gathering stats...");
+        const newStats = await sysmlStats.getStats(".");
+        const newSysml2 = newStats.sysml2Validation;
+        const newBrokenRefs = newStats.coverageStats?.brokenReferences ?? 0;
 
-        const newCoverageResult = await coverageValidator.validate(".");
-        this.displayCoverageResults(newCoverageResult, flags.verbose);
-
-        const newErrorCount = newDiagnostics.filter(d => d.severity === "error").length;
-        const newCoverageIssues = SysMLCoverageValidator.getActionableIssueCount(newCoverageResult);
-        const totalRemaining = newErrorCount + newCoverageIssues;
+        const newErrorCount = newSysml2?.errorCount ?? 0;
+        const totalRemaining = newErrorCount + newBrokenRefs;
         console.log();
         if (totalRemaining === 0) {
           out.success("All validations passed after fixes");
         } else {
-          out.warn(`${totalRemaining} issue${totalRemaining === 1 ? "" : "s"} remaining`);
+          if (newErrorCount > 0) out.warn(`sysml2: ${newErrorCount} error(s) remaining`);
+          if (newBrokenRefs > 0) out.warn(`Coverage: ${newBrokenRefs} broken reference(s) remaining`);
         }
       } else {
         out.info("No fixes were applied");
@@ -254,97 +246,25 @@ export default class Validate extends Command {
   }
 
   /**
-   * Check if a file/directory exists.
+   * Count uncovered files from coverage stats.
    */
-  private async fileExists(path: string): Promise<boolean> {
-    try {
-      await access(path);
-      return true;
-    } catch {
-      return false;
+  private countCoverageIssues(stats: SysMLModelStats): number {
+    if (!stats.coverageStats) return 0;
+    let count = 0;
+    for (const cycle of Object.values(stats.coverageStats.cycleCoverage)) {
+      count += cycle.uncoveredFiles.length;
     }
+    return count;
   }
 
   /**
-   * Display sysml2 validation results.
+   * Format diagnostics as a text output for agentic verification context.
    */
-  private displaySysml2Results(
-    exitCode: number,
-    output: string | undefined,
-    diagnostics: Sysml2MultiDiagnostic[],
-    verbose: boolean
-  ): void {
-    console.log("\n━━━ sysml2 Validation ━━━\n");
-
-    if (exitCode === 0) {
-      const warningCount = diagnostics.filter(d => d.severity === "warning").length;
-      if (warningCount === 0) {
-        console.log("✓ No errors or warnings");
-      } else {
-        console.log(`✓ No errors, ${warningCount} warning(s)`);
-      }
-    } else {
-      const errorType = exitCode === 1 ? "Syntax" : "Semantic";
-      const errorCount = diagnostics.filter(d => d.severity === "error").length;
-      console.log(`✗ ${errorType} errors: ${errorCount}`);
-    }
-
-    // Show diagnostics
-    if (diagnostics.length > 0) {
-      const displayDiags = verbose ? diagnostics : diagnostics.slice(0, 10);
-      for (const diag of displayDiags) {
-        const icon = diag.severity === "error" ? "✗" : "⚠";
-        const codeInfo = diag.code ? `[${diag.code}] ` : "";
-        console.log(`  ${icon} ${diag.file}:${diag.line}:${diag.column}: ${codeInfo}${diag.message}`);
-      }
-      if (!verbose && diagnostics.length > 10) {
-        console.log(`  ... and ${diagnostics.length - 10} more (use --verbose)`);
-      }
-    }
-  }
-
-  /**
-   * Display coverage validation results.
-   */
-  private displayCoverageResults(result: CoverageValidationResult, verbose: boolean): void {
-    console.log("\n━━━ Coverage Validation ━━━\n");
-
-    // File coverage validation
-    if (result.fileCoverageMismatches.length === 0) {
-      console.log("✓ Source file coverage: all files covered");
-    } else {
-      console.log("⚠ Coverage mismatches:");
-      for (const mismatch of result.fileCoverageMismatches) {
-        console.log(
-          `  ${mismatch.cycle}: ${mismatch.covered}/${mismatch.expected} files covered`
-        );
-        if (verbose && mismatch.uncoveredFiles.length > 0) {
-          for (const file of mismatch.uncoveredFiles.slice(0, 5)) {
-            console.log(`    ✗ Missing: ${file}`);
-          }
-          if (mismatch.uncoveredFiles.length > 5) {
-            console.log(`    ... and ${mismatch.uncoveredFiles.length - 5} more`);
-          }
-        }
-      }
-    }
-
-    // Coverage completeness
-    if (result.coverageIssues.length === 0) {
-      console.log("✓ Coverage: directories and patterns valid");
-    } else {
-      console.log(`⚠ Coverage issues (${result.coverageIssues.length}):`);
-      const displayIssues = verbose
-        ? result.coverageIssues
-        : result.coverageIssues.slice(0, 5);
-      for (const issue of displayIssues) {
-        const detail = issue.detail ? ` (${issue.detail})` : "";
-        console.log(`  ${issue.cycle}: ${issue.type} ${issue.path}${detail}`);
-      }
-      if (!verbose && result.coverageIssues.length > 5) {
-        console.log(`  ... and ${result.coverageIssues.length - 5} more (use --verbose)`);
-      }
-    }
+  private formatDiagnosticsAsOutput(diagnostics: Array<{ file: string; line: number; column: number; severity: "error" | "warning"; code: string; message: string }>): string {
+    return diagnostics.map(d => {
+      const codeInfo = d.code ? `[${d.code}] ` : "";
+      return `${d.file}:${d.line}:${d.column}: ${d.severity}${codeInfo}: ${d.message}`;
+    }).join("\n");
   }
 
   /**
@@ -354,7 +274,7 @@ export default class Validate extends Command {
   private async runAgenticVerification(
     sysml2ExitCode: number,
     sysml2Output: string,
-    diagnostics: Sysml2MultiDiagnostic[],
+    diagnostics: Array<{ file: string; line: number; column: number; severity: "error" | "warning"; code: string; message: string }>,
     flags: { model: string; rpm: number; tpm: number; "verify-iterations": number; verbose: boolean },
     out: Output
   ): Promise<VerificationFinding[]> {
@@ -539,8 +459,20 @@ export default class Validate extends Command {
   /**
    * Convert coverage validation results to prioritized issues.
    */
-  private prioritizeCoverageIssues(result: CoverageValidationResult): PrioritizedIssue[] {
+  private prioritizeCoverageIssues(result: CoverageValidationResult, brokenPaths: string[]): PrioritizedIssue[] {
     const issues: PrioritizedIssue[] = [];
+
+    // P2 CRITICAL: Broken references - model references files that don't exist
+    for (const brokenPath of brokenPaths) {
+      issues.push({
+        priority: 2,
+        priorityLabel: "CRITICAL",
+        category: "broken-reference",
+        description: `@SourceFile references non-existent file: ${brokenPath}`,
+        recommendation: `Either delete the @SourceFile metadata referencing "${brokenPath}", or correct the path if it's a typo`,
+        actionable: true,
+      });
+    }
 
     // P4 - MEDIUM: File coverage mismatches (now actionable - add @SourceFile metadata)
     // Create batched issues (groups of 10 files) to avoid overwhelming the agent
@@ -584,10 +516,11 @@ export default class Validate extends Command {
    */
   private async runFixPhase(
     sysml2ExitCode: number,
-    diagnostics: Sysml2MultiDiagnostic[],
+    diagnostics: Array<{ file: string; line: number; column: number; severity: "error" | "warning"; code: string; message: string }>,
     coverageResult: CoverageValidationResult,
     agenticFindings: VerificationFinding[],
     coverageValidator: SysMLCoverageValidator,
+    brokenPaths: string[],
     flags: { model: string; rpm: number; tpm: number; "fix-iterations": number; "coverage-threshold": number; "fix-batch-size": number; verbose: boolean },
     out: Output
   ): Promise<number> {
@@ -596,7 +529,7 @@ export default class Validate extends Command {
 
     // Prioritize and sort all issues
     const sysml2Issues = prioritizeSysml2Diagnostics(sysml2ExitCode, diagnostics);
-    const coverageIssues = this.prioritizeCoverageIssues(coverageResult);
+    const coverageIssues = this.prioritizeCoverageIssues(coverageResult, brokenPaths);
     const agenticIssues = prioritizeAgenticFindings(
       agenticFindings.filter((f) => f.category === "error" || f.category === "warning")
     );

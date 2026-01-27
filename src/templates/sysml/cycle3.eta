@@ -85,7 +85,46 @@ If Protobuf files are present:
    - Validation rules
    - Business invariants
 
-6. **Generate SysML**:
+6. **Discover business validation rules**:
+   - Look for how this codebase validates data (the approach varies by project)
+   - Find field-level constraints (required, length, format, patterns)
+   - Find cross-field constraints (field A depends on field B)
+   - Find uniqueness rules (fields that must be unique like VIN, email, etc.)
+   - Find validation libraries in use (zod, joi, yup, class-validator, pydantic, etc.)
+
+   **Output file**: `data/constraints.sysml`
+   ```sysml
+   package DataConstraints {
+       import SysMLPrimitives::*;
+
+       doc /*Business validation rules discovered from source */
+
+       // Uniqueness constraints
+       constraint def VinUniqueness :> UniqueConstraint {
+           doc /*Vehicle VIN must be unique - enforced in VehicleService.create() */
+       }
+
+       constraint def EmailUniqueness :> UniqueConstraint {
+           doc /*User email must be unique across all users */
+       }
+
+       // Field validation - standalone constraint with expression
+       constraint def VinFormat {
+           doc /*VIN must be exactly 17 characters */
+           in vin : String;
+           length(vin) == 17
+       }
+
+       // Cross-field validation
+       constraint def DateRangeValid {
+           doc /*End date must be after start date */
+       }
+   }
+   ```
+
+   Search for validation patterns specific to this codebase - don't assume any particular library.
+
+7. **Generate SysML**:
 
    **data/_index.sysml** - Update overview (MUST import all sibling packages):
    ```sysml
@@ -340,6 +379,9 @@ item def {Entity}Created :> BaseDomainEvent {
 - **Validation rules**: Email format, string length, ranges
 - **Relationships**: One-to-many, many-to-many
 - **Computed fields**: Derived from other fields
+- **Service-layer validation**: Uniqueness checks, business rules in create/update methods
+- **Decorator validation**: @IsEmail, @MinLength, @Matches patterns
+- **Schema validation**: zod schemas, joi schemas, pydantic validators
 
 ### Deliverables
 
@@ -349,6 +391,7 @@ Write ONLY these files:
 - `data/enums.sysml` - Enumerations (from Prisma enums, GraphQL enums, etc.)
 - `data/dtos.sysml` - Data transfer objects (optional, for API request/response shapes)
 - `data/events.sysml` - Domain events (optional, if event-driven)
+- `data/constraints.sysml` - Business validation rules and constraints (uniqueness, format, cross-field)
 
 **IMPORTANT**: Do NOT write to context/, structure/, behavior/, verification/, or analysis/ directories.
 This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. will be handled in later cycles.
@@ -369,6 +412,8 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 - [ ] All enumerations captured
 - [ ] **Relationships** between entities documented (`connection def`)
 - [ ] Validation constraints extracted (`@unique`, `@@unique`, `@@index`)
+- [ ] **Business constraints** documented in `data/constraints.sysml` (uniqueness rules, format validations)
+- [ ] **Service-layer validation** captured (uniqueness checks in create/update methods)
 - [ ] Events captured with **specialization** (`:> BaseDomainEvent`) if event-driven
 - [ ] Output is limited to `data/` directory only
 

@@ -6,10 +6,28 @@
 import { readFile, readdir, stat, access } from "node:fs/promises";
 import { join } from "node:path";
 import { loadManifest, type Manifest, type ManifestProject } from "../gadgets/manifest-write.js";
+import { SysMLCoverageValidator } from "./sysml-model-validator.js";
+import { validateModelFull, parseMultiFileDiagnosticOutput } from "./sysml/sysml2-cli.js";
 import fg from "fast-glob";
 
 const SYSML_DIR = ".sysml";
 const MANIFEST_PATH = ".sysml/_manifest.json";
+
+export interface Sysml2ValidationDiagnostic {
+  file: string;
+  line: number;
+  column: number;
+  severity: "error" | "warning";
+  message: string;
+  code?: string;
+}
+
+export interface Sysml2ValidationStats {
+  exitCode: number;
+  errorCount: number;
+  warningCount: number;
+  diagnostics: Sysml2ValidationDiagnostic[];
+}
 
 export interface CycleCounts {
   name: string;
@@ -23,6 +41,24 @@ export interface SourceCoverage {
   filesCovered: number;
 }
 
+export interface CycleCoverageStats {
+  covered: number;
+  expected: number;
+  percent: number;
+  uncoveredFiles: string[];
+}
+
+export interface CoverageStats {
+  /** Total files referenced by @SourceFile in .sysml */
+  referencedFiles: number;
+  /** Files referenced that don't exist on disk */
+  brokenReferences: number;
+  /** Actual paths that are broken references */
+  brokenPaths: string[];
+  /** Per-cycle: expected vs covered from manifest sourceFiles */
+  cycleCoverage: Record<string, CycleCoverageStats>;
+}
+
 export interface SysMLModelStats {
   fileCount: number;
   totalBytes: number;
@@ -31,6 +67,8 @@ export interface SysMLModelStats {
   cycleCounts: Record<string, CycleCounts>;
   sourceCoverage: SourceCoverage;
   directoryCount: number;
+  coverageStats: CoverageStats | null;
+  sysml2Validation: Sysml2ValidationStats | null;
 }
 
 /**
@@ -107,6 +145,31 @@ async function countSourceFiles(
 
 export class SysMLStats {
   /**
+   * Expand glob patterns to actual file paths.
+   */
+  private async expandPatterns(patterns: string[], basePath: string): Promise<string[]> {
+    const files: string[] = [];
+
+    for (const pattern of patterns) {
+      if (pattern.includes("*")) {
+        const matches = await fg(pattern, {
+          cwd: basePath,
+          onlyFiles: true,
+          ignore: ["**/node_modules/**", "**/dist/**", "**/.git/**"],
+        });
+        files.push(...matches);
+      } else {
+        const fullPath = join(basePath, pattern);
+        if (await pathExists(fullPath)) {
+          files.push(pattern);
+        }
+      }
+    }
+
+    return [...new Set(files)];
+  }
+
+  /**
    * Get statistics about the SysML model.
    */
   async getStats(basePath: string = "."): Promise<SysMLModelStats> {
@@ -118,6 +181,8 @@ export class SysMLStats {
       cycleCounts: {},
       sourceCoverage: { filesCovered: 0 },
       directoryCount: 0,
+      coverageStats: null,
+      sysml2Validation: null,
     };
 
     // Check if .sysml directory exists
@@ -155,9 +220,77 @@ export class SysMLStats {
         // Calculate source coverage
         const filesCovered = await countSourceFiles(basePath, manifest);
         result.sourceCoverage = { filesCovered };
+
+        // Gather coverage stats using validator
+        const validator = new SysMLCoverageValidator();
+        const coveredFiles = await validator.getCoveredFilesFromPath(basePath);
+        const brokenPaths = await validator.validateSourceFilePaths(basePath);
+        const validationResult = await validator.validate(basePath);
+
+        // Build per-cycle coverage from validation mismatches
+        const cycleCoverage: Record<string, CycleCoverageStats> = {};
+
+        // First, populate from manifest sourceFiles (cycles that have coverage expectations)
+        for (const [cycleKey, cycle] of Object.entries(manifest.cycles)) {
+          if (cycle.sourceFiles && cycle.sourceFiles.length > 0) {
+            // Find mismatch for this cycle if any
+            const mismatch = validationResult.fileCoverageMismatches.find(
+              (m) => m.cycle === cycleKey
+            );
+            if (mismatch) {
+              cycleCoverage[cycleKey] = {
+                covered: mismatch.covered,
+                expected: mismatch.expected,
+                percent: mismatch.expected > 0
+                  ? Math.round((mismatch.covered / mismatch.expected) * 100)
+                  : 100,
+                uncoveredFiles: mismatch.uncoveredFiles,
+              };
+            } else {
+              // No mismatch means 100% coverage for this cycle
+              // We need to expand patterns to get expected count
+              const expectedFiles = await this.expandPatterns(cycle.sourceFiles, basePath);
+              cycleCoverage[cycleKey] = {
+                covered: expectedFiles.length,
+                expected: expectedFiles.length,
+                percent: 100,
+                uncoveredFiles: [],
+              };
+            }
+          }
+        }
+
+        result.coverageStats = {
+          referencedFiles: coveredFiles.size,
+          brokenReferences: brokenPaths.length,
+          brokenPaths,
+          cycleCoverage,
+        };
       } catch {
         // Manifest exists but couldn't be parsed
       }
+    }
+
+    // Run sysml2 validation
+    try {
+      const validation = await validateModelFull(sysmlDir);
+      const diagnostics = parseMultiFileDiagnosticOutput(validation.output || "");
+
+      result.sysml2Validation = {
+        exitCode: validation.exitCode,
+        errorCount: diagnostics.filter(d => d.severity === "error").length,
+        warningCount: diagnostics.filter(d => d.severity === "warning").length,
+        diagnostics: diagnostics.map(d => ({
+          file: d.file,
+          line: d.line,
+          column: d.column,
+          severity: d.severity,
+          message: d.message,
+          code: d.code || undefined,
+        })),
+      };
+    } catch {
+      // sysml2 not available or validation failed
     }
 
     return result;
