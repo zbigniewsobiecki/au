@@ -110,9 +110,7 @@ if [[ "$COMMAND" == "validate" ]]; then
         "--coverage-threshold" "30"
         "--fix-iterations" "100"
         "-v"
-        # "-m" "openrouter:google/gemini-3-pro-preview"
-        "-m" "openrouter:google/gemini-3-flash-preview",
-        # "-m" "openrouter:deepseek/deepseek-v3.2"
+        "-m" "openrouter:google/gemini-3-flash-preview"
         "--fix-batch-size" "20"
     )
 fi

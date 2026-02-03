@@ -4,16 +4,15 @@
  */
 
 import { AgentBuilder, LLMist } from "llmist";
-import chalk from "chalk";
 import { join } from "node:path";
 
 import type { CycleState, CycleIterationState, CycleTurnOptions, CycleTurnResult } from "./types.js";
 import { extractEntitiesFromSysml } from "./entity-parser.js";
 import { formatTurnSummary } from "./token-tracking.js";
 import { parsePathList } from "../command-utils.js";
-import { extractDiffFromResult } from "../diff-utils.js";
 import { Output } from "../output.js";
 import { render } from "../templates.js";
+import { parseSysMLWriteResult, displaySysMLWriteVerbose, displaySysMLWriteCompact } from "../sysml-write-display.js";
 import {
   configureBuilder,
   createTextBlockState,
@@ -271,34 +270,15 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
         if (result.error) {
           out.gadgetError(result.gadgetName, result.error);
         } else if (result.result) {
-          // Parse path from result (format: "path=... status=... mode=... delta=...")
-          const pathMatch = result.result.match(/^path=(\S+)/);
-          const statusMatch = result.result.match(/status=(\w+)/);
-          const modeMatch = result.result.match(/mode=(\w+)/);
-          const deltaMatch = result.result.match(/delta=([+-]?\d+ bytes)/);
-          const writtenPath = pathMatch ? pathMatch[1] : result.result.split("\n")[0];
-          const status = statusMatch ? statusMatch[1] : "";
-          let mode = modeMatch ? modeMatch[1] : "";
-          if (!mode && result.gadgetName === "SysMLCreate") {
-            mode = result.result?.includes("Reset package") ? "reset" : "create";
-          }
-          const delta = deltaMatch ? deltaMatch[1] : null;
-          const diff = extractDiffFromResult(result.result);
-          const isError = status === "error";
-          const isNoOp = status === "unchanged" || status === "warning";
+          const parsed = parseSysMLWriteResult(result.result, result.gadgetName);
 
-          if (isError) {
-            // Extract error details from result string (after the header line)
-            const errorLines = result.result.split("\n").slice(1).join("\n").trim();
+          if (parsed.isError) {
             if (options.verbose) {
-              console.log(chalk.red(`   ✗ ${writtenPath} [error]`));
-              if (errorLines) {
-                console.log(chalk.red(`      ${errorLines.split("\n").join("\n      ")}`));
-              }
+              displaySysMLWriteVerbose(parsed);
             } else {
-              console.log(`  ${chalk.red("✗")} Error: ${writtenPath}`);
+              displaySysMLWriteCompact(parsed);
             }
-            summary.push(`Error writing ${writtenPath}`);
+            summary.push(`Error writing ${parsed.path}`);
           } else {
             filesWritten++;
 
@@ -309,46 +289,16 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
               trackEntities.createdEntities.push(...newEntities);
             }
 
-            summary.push(`Wrote ${writtenPath}`);
+            summary.push(`Wrote ${parsed.path}`);
 
             if (onFileWrite) {
-              await onFileWrite(writtenPath, mode, delta, diff);
+              await onFileWrite(parsed.path, parsed.mode, parsed.delta, parsed.diff);
             }
 
             if (options.verbose) {
-              const modeStr = mode === "create" ? chalk.yellow("[new]")
-                : mode === "reset" ? chalk.magenta("[reset]")
-                : mode === "upsert" ? chalk.blue("[set]")
-                : mode === "delete" ? chalk.red("[del]")
-                : "";
-              const deltaStr = delta
-                ? (delta.startsWith("-") ? chalk.red(` (${delta})`) : chalk.dim(` (${delta})`))
-                : "";
-              const prefix = isNoOp ? chalk.yellow("   ⚠️") : chalk.green("   ✓");
-              console.log(`${prefix} ${writtenPath} ${modeStr}${deltaStr}`);
-
-              // Display colored diff if available
-              if (diff) {
-                const indentedDiff = diff.split("\n").map((line) => {
-                  const colored = line.startsWith("- ")
-                    ? chalk.red(line)
-                    : line.startsWith("+ ")
-                      ? chalk.green(line)
-                      : line.startsWith("  ")
-                        ? chalk.dim(line)
-                        : line.startsWith("...")
-                          ? chalk.dim(line)
-                          : line;
-                  return `      ${colored}`;
-                }).join("\n");
-                console.log(indentedDiff);
-              }
+              displaySysMLWriteVerbose(parsed);
             } else {
-              if (isNoOp) {
-                console.log(`  ${chalk.yellow("⚠️")} No change: ${writtenPath}`);
-              } else {
-                console.log(`  Wrote: ${writtenPath}`);
-              }
+              displaySysMLWriteCompact(parsed);
             }
           }
         }

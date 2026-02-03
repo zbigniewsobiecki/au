@@ -1,7 +1,8 @@
 import type { Agent } from "llmist";
 import { Output } from "./output.js";
 import { TextBlockState, endTextBlock, formatResultSize } from "./command-utils.js";
-import { isFileReadingGadget } from "./constants.js";
+import { isFileReadingGadget, isSysMLWriteGadget } from "./constants.js";
+import { parseSysMLWriteResult, displaySysMLWriteVerbose } from "./sysml-write-display.js";
 
 /**
  * Options for running an agent with event streaming.
@@ -48,6 +49,12 @@ export async function runAgentWithEvents(
       if (verbose) {
         if (result.error) {
           out.gadgetError(result.gadgetName, result.error);
+        } else if (isSysMLWriteGadget(result.gadgetName) && result.result) {
+          const parsed = parseSysMLWriteResult(result.result, result.gadgetName);
+          displaySysMLWriteVerbose(parsed);
+        } else if (result.gadgetName === "VerifyFinding") {
+          // VerifyFinding details already shown in gadgetCall — just show compact ✓
+          out.gadgetResult(result.gadgetName);
         } else {
           let summary: string | undefined;
           if (isFileReadingGadget(result.gadgetName)) {

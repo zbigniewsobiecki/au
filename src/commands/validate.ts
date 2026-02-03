@@ -43,7 +43,8 @@ import {
   withWorkingDirectory,
 } from "../lib/command-utils.js";
 import { runAgentWithEvents } from "../lib/agent-runner.js";
-import { extractDiffFromResult } from "../lib/diff-utils.js";
+import { isSysMLWriteGadget } from "../lib/constants.js";
+import { parseSysMLWriteResult, displaySysMLWriteCompact } from "../lib/sysml-write-display.js";
 import {
   SysMLStats,
   type SysMLModelStats,
@@ -522,7 +523,7 @@ export default class Validate extends Command {
 
           if (entry.isDirectory()) {
             await scanDir(fullPath, relativePath);
-          } else if (entry.name.endsWith(".sysml") && !entry.name.startsWith("_")) {
+          } else if (entry.name.endsWith(".sysml")) {
             files.push(relativePath);
           }
         }
@@ -695,34 +696,23 @@ export default class Validate extends Command {
   }
 
   /**
-   * Run the agentic fix phase.
-   * Returns the number of fixes applied.
+   * Run a single fix stage with the given issues.
+   * Returns fixes applied, iterations used, and final validation exit code.
    */
-  private async runFixPhase(
-    sysml2ExitCode: number,
-    diagnostics: Array<{ file: string; line: number; column: number; severity: "error" | "warning"; code: string; message: string }>,
-    coverageResult: CoverageValidationResult,
-    agenticFindings: VerificationFinding[],
+  private async runFixStage(
+    stageName: string,
+    issues: PrioritizedIssue[],
+    maxIterations: number,
     coverageValidator: SysMLCoverageValidator,
-    brokenPathErrors: SourceFileError[],
+    coverageResult: CoverageValidationResult | null,
     flags: { model: string; rpm: number; tpm: number; "fix-iterations": number; "coverage-threshold": number; "fix-batch-size": number; verbose: boolean },
     out: Output
-  ): Promise<number> {
-    // Render prompts
+  ): Promise<{ fixesApplied: number; iterationsUsed: number; validationExitCode: number }> {
     const systemPrompt = render("sysml-fix/system", {});
 
-    // Prioritize and sort all issues
-    const sysml2Issues = prioritizeSysml2Diagnostics(sysml2ExitCode, diagnostics);
-    const coverageIssues = this.prioritizeCoverageIssues(coverageResult, brokenPathErrors);
-    const agenticIssues = prioritizeAgenticFindings(
-      agenticFindings.filter((f) => f.category === "error" || f.category === "warning")
-    );
-    const allIssues = sortIssuesByPriority([...sysml2Issues, ...coverageIssues, ...agenticIssues]);
-
     // Separate actionable from non-actionable issues
-    // Only pass actionable issues to the fix agent
-    const actionableIssues = allIssues.filter(issue => issue.actionable !== false);
-    const nonActionableIssues = allIssues.filter(issue => issue.actionable === false);
+    const actionableIssues = issues.filter(issue => issue.actionable !== false);
+    const nonActionableIssues = issues.filter(issue => issue.actionable === false);
     const groupedIssues = groupByPriority(actionableIssues);
 
     const initialPrompt = render("sysml-fix/initial", {
@@ -734,11 +724,13 @@ export default class Validate extends Command {
 
     // Build agent with gadgets
     // sysmlWrite first for maxConcurrent=1 priority
+    // Exclude FinishSysmlFix from structural stage so the only exits are
+    // validation passing or budget exhaustion (prevents premature termination)
     const client = new LLMist();
     const gadgets = [
       sysmlWrite,
       sysmlCreate,
-      finishSysmlFix,
+      ...(stageName !== "structural" ? [finishSysmlFix] : []),
       sysmlRead,
       sysmlList,
       sysmlQuery,
@@ -751,27 +743,31 @@ export default class Validate extends Command {
     let currentIteration = 0;
     let validationExitCode = 0;
     let validationOutput = "";
+    let fixesApplied = 0;
 
-    // Initialize coverage stats from initial coverageResult
-    const initialUncovered: string[] = [];
-    let initialTotal = 0;
-    let initialCovered = 0;
-    for (const mismatch of coverageResult.fileCoverageMismatches) {
-      initialTotal += mismatch.expected;
-      initialCovered += mismatch.covered;
-      initialUncovered.push(...mismatch.uncoveredFiles);
+    // Initialize coverage stats (null coverageResult = structural stage, hide coverage)
+    let coverageStats = { covered: 0, total: 0, percent: 100, uncoveredFiles: [] as string[] };
+    if (coverageResult) {
+      const initialUncovered: string[] = [];
+      let initialTotal = 0;
+      let initialCovered = 0;
+      for (const mismatch of coverageResult.fileCoverageMismatches) {
+        initialTotal += mismatch.expected;
+        initialCovered += mismatch.covered;
+        initialUncovered.push(...mismatch.uncoveredFiles);
+      }
+      coverageStats = {
+        covered: initialCovered,
+        total: initialTotal,
+        percent: initialTotal > 0 ? Math.round((initialCovered / initialTotal) * 100) : 100,
+        uncoveredFiles: initialUncovered.slice(0, 20),
+      };
     }
-    let coverageStats = {
-      covered: initialCovered,
-      total: initialTotal,
-      percent: initialTotal > 0 ? Math.round((initialCovered / initialTotal) * 100) : 100,
-      uncoveredFiles: initialUncovered.slice(0, 20),
-    };
 
     let builder = new AgentBuilder(client)
       .withModel(flags.model)
       .withSystem(systemPrompt)
-      .withMaxIterations(flags["fix-iterations"])
+      .withMaxIterations(maxIterations)
       .withGadgetExecutionMode("sequential")
       .withGadgetOutputLimitPercent(30)
       .withGadgets(...gadgets);
@@ -782,7 +778,8 @@ export default class Validate extends Command {
     builder = builder.withTrailingMessage(() => {
       return render("sysml-fix/trailing", {
         iteration: currentIteration,
-        maxIterations: flags["fix-iterations"],
+        maxIterations,
+        stageName,
         fixesApplied,
         // Coverage stats (dynamic - updated in onGadgetResult)
         coveragePercent: coverageStats.percent,
@@ -801,7 +798,6 @@ export default class Validate extends Command {
 
     // Track progress
     const textState = createTextBlockState();
-    let fixesApplied = 0;
 
     // Set up iteration tracking
     const tree = agent.getTree();
@@ -821,17 +817,31 @@ export default class Validate extends Command {
         textState,
         verbose: flags.verbose,
         onGadgetResult: async (gadgetName, gadgetResult) => {
-          if (gadgetName === "SysMLWrite" && gadgetResult && !gadgetResult.includes("Error")) {
+          if (!isSysMLWriteGadget(gadgetName) || !gadgetResult) return;
+
+          const parsed = parseSysMLWriteResult(gadgetResult, gadgetName);
+
+          // Only count real successful changes
+          if (!parsed.isError && !parsed.isNoOp) {
             fixesApplied++;
-            // Re-run validation for trailing message feedback
-            try {
-              const validation = await validateModelFull(".sysml");
-              validationExitCode = validation.exitCode;
-              validationOutput = validation.output || "";
-            } catch {
-              // sysml2 not available, skip validation update
-            }
-            // Re-validate coverage dynamically for trailing message
+          }
+
+          // Re-run validation for trailing message feedback
+          try {
+            const validation = await validateModelFull(".sysml");
+            validationExitCode = validation.exitCode;
+            validationOutput = validation.output || "";
+          } catch {
+            // sysml2 not available, skip validation update
+          }
+
+          // Early-exit for structural stage when validation passes
+          if (stageName === "structural" && validationExitCode === 0) {
+            throw new Error("SysML fix complete: structural validation passed");
+          }
+
+          // Re-validate coverage dynamically for trailing message (content stage only)
+          if (coverageResult) {
             try {
               const result = await coverageValidator.validate(".");
               let total = 0;
@@ -846,31 +856,16 @@ export default class Validate extends Command {
                 covered,
                 total,
                 percent: total > 0 ? Math.round((covered / total) * 100) : 100,
-                uncoveredFiles: uncovered.slice(0, 20), // Show first 20
+                uncoveredFiles: uncovered.slice(0, 20),
               };
             } catch {
               // Ignore coverage validation errors
             }
-            const statusMatch = gadgetResult.match(/status=(\w+)/);
-            const isNoOp = statusMatch && (statusMatch[1] === "unchanged" || statusMatch[1] === "warning");
-            if (!flags.verbose) {
-              // Extract path from result for brief output
-              const pathMatch = gadgetResult.match(/path=([^\s]+)/);
-              if (pathMatch) {
-                if (isNoOp) {
-                  out.warn(`No change: ${pathMatch[1]}`);
-                } else {
-                  out.info(`Fixed: ${pathMatch[1]}`);
-                }
-              }
-            } else {
-              // In verbose mode, display the colored diff if available
-              const diff = extractDiffFromResult(gadgetResult);
-              if (diff) {
-                const indentedDiff = diff.split("\n").map((line) => `      ${line}`).join("\n");
-                console.log(indentedDiff);
-              }
-            }
+          }
+
+          // Non-verbose compact display (verbose display handled by agent-runner)
+          if (!flags.verbose) {
+            displaySysMLWriteCompact(parsed);
           }
         },
       });
@@ -881,7 +876,103 @@ export default class Validate extends Command {
       }
     }
 
-    // Display current validation errors
+    return { fixesApplied, iterationsUsed: currentIteration, validationExitCode };
+  }
+
+  /**
+   * Run the agentic fix phase in two stages:
+   * Stage 1 (structural): Fix P1/P2 sysml2 diagnostic errors only
+   * Stage 2 (content): Fix all remaining issues (fresh P1/P2 + P3-P5 agentic/coverage)
+   * Returns the total number of fixes applied.
+   */
+  private async runFixPhase(
+    sysml2ExitCode: number,
+    diagnostics: Array<{ file: string; line: number; column: number; severity: "error" | "warning"; code: string; message: string }>,
+    coverageResult: CoverageValidationResult,
+    agenticFindings: VerificationFinding[],
+    coverageValidator: SysMLCoverageValidator,
+    brokenPathErrors: SourceFileError[],
+    flags: { model: string; rpm: number; tpm: number; "fix-iterations": number; "coverage-threshold": number; "fix-batch-size": number; verbose: boolean },
+    out: Output
+  ): Promise<number> {
+    let totalFixesApplied = 0;
+    let remainingBudget = flags["fix-iterations"];
+
+    // === Stage 1: Structural fixes (P1/P2 sysml2 diagnostic errors only) ===
+    const sysml2Issues = prioritizeSysml2Diagnostics(sysml2ExitCode, diagnostics);
+    const structuralIssues = sysml2Issues.filter(issue => issue.priority <= 2);
+
+    if (structuralIssues.length > 0) {
+      out.info(`\n  Stage 1: Fixing structural errors (${structuralIssues.length} P1/P2 issues)...`);
+      const stage1 = await this.runFixStage(
+        "structural",
+        sortIssuesByPriority(structuralIssues),
+        remainingBudget,
+        coverageValidator,
+        null,
+        flags,
+        out
+      );
+      totalFixesApplied += stage1.fixesApplied;
+      remainingBudget -= stage1.iterationsUsed;
+
+      if (stage1.validationExitCode === 0) {
+        out.success("  Structural validation passed");
+      }
+    } else {
+      out.info("\n  Stage 1: No structural errors, skipping...");
+    }
+
+    // === Between stages: re-validate from scratch ===
+    let freshDiagnostics: typeof diagnostics = [];
+    let freshSysml2ExitCode = 0;
+    let freshCoverageResult = coverageResult;
+    try {
+      const validation = await validateModelFull(".sysml");
+      freshSysml2ExitCode = validation.exitCode;
+      freshDiagnostics = parseMultiFileDiagnosticOutput(validation.output || "");
+    } catch {
+      // sysml2 not available
+    }
+    try {
+      freshCoverageResult = await coverageValidator.validate(".");
+    } catch {
+      // Ignore coverage validation errors
+    }
+
+    // === Stage 2: Content fixes (all remaining issues) ===
+    if (remainingBudget <= 0) {
+      out.warn("  Stage 2: Iteration budget exhausted, skipping content fixes");
+      return totalFixesApplied;
+    }
+
+    // Rebuild issue list from fresh diagnostics + original agentic findings + fresh coverage
+    const freshSysml2Issues = prioritizeSysml2Diagnostics(freshSysml2ExitCode, freshDiagnostics);
+    const freshCoverageIssues = this.prioritizeCoverageIssues(freshCoverageResult, brokenPathErrors);
+    const agenticIssues = prioritizeAgenticFindings(
+      agenticFindings.filter((f) => f.category === "error" || f.category === "warning")
+    );
+    const contentIssues = sortIssuesByPriority([...freshSysml2Issues, ...freshCoverageIssues, ...agenticIssues]);
+    const actionableContentIssues = contentIssues.filter(issue => issue.actionable !== false);
+
+    if (actionableContentIssues.length === 0) {
+      out.info("\n  Stage 2: No remaining issues, skipping...");
+      return totalFixesApplied;
+    }
+
+    out.info(`\n  Stage 2: Fixing content issues (${actionableContentIssues.length} issues, ${remainingBudget} iterations remaining)...`);
+    const stage2 = await this.runFixStage(
+      "content",
+      contentIssues,
+      remainingBudget,
+      coverageValidator,
+      freshCoverageResult,
+      flags,
+      out
+    );
+    totalFixesApplied += stage2.fixesApplied;
+
+    // Display final validation status
     try {
       const validation = await validateModelFull(".sysml");
       if (validation.exitCode !== 0 && validation.output) {
@@ -892,6 +983,6 @@ export default class Validate extends Command {
       // sysml2 not available
     }
 
-    return fixesApplied;
+    return totalFixesApplied;
   }
 }

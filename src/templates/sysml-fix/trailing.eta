@@ -1,6 +1,6 @@
 
 ---
-## Fix Turn <%= it.iteration %>/<%= it.maxIterations %>
+## Fix Turn <%= it.iteration %>/<%= it.maxIterations %><% if (it.stageName) { %> (<%= it.stageName %>)<% } %>
 
 - Fixes applied: **<%= it.fixesApplied %>**
 <% if (it.totalFiles > 0) { %>

@@ -28,9 +28,9 @@ export function formatTokenUsage(
   const inputStr = formatTokens(inputTokens);
   const outputStr = formatTokens(outputTokens);
   const cachedStr = cachedTokens && cachedTokens > 0
-    ? ` (${formatTokens(cachedTokens)} cached)`
-    : "";
-  return `${inputStr} in · ${outputStr} out${cachedStr}`;
+    ? formatTokens(cachedTokens)
+    : "0";
+  return `${inputStr} in · ${outputStr} out · ${cachedStr} cached`;
 }
 
 /**

@@ -8,6 +8,10 @@ Think of the SysML model as the "blueprint" — you're checking whether the blue
 
 You DO have access to source code via ReadFiles / RipGrep. Use it when you need to resolve ambiguities about what the model *should* contain, but keep your findings focused on the model, not the source.
 
+## Model Organization
+
+Each domain directory contains an `_index.sysml` file that defines the top-level package for that domain (e.g., `data/_index.sysml` defines the `DataModel` package). These index files contain the organizing structure, base types, and imports for the domain. The remaining files in each directory define specific elements within those packages.
+
 ## What to Look For
 
 ### Cross-Domain Consistency
