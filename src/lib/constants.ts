@@ -54,3 +54,10 @@ export const GlobPatterns = {
 export function isFileReadingGadget(name: string): boolean {
   return name === GadgetName.ReadFiles || name === GadgetName.ReadDirs;
 }
+
+/**
+ * Checks if a gadget is a SysML write gadget (SysMLWrite or SysMLCreate).
+ */
+export function isSysMLWriteGadget(name: string): boolean {
+  return name === GadgetName.SysMLWrite || name === "SysMLCreate";
+}

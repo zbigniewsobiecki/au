@@ -5,6 +5,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { stripAnsi } from "../strip-ansi.js";
 
 // sysml2 is assumed to be globally installed in PATH
 const SYSML2_CMD = "sysml2";
@@ -263,14 +264,6 @@ export async function runSysml2Multi(
 }
 
 /**
- * Strip ANSI escape codes from a string.
- */
-function stripAnsi(str: string): string {
-  // eslint-disable-next-line no-control-regex
-  return str.replace(/\x1b\[[0-9;]*m/g, "");
-}
-
-/**
  * Parse clang-style diagnostic output from stderr.
  *
  * Format: filename:line:column: error[CODE]: message
@@ -456,6 +449,7 @@ export async function setElement(
     dryRun?: boolean;
     parseOnly?: boolean;
     replaceScope?: boolean;
+    forceReplace?: boolean;  // Suppress data loss warning when replaceScope deletes more elements than fragment provides
     allowSemanticErrors?: boolean;  // Allow writes despite E3xxx errors
   }
 ): Promise<SetResult> {
@@ -487,6 +481,10 @@ export async function setElement(
 
   if (options?.replaceScope) {
     args.push("--replace-scope");
+  }
+
+  if (options?.forceReplace) {
+    args.push("--force-replace");
   }
 
   if (options?.allowSemanticErrors) {
@@ -551,7 +549,7 @@ export async function setElement(
         added,
         replaced,
         diagnostics,
-        stderr: stderr.trim() || undefined,
+        stderr: stripAnsi(stderr.trim()) || undefined,
       });
     });
 
@@ -635,7 +633,7 @@ export async function deleteElements(
         modifiedFile: targetFile,
         deleted,
         diagnostics,
-        stderr: stderr.trim() || undefined,
+        stderr: stripAnsi(stderr.trim()) || undefined,
       });
     });
 
@@ -704,7 +702,7 @@ export async function validateModelFull(
       resolve({
         success: code === 0,
         exitCode: code ?? -1,
-        output: stderr,
+        output: stripAnsi(stderr),
       });
     });
 

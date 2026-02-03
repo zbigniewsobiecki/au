@@ -103,7 +103,19 @@ export class Output {
           if (params.glob) {
             console.log(chalk.dim(`   glob: ${params.glob}`));
           }
-        } else if (name === GadgetName.Finish && params.summary) {
+        } else if (name === "VerifyFinding") {
+          const cat = params.category as string;
+          const dom = params.domain as string;
+          const file = params.file as string | undefined;
+          const issue = params.issue as string;
+          const rec = params.recommendation as string | undefined;
+          const tag = cat === "error" ? chalk.red("[ERROR]") : cat === "warning" ? chalk.yellow("[WARNING]") : chalk.blue("[SUGGESTION]");
+          const fileInfo = file ? chalk.dim(` in ${file}`) : "";
+          console.log(`   ${tag} ${dom}${fileInfo}: ${issue}`);
+          if (rec) {
+            console.log(chalk.dim(`   → ${rec}`));
+          }
+        } else if ((name === GadgetName.Finish || name.startsWith("Finish")) && params.summary) {
           console.log(chalk.dim(`   ${params.summary}`));
         } else {
           // Generic param display for other gadgets (excluding reason which is shown above)

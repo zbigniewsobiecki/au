@@ -3,8 +3,9 @@
  *
  * Enable with environment variable: AU_DEBUG_EDITS=1
  * Disable auto-cleanup with: AU_DEBUG_EDITS_KEEP_ALL=1
+ * Custom output directory: AU_DEBUG_EDITS_DIR=/path/to/dir (default: .sysml.debug)
  *
- * Creates debug files in .sysml.debug/{timestamp}-{operation}-{sanitized-path}/
+ * Creates debug files in {dir}/{timestamp}-{operation}-{sanitized-path}/
  */
 
 import { mkdir, writeFile, readdir, rm } from "node:fs/promises";
@@ -53,8 +54,10 @@ export interface EditDebugData {
 /** Maximum number of debug sessions to keep (unless AU_DEBUG_EDITS_KEEP_ALL=1) */
 const MAX_DEBUG_SESSIONS = 50;
 
-/** Debug output base directory */
-const DEBUG_BASE_DIR = ".sysml.debug";
+/** Debug output base directory (configurable via AU_DEBUG_EDITS_DIR) */
+function getDebugBaseDir(): string {
+  return process.env.AU_DEBUG_EDITS_DIR || ".sysml.debug";
+}
 
 /**
  * Sanitize a file path for use in directory names.
@@ -93,7 +96,7 @@ export async function writeEditDebug(data: EditDebugData): Promise<void> {
     const timestamp = generateTimestamp();
     const sanitizedPath = sanitizePath(data.metadata.path);
     const dirName = `${timestamp}-${data.metadata.operation}-${sanitizedPath}`;
-    const debugDir = join(DEBUG_BASE_DIR, dirName);
+    const debugDir = join(getDebugBaseDir(), dirName);
 
     // Create debug directory
     await mkdir(debugDir, { recursive: true });
@@ -132,7 +135,7 @@ export async function cleanupOldSessions(
   maxSessions = MAX_DEBUG_SESSIONS
 ): Promise<void> {
   try {
-    const entries = await readdir(DEBUG_BASE_DIR, { withFileTypes: true });
+    const entries = await readdir(getDebugBaseDir(), { withFileTypes: true });
     const dirs = entries
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
@@ -146,7 +149,7 @@ export async function cleanupOldSessions(
     const toRemove = dirs.slice(0, dirs.length - maxSessions);
     await Promise.all(
       toRemove.map((dir) =>
-        rm(join(DEBUG_BASE_DIR, dir), { recursive: true, force: true })
+        rm(join(getDebugBaseDir(), dir), { recursive: true, force: true })
       )
     );
   } catch {

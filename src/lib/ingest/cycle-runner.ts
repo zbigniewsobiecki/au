@@ -4,16 +4,15 @@
  */
 
 import { AgentBuilder, LLMist } from "llmist";
-import chalk from "chalk";
 import { join } from "node:path";
 
 import type { CycleState, CycleIterationState, CycleTurnOptions, CycleTurnResult } from "./types.js";
 import { extractEntitiesFromSysml } from "./entity-parser.js";
 import { formatTurnSummary } from "./token-tracking.js";
 import { parsePathList } from "../command-utils.js";
-import { extractDiffFromResult } from "../diff-utils.js";
 import { Output } from "../output.js";
 import { render } from "../templates.js";
+import { parseSysMLWriteResult, displaySysMLWriteVerbose, displaySysMLWriteCompact } from "../sysml-write-display.js";
 import {
   configureBuilder,
   createTextBlockState,
@@ -271,51 +270,36 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
         if (result.error) {
           out.gadgetError(result.gadgetName, result.error);
         } else if (result.result) {
-          filesWritten++;
+          const parsed = parseSysMLWriteResult(result.result, result.gadgetName);
 
-          // Parse path from result (format: "path=... status=... mode=... delta=...")
-          const pathMatch = result.result.match(/^path=(\S+)/);
-          const modeMatch = result.result.match(/mode=(\w+)/);
-          const deltaMatch = result.result.match(/delta=([+-]?\d+ bytes)/);
-          const writtenPath = pathMatch ? pathMatch[1] : result.result.split("\n")[0];
-          let mode = modeMatch ? modeMatch[1] : "";
-          if (!mode && result.gadgetName === "SysMLCreate") {
-            mode = result.result?.includes("Reset package") ? "reset" : "create";
-          }
-          const delta = deltaMatch ? deltaMatch[1] : null;
-          const diff = extractDiffFromResult(result.result);
-
-          // Extract entities from element content for cross-turn tracking
-          const params = result.parameters as { path?: string; element?: string };
-          if (params?.element && params?.path && trackEntities) {
-            const newEntities = extractEntitiesFromSysml(params.element, params.path);
-            trackEntities.createdEntities.push(...newEntities);
-          }
-
-          summary.push(`Wrote ${writtenPath}`);
-
-          if (onFileWrite) {
-            await onFileWrite(writtenPath, mode, delta, diff);
-          }
-
-          if (options.verbose) {
-            const modeStr = mode === "create" ? chalk.yellow("[new]")
-              : mode === "reset" ? chalk.magenta("[reset]")
-              : mode === "upsert" ? chalk.blue("[set]")
-              : mode === "delete" ? chalk.red("[del]")
-              : "";
-            const deltaStr = delta
-              ? (delta.startsWith("-") ? chalk.red(` (${delta})`) : chalk.dim(` (${delta})`))
-              : "";
-            console.log(`${chalk.green("   ✓")} ${writtenPath} ${modeStr}${deltaStr}`);
-
-            // Display colored diff if available
-            if (diff) {
-              const indentedDiff = diff.split("\n").map((line) => `      ${line}`).join("\n");
-              console.log(indentedDiff);
+          if (parsed.isError) {
+            if (options.verbose) {
+              displaySysMLWriteVerbose(parsed);
+            } else {
+              displaySysMLWriteCompact(parsed);
             }
+            summary.push(`Error writing ${parsed.path}`);
           } else {
-            console.log(`  Wrote: ${writtenPath}`);
+            filesWritten++;
+
+            // Extract entities from element content for cross-turn tracking
+            const params = result.parameters as { path?: string; element?: string };
+            if (params?.element && params?.path && trackEntities) {
+              const newEntities = extractEntitiesFromSysml(params.element, params.path);
+              trackEntities.createdEntities.push(...newEntities);
+            }
+
+            summary.push(`Wrote ${parsed.path}`);
+
+            if (onFileWrite) {
+              await onFileWrite(parsed.path, parsed.mode, parsed.delta, parsed.diff);
+            }
+
+            if (options.verbose) {
+              displaySysMLWriteVerbose(parsed);
+            } else {
+              displaySysMLWriteCompact(parsed);
+            }
           }
         }
       } else if (result.gadgetName === "ManifestWrite") {
