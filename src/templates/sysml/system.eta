@@ -108,6 +108,27 @@ requirement def FR001 {
 }
 ```
 
+### ERROR 4: part :>> as a Direct Child of a Package
+```sysml
+// WRONG - package itself has no parent type to redefine from!
+package SystemModules {
+    part :>> backendApp : BackendApp { ... }  // ERROR E3002!
+}
+
+// CORRECT - plain part declaration as direct child of package
+package SystemModules {
+    part backendApp : BackendApp { ... }
+}
+
+// CORRECT - part :>> inside a typed usage (even if that usage is in a package!)
+package SystemContext {
+    part systemInstance : CarDealershipSystem {
+        part :>> backend : BackendApp { ... }    // OK - CarDealershipSystem inherits 'backend'
+        part :>> frontend : FrontendApp { ... }  // OK - CarDealershipSystem inherits 'frontend'
+    }
+}
+```
+
 ### Quick Reference Table
 
 | Error | Wrong | Correct |
@@ -116,10 +137,15 @@ requirement def FR001 {
 | attribute + :>> | `attribute :>> name = "x";` | `:>> name = "x";` |
 | Dangling metadata | `@external;` (alone) | `@external;` then element |
 | :>> without inheritance | `def X { :>> a = v; }` | `def X { attribute a : T = v; }` |
+| `part :>>` as direct child of package | `package P { part :>> x : T; }` | `package P { part x : T; }` |
 
 **:>> Decision Tree:**
 ```
-Do I have ":>" or ": Type"?
+Am I redefining a part (not just an attribute)?
+├─ Inside "part def X :> Y { }" or "part x : SomeType { }"?
+│   └─ Yes → part :>> name : Type { ... }
+│   └─ No (direct child of a package) → part name : Type { ... }
+Do I have ":>" or ": Type" for attributes?
 ├─ Yes → :>> name = value;
 └─ No  → attribute name : Type = value;
 ```
@@ -942,6 +968,27 @@ connection connect system.frontend.api to system.backend.api;
 - Without `:>>`, you declare a NEW feature with the same name, which shadows the inherited one
 - The SysML validator sees the shadowing and reports E3002 because the feature hierarchy is broken
 - With `:>>`, you REDEFINE the inherited feature, keeping the type hierarchy intact
+
+**IMPORTANT: `part :>>` requires a typed context that inherits the feature.** As a direct child of a package, use plain `part name : Type { ... }`:
+```sysml
+// WRONG - package has no parent type!
+package SystemModules {
+    part :>> backendApp : BackendApp { ... }
+}
+
+// CORRECT - plain declaration as direct child of package
+package SystemModules {
+    part backendApp : BackendApp { ... }
+}
+
+// CORRECT - part :>> inside a typed usage within a package
+package SystemContext {
+    part myApp : WebApplication {
+        part :>> frontend : Frontend { ... }    // OK!
+        part :>> backend : APIServer { ... }    // OK!
+    }
+}
+```
 
 **Example - Model a full-stack app:**
 ```sysml

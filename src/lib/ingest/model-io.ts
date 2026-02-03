@@ -7,7 +7,7 @@ import { join } from "node:path";
 import fg from "fast-glob";
 
 import { SYSML_DIR, CYCLE_SYSML_PATTERNS } from "./constants.js";
-import { generateInitialFiles, regenerateModelIndex, type ProjectMetadata } from "../sysml/index.js";
+import { generateInitialFiles, regenerateModelIndex, CYCLE_OUTPUT_DIRS, type ProjectMetadata } from "../sysml/index.js";
 import { runSysml2Multi, formatFile } from "../sysml/sysml2-cli.js";
 import { Output } from "../output.js";
 
@@ -16,8 +16,21 @@ import { Output } from "../output.js";
  * Each cycle only sees output from previous cycles to enforce boundaries.
  * @param cycle - The current cycle number (1-6)
  */
-export async function readExistingModel(cycle: number): Promise<string> {
-  const patterns = CYCLE_SYSML_PATTERNS[cycle] ?? ["**/*.sysml"];
+export async function readExistingModel(
+  cycle: number,
+  includeCurrentCycleOutput: boolean = false,
+): Promise<string> {
+  const patterns = [...(CYCLE_SYSML_PATTERNS[cycle] ?? ["**/*.sysml"])];
+
+  if (includeCurrentCycleOutput) {
+    const currentDir = CYCLE_OUTPUT_DIRS[cycle];
+    if (currentDir) {
+      const currentPattern = `${currentDir}/**/*.sysml`;
+      if (!patterns.includes(currentPattern)) {
+        patterns.push(currentPattern);
+      }
+    }
+  }
 
   const files = await fg(patterns, {
     cwd: SYSML_DIR,

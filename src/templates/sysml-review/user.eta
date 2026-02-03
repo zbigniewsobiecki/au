@@ -1,0 +1,31 @@
+## Codebase Structure
+
+<%= it.codebaseStructure %>
+
+## SysML Model Content
+
+<%= it.sysmlContent %>
+
+## Manifest Summary
+
+<%= it.manifestSummary %>
+
+## Previously Found Issues
+
+The following issues have already been identified (don't re-report these):
+
+<%= it.previousFindings %>
+
+## Instructions
+
+Review the model holistically as a system design artifact. Focus on internal consistency and completeness of the model, not source code accuracy (that was Phase 1's job). Use source code only to resolve ambiguities about what the model should contain.
+
+1. **Cross-domain alignment**: Check that data, behavior, and verification domains reference each other correctly → report as domain "structure"
+2. **Completeness**: Find missing definitions or incomplete entities → report as domain "data" or "behavior"
+3. **Orphaned definitions**: Find elements defined but never used elsewhere → report as domain "quality"
+4. **Missing connections**: Identify implied relationships that should be explicit → report as domain "structure"
+5. **Naming & abstraction consistency**: Check conventions and abstraction levels → report as domain "quality"
+
+Valid VerifyFinding domains: "structure", "data", "behavior", "verification", "quality".
+
+When complete, call FinishVerify with a summary.

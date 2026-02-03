@@ -271,51 +271,85 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
         if (result.error) {
           out.gadgetError(result.gadgetName, result.error);
         } else if (result.result) {
-          filesWritten++;
-
           // Parse path from result (format: "path=... status=... mode=... delta=...")
           const pathMatch = result.result.match(/^path=(\S+)/);
+          const statusMatch = result.result.match(/status=(\w+)/);
           const modeMatch = result.result.match(/mode=(\w+)/);
           const deltaMatch = result.result.match(/delta=([+-]?\d+ bytes)/);
           const writtenPath = pathMatch ? pathMatch[1] : result.result.split("\n")[0];
+          const status = statusMatch ? statusMatch[1] : "";
           let mode = modeMatch ? modeMatch[1] : "";
           if (!mode && result.gadgetName === "SysMLCreate") {
             mode = result.result?.includes("Reset package") ? "reset" : "create";
           }
           const delta = deltaMatch ? deltaMatch[1] : null;
           const diff = extractDiffFromResult(result.result);
+          const isError = status === "error";
+          const isNoOp = status === "unchanged" || status === "warning";
 
-          // Extract entities from element content for cross-turn tracking
-          const params = result.parameters as { path?: string; element?: string };
-          if (params?.element && params?.path && trackEntities) {
-            const newEntities = extractEntitiesFromSysml(params.element, params.path);
-            trackEntities.createdEntities.push(...newEntities);
-          }
-
-          summary.push(`Wrote ${writtenPath}`);
-
-          if (onFileWrite) {
-            await onFileWrite(writtenPath, mode, delta, diff);
-          }
-
-          if (options.verbose) {
-            const modeStr = mode === "create" ? chalk.yellow("[new]")
-              : mode === "reset" ? chalk.magenta("[reset]")
-              : mode === "upsert" ? chalk.blue("[set]")
-              : mode === "delete" ? chalk.red("[del]")
-              : "";
-            const deltaStr = delta
-              ? (delta.startsWith("-") ? chalk.red(` (${delta})`) : chalk.dim(` (${delta})`))
-              : "";
-            console.log(`${chalk.green("   ✓")} ${writtenPath} ${modeStr}${deltaStr}`);
-
-            // Display colored diff if available
-            if (diff) {
-              const indentedDiff = diff.split("\n").map((line) => `      ${line}`).join("\n");
-              console.log(indentedDiff);
+          if (isError) {
+            // Extract error details from result string (after the header line)
+            const errorLines = result.result.split("\n").slice(1).join("\n").trim();
+            if (options.verbose) {
+              console.log(chalk.red(`   ✗ ${writtenPath} [error]`));
+              if (errorLines) {
+                console.log(chalk.red(`      ${errorLines.split("\n").join("\n      ")}`));
+              }
+            } else {
+              console.log(`  ${chalk.red("✗")} Error: ${writtenPath}`);
             }
+            summary.push(`Error writing ${writtenPath}`);
           } else {
-            console.log(`  Wrote: ${writtenPath}`);
+            filesWritten++;
+
+            // Extract entities from element content for cross-turn tracking
+            const params = result.parameters as { path?: string; element?: string };
+            if (params?.element && params?.path && trackEntities) {
+              const newEntities = extractEntitiesFromSysml(params.element, params.path);
+              trackEntities.createdEntities.push(...newEntities);
+            }
+
+            summary.push(`Wrote ${writtenPath}`);
+
+            if (onFileWrite) {
+              await onFileWrite(writtenPath, mode, delta, diff);
+            }
+
+            if (options.verbose) {
+              const modeStr = mode === "create" ? chalk.yellow("[new]")
+                : mode === "reset" ? chalk.magenta("[reset]")
+                : mode === "upsert" ? chalk.blue("[set]")
+                : mode === "delete" ? chalk.red("[del]")
+                : "";
+              const deltaStr = delta
+                ? (delta.startsWith("-") ? chalk.red(` (${delta})`) : chalk.dim(` (${delta})`))
+                : "";
+              const prefix = isNoOp ? chalk.yellow("   ⚠️") : chalk.green("   ✓");
+              console.log(`${prefix} ${writtenPath} ${modeStr}${deltaStr}`);
+
+              // Display colored diff if available
+              if (diff) {
+                const indentedDiff = diff.split("\n").map((line) => {
+                  const colored = line.startsWith("- ")
+                    ? chalk.red(line)
+                    : line.startsWith("+ ")
+                      ? chalk.green(line)
+                      : line.startsWith("  ")
+                        ? chalk.dim(line)
+                        : line.startsWith("...")
+                          ? chalk.dim(line)
+                          : line;
+                  return `      ${colored}`;
+                }).join("\n");
+                console.log(indentedDiff);
+              }
+            } else {
+              if (isNoOp) {
+                console.log(`  ${chalk.yellow("⚠️")} No change: ${writtenPath}`);
+              } else {
+                console.log(`  Wrote: ${writtenPath}`);
+              }
+            }
           }
         }
       } else if (result.gadgetName === "ManifestWrite") {

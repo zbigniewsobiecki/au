@@ -3,15 +3,7 @@
  */
 
 import chalk from "chalk";
-
-/**
- * Strip ANSI escape codes from a string.
- * Used to test content without color formatting.
- */
-function stripAnsi(str: string): string {
-  // eslint-disable-next-line no-control-regex
-  return str.replace(/\x1b\[[0-9;]*m/g, "");
-}
+import { stripAnsi } from "./strip-ansi.js";
 
 /**
  * Extract the diff portion from a SysMLWrite result string.
@@ -84,6 +76,50 @@ export function generateColoredDiff(
     } else if (entry.type === "context") {
       // Show context lines (unchanged) only near changes
       lines.push(chalk.dim(`  ${entry.line}`));
+      shown++;
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Generate a plain-text diff between two strings (no ANSI colors).
+ * Uses the same logic as generateColoredDiff but with plain prefixes.
+ * Suitable for inclusion in LLM context where ANSI codes are unwanted.
+ *
+ * @param before - Original content
+ * @param after - New content
+ * @param maxLines - Maximum lines to show (default 20)
+ * @returns Plain diff string with - / + / space prefixes
+ */
+export function generatePlainDiff(
+  before: string,
+  after: string,
+  maxLines = 20
+): string {
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+
+  const diff = computeLineDiff(beforeLines, afterLines);
+
+  const lines: string[] = [];
+  let shown = 0;
+
+  for (const entry of diff) {
+    if (shown >= maxLines) {
+      lines.push(`... ${diff.length - shown} more lines`);
+      break;
+    }
+
+    if (entry.type === "remove") {
+      lines.push(`- ${entry.line}`);
+      shown++;
+    } else if (entry.type === "add") {
+      lines.push(`+ ${entry.line}`);
+      shown++;
+    } else if (entry.type === "context") {
+      lines.push(`  ${entry.line}`);
       shown++;
     }
   }

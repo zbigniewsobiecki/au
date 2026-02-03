@@ -24,6 +24,7 @@ import {
   type CoverageValidationResult,
 } from "../lib/sysml-model-validator.js";
 import { validateModelFull, parseMultiFileDiagnosticOutput } from "../lib/sysml/sysml2-cli.js";
+import { type SourceFileError } from "../lib/sysml/index.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import {
@@ -195,21 +196,62 @@ export default class Validate extends Command {
       }
     }
 
-    const hasIssues = hasErrors || brokenRefs > 0 || errors > 0;
+    // Phase 2: Holistic model review
+    out.info("\nPhase 2: Holistic model review...");
+    const holisticFindings = await this.runHolisticReview(agenticFindings, flags, out);
 
-    // Phase 2: Fix (if --fix and issues found)
+    // Display holistic findings summary
+    const holisticErrors = holisticFindings.filter((f) => f.category === "error").length;
+    const holisticWarnings = holisticFindings.filter((f) => f.category === "warning").length;
+    const holisticSuggestions = holisticFindings.filter((f) => f.category === "suggestion").length;
+
+    if (holisticFindings.length === 0) {
+      out.success("Holistic review passed");
+    } else {
+      console.log();
+      out.warn(`Holistic: ${holisticFindings.length} finding${holisticFindings.length === 1 ? "" : "s"}`);
+      if (holisticErrors > 0) console.log(`  Errors: ${holisticErrors}`);
+      if (holisticWarnings > 0) console.log(`  Warnings: ${holisticWarnings}`);
+      if (holisticSuggestions > 0) console.log(`  Suggestions: ${holisticSuggestions}`);
+
+      // Show findings in verbose mode
+      if (flags.verbose) {
+        console.log("\nFindings:");
+        for (const finding of holisticFindings) {
+          const prefix =
+            finding.category === "error"
+              ? "ERROR"
+              : finding.category === "warning"
+                ? "WARNING"
+                : "SUGGESTION";
+          const fileInfo = finding.file ? ` (${finding.file})` : "";
+          console.log(`  [${prefix}] ${finding.domain}${fileInfo}: ${finding.issue}`);
+          if (finding.recommendation) {
+            console.log(`    Recommendation: ${finding.recommendation}`);
+          }
+        }
+      }
+    }
+
+    // Merge all findings for fix phase
+    const allFindings = [...agenticFindings, ...holisticFindings];
+    const allErrors = errors + holisticErrors;
+
+    const hasIssues = hasErrors || brokenRefs > 0 || allErrors > 0;
+
+    // Phase 3: Fix (if --fix and issues found)
     if (flags.fix && hasIssues) {
-      out.info("\nPhase 2: Running agentic fix...");
+      out.info("\nPhase 3: Running agentic fix...");
 
-      const brokenPaths = statsResult.coverageStats?.brokenPaths ?? [];
+      const brokenPathErrors = statsResult.coverageStats?.brokenPathErrors ?? [];
 
       const fixesApplied = await this.runFixPhase(
         sysml2Val?.exitCode ?? 0,
         diagnostics,
         coverageResult,
-        agenticFindings,
+        allFindings,
         coverageValidator,
-        brokenPaths,
+        brokenPathErrors,
         flags,
         out
       );
@@ -363,6 +405,101 @@ export default class Validate extends Command {
   }
 
   /**
+   * Run the holistic model review phase.
+   * Examines the model for internal consistency and completeness.
+   */
+  private async runHolisticReview(
+    agenticFindings: VerificationFinding[],
+    flags: { model: string; rpm: number; tpm: number; "verify-iterations": number; verbose: boolean },
+    out: Output
+  ): Promise<VerificationFinding[]> {
+    // Reset collected findings for this phase
+    resetCollectedFindings();
+
+    // Load SysML content
+    const sysmlContent = await this.loadAllSysmlContent();
+    if (!sysmlContent) {
+      out.warn("No SysML files found for holistic review");
+      return [];
+    }
+
+    // Get codebase structure for context
+    const codebaseStructure = await this.getCodebaseStructure();
+
+    // Format previous findings to avoid duplicates
+    const previousFindings =
+      agenticFindings.map((f) => `- [${f.category}] ${f.domain}: ${f.issue}`).join("\n") || "None";
+
+    // Get manifest summary
+    const manifestSummary = await this.getManifestSummary();
+
+    // Render prompts
+    const systemPrompt = render("sysml-review/system", {});
+    const userPrompt = render("sysml-review/user", {
+      sysmlContent,
+      codebaseStructure,
+      manifestSummary,
+      previousFindings,
+    });
+
+    // Build agent with gadgets
+    const client = new LLMist();
+    const gadgets = [
+      verifyFinding,
+      finishVerify,
+      sysmlRead,
+      sysmlQuery,
+      readFiles,
+      readDirs,
+      ripGrep,
+    ];
+
+    let builder = new AgentBuilder(client)
+      .withModel(flags.model)
+      .withSystem(systemPrompt)
+      .withMaxIterations(flags["verify-iterations"])
+      .withGadgetExecutionMode("sequential")
+      .withGadgetOutputLimitPercent(30)
+      .withGadgets(...gadgets);
+
+    builder = configureBuilder(builder, out, flags.rpm, flags.tpm);
+
+    const agent = builder.ask(userPrompt);
+
+    // Track progress
+    const textState = createTextBlockState();
+
+    // Set up iteration tracking
+    const tree = agent.getTree();
+    setupIterationTracking(tree, {
+      out,
+      showCumulativeCostEvery: 5,
+      onIterationChange: () => endTextBlock(textState, out),
+    });
+
+    // Run agent
+    try {
+      await runAgentWithEvents(agent, {
+        out,
+        textState,
+        verbose: flags.verbose,
+        onGadgetResult: (gadgetName, result) => {
+          if (gadgetName === "VerifyFinding" && result && !flags.verbose) {
+            out.info(result);
+          }
+        },
+      });
+    } catch (error) {
+      // TaskCompletionSignal is expected
+      if (!(error instanceof Error && error.message.includes("SysML verification complete"))) {
+        out.warn(`Holistic review stopped: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+
+    return getCollectedFindings();
+  }
+
+  /**
    * Load all SysML file content for agentic verification.
    */
   private async loadAllSysmlContent(): Promise<string | null> {
@@ -457,19 +594,66 @@ export default class Validate extends Command {
   }
 
   /**
+   * Get a brief codebase structure for holistic review context.
+   */
+  private async getCodebaseStructure(): Promise<string> {
+    const lines: string[] = [];
+
+    // Get top-level directories
+    try {
+      const entries = await readdir(".", { withFileTypes: true });
+      const dirs = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules")
+        .map((e) => e.name)
+        .sort();
+
+      if (dirs.length > 0) {
+        lines.push("Top-level directories:");
+        for (const dir of dirs) {
+          lines.push(`  ${dir}/`);
+        }
+      }
+    } catch {
+      lines.push("Could not read directory structure.");
+    }
+
+    // Get .sysml structure
+    try {
+      const sysmlEntries = await readdir(".sysml", { withFileTypes: true });
+      const sysmlDirs = sysmlEntries
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort();
+
+      if (sysmlDirs.length > 0) {
+        lines.push("\nSysML model structure (.sysml/):");
+        for (const dir of sysmlDirs) {
+          lines.push(`  ${dir}/`);
+        }
+      }
+    } catch {
+      // .sysml doesn't exist
+    }
+
+    return lines.join("\n") || "No structure information available.";
+  }
+
+  /**
    * Convert coverage validation results to prioritized issues.
    */
-  private prioritizeCoverageIssues(result: CoverageValidationResult, brokenPaths: string[]): PrioritizedIssue[] {
+  private prioritizeCoverageIssues(result: CoverageValidationResult, brokenPathErrors: SourceFileError[]): PrioritizedIssue[] {
     const issues: PrioritizedIssue[] = [];
 
     // P2 CRITICAL: Broken references - model references files that don't exist
-    for (const brokenPath of brokenPaths) {
+    for (const error of brokenPathErrors) {
       issues.push({
         priority: 2,
         priorityLabel: "CRITICAL",
         category: "broken-reference",
-        description: `@SourceFile references non-existent file: ${brokenPath}`,
-        recommendation: `Either delete the @SourceFile metadata referencing "${brokenPath}", or correct the path if it's a typo`,
+        file: error.sysmlFile,
+        line: error.line,
+        description: `@SourceFile references non-existent file: ${error.referencedPath}`,
+        recommendation: `Delete or correct the @SourceFile metadata in ${error.sysmlFile} at line ${error.line}`,
         actionable: true,
       });
     }
@@ -520,7 +704,7 @@ export default class Validate extends Command {
     coverageResult: CoverageValidationResult,
     agenticFindings: VerificationFinding[],
     coverageValidator: SysMLCoverageValidator,
-    brokenPaths: string[],
+    brokenPathErrors: SourceFileError[],
     flags: { model: string; rpm: number; tpm: number; "fix-iterations": number; "coverage-threshold": number; "fix-batch-size": number; verbose: boolean },
     out: Output
   ): Promise<number> {
@@ -529,7 +713,7 @@ export default class Validate extends Command {
 
     // Prioritize and sort all issues
     const sysml2Issues = prioritizeSysml2Diagnostics(sysml2ExitCode, diagnostics);
-    const coverageIssues = this.prioritizeCoverageIssues(coverageResult, brokenPaths);
+    const coverageIssues = this.prioritizeCoverageIssues(coverageResult, brokenPathErrors);
     const agenticIssues = prioritizeAgenticFindings(
       agenticFindings.filter((f) => f.category === "error" || f.category === "warning")
     );
@@ -667,11 +851,17 @@ export default class Validate extends Command {
             } catch {
               // Ignore coverage validation errors
             }
+            const statusMatch = gadgetResult.match(/status=(\w+)/);
+            const isNoOp = statusMatch && (statusMatch[1] === "unchanged" || statusMatch[1] === "warning");
             if (!flags.verbose) {
               // Extract path from result for brief output
               const pathMatch = gadgetResult.match(/path=([^\s]+)/);
               if (pathMatch) {
-                out.info(`Fixed: ${pathMatch[1]}`);
+                if (isNoOp) {
+                  out.warn(`No change: ${pathMatch[1]}`);
+                } else {
+                  out.info(`Fixed: ${pathMatch[1]}`);
+                }
               }
             } else {
               // In verbose mode, display the colored diff if available

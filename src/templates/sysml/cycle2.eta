@@ -174,7 +174,7 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
            port userClient : ~UserServicePort;
        }
 
-       // Module instances
+       // Module instances (direct children of package - use plain 'part name : Type')
        part authModule : AuthModule;
        part userModule : UserModule;
        part apiGateway : ApiGateway;
@@ -199,6 +199,13 @@ part def Standalone {            // No ":>"
     :>> path = "x";              // WRONG!
 }
 // FIX: attribute path : FilePath = "x";
+
+// ERROR 3: part :>> as direct child of package
+package SystemModules {
+    part :>> myModule : AuthModule;  // WRONG! Package has no parent type!
+}
+// FIX: part myModule : AuthModule;
+// (part :>> is only valid inside a 'part def X :> Y' or 'part x : Type' body)
 ```
 
    **structure/interfaces.sysml** - Define module interfaces with ports:
