@@ -261,7 +261,7 @@ If Protobuf files are present:
 
 ### ID Sequencing Convention
 
-**CRITICAL**: Before assigning any ID, use `SysMLRead` to check existing files and find the highest ID in use.
+**CRITICAL**: Before assigning any ID, use `SysMLQuery` to check existing elements and find the highest ID in use.
 
 | Category | Format | Example |
 |----------|--------|---------|
@@ -274,25 +274,15 @@ If Protobuf files are present:
 
 ### Reserved Keywords - CRITICAL
 
-**NEVER use these as attribute names** (they are SysML keywords and will cause parse errors):
+These words CANNOT be used as bare attribute names (parser rejects them):
+`from`, `to`, `about`, `first`, `of`, `locale`, `via`, `then`
 
-| Keyword | Use Instead |
-|---------|-------------|
-| `state` | `stateValue`, `status`, `stateProvince` |
-| `action` | `actionType`, `actionName` |
-| `flow` | `flowType`, `dataFlow` |
-| `connection` | `connectionType`, `conn` |
-| `transition` | `transitionType`, `trans` |
-| `port` | `portNumber`, `portValue` |
-| `item` | `itemValue`, `itemType` |
-| `part` | `partNumber`, `partValue` |
-| `package` | `packageName`, `pkg` |
-| `import` | `importType`, `importPath` |
-| `in` | `input`, `inbound` |
-| `out` | `output`, `outbound` |
-| `end` | `endDate`, `ending` |
+Fix: use single-quoted identifiers (SysML "unrestricted names"):
+  attribute 'from' : String;
+  attribute 'to' : String;
 
-If a source field is named `state`, rename to `stateProvince` or `status` in SysML.
+Note: words like `state`, `action`, `flow`, `port`, `item`, `part`, `in`, `out`
+are NOT reserved and work fine as attribute names — do NOT quote them unnecessarily.
 
 ### Specialization Patterns
 

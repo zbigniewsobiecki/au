@@ -68,9 +68,9 @@ incomplete, you'll receive an error listing the missing files.`,
     if (pathList.length === 0) {
       // LLM is signaling completion - validate coverage if context is set
       if (coverageContext) {
-        const { cycle, basePath, minCoveragePercent = 80 } = coverageContext;
+        const { cycle, basePath, minCoveragePercent = 80, readFiles } = coverageContext;
 
-        const coverage = await checkCycleCoverage(cycle, basePath);
+        const coverage = await checkCycleCoverage(cycle, basePath, readFiles);
 
         if (coverage.missingFiles.length > 0 && coverage.coveragePercent < minCoveragePercent) {
           // Coverage is incomplete - reject completion and list missing files

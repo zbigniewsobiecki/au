@@ -147,13 +147,9 @@ NEVER use SysMLCreate on existing files without force=true.`;
           .filter((d) => d.severity === "error" && !d.code);
 
         if (parseErrors.length > 0) {
-          const errors = parseErrors
-            .map((d) => {
-              const lines = finalContent.split("\n");
-              const badLine = lines[d.line - 1] || "";
-              return `Line ${d.line}:${d.column}: ${d.message}\n  ${d.line} | ${badLine}`;
-            })
-            .join("\n\n");
+          const errors = validation.stderr || parseErrors
+            .map((d) => `Line ${d.line}:${d.column}: ${d.message}`)
+            .join("\n");
 
           // Debug logging for syntax error
           if (debugEnabled) {

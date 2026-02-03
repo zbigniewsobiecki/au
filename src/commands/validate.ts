@@ -731,7 +731,6 @@ export default class Validate extends Command {
       sysmlWrite,
       sysmlCreate,
       ...(stageName !== "structural" ? [finishSysmlFix] : []),
-      sysmlRead,
       sysmlList,
       sysmlQuery,
       readFiles,

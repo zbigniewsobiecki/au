@@ -21,6 +21,7 @@ import {
 import {
   sysmlCreate,
   sysmlWrite,
+  sysmlQuery,
   sysmlRead,
   sysmlList,
   projectMetaRead,
@@ -42,6 +43,7 @@ import { validateModelFull, type ValidationResult } from "../sysml/sysml2-cli.js
 const CYCLE_GADGETS = [
   sysmlCreate,
   sysmlWrite,
+  sysmlQuery,
   sysmlRead,
   sysmlList,
   projectMetaRead,
@@ -66,6 +68,7 @@ const CYCLE0_GADGETS = [
 const RETRY_GADGETS = [
   sysmlCreate,
   sysmlWrite,
+  sysmlQuery,
   sysmlRead,
   sysmlList,
   readFiles,
@@ -455,10 +458,10 @@ export async function runCycleTurn(
         // Ignore errors
       }
 
-      // Refresh coverage metrics for trailing message and CLI display
+      // Refresh coverage metrics for trailing message and CLI display (unified: read ∩ documented)
       if (expectedCount > 0) {
         try {
-          const coverage = await checkCycleCoverage(cycle, ".");
+          const coverage = await checkCycleCoverage(cycle, ".", iterState.readFiles);
           if (coverage.expectedFiles.length > 0) {
             // Update live coverage for trailing message
             docCoveragePercent = Math.round(coverage.coveragePercent);

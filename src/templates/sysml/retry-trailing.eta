@@ -22,7 +22,7 @@
 - Write new SysML definitions for uncovered source files
 
 **Do:**
-1. Use `SysMLRead` to examine each file mentioned in the errors
+1. Use `SysMLQuery` to inspect the elements mentioned in the errors (e.g., `SysMLQuery(select="Scope::Element")`)
 2. Use `SysMLWrite` to fix the specific issues (write to `.sysml/<%= it.cycleOutputDir %>/`)
 3. Validation re-runs automatically after each write — check that errors decrease
 

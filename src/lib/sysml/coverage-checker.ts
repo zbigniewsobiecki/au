@@ -50,6 +50,8 @@ export interface CoverageContext {
   basePath: string;
   /** Minimum coverage percentage required (default: 80) */
   minCoveragePercent?: number;
+  /** When provided, only files in this set count toward unified coverage */
+  readFiles?: Set<string>;
 }
 
 /** Debug flag - set AU_DEBUG_COVERAGE=1 to enable verbose logging */
@@ -214,13 +216,22 @@ function findManifestCycle(
 /**
  * Check coverage for a specific cycle.
  *
+ * When `readFiles` is provided, a file is considered covered only if it
+ * appears in BOTH the documented set (@SourceFile annotations) AND the
+ * readFiles set.  This gives a unified metric: coverage = |read ∩ documented| / |expected|.
+ *
+ * Callers without readFiles (e.g. the pre-cycle skip check) continue using
+ * doc-only coverage, which is fine for detecting previously completed cycles.
+ *
  * @param cycle - The cycle number (1-6)
  * @param basePath - Base path of the project (default: ".")
+ * @param readFiles - Optional set of files that have been read; when provided, intersects with documented set
  * @returns Coverage result with expected, covered, and missing files
  */
 export async function checkCycleCoverage(
   cycle: number,
-  basePath: string = "."
+  basePath: string = ".",
+  readFiles?: Set<string>
 ): Promise<CoverageResult> {
   const result: CoverageResult = {
     expectedFiles: [],
@@ -256,7 +267,14 @@ export async function checkCycleCoverage(
   const sysmlDir = cycleOutputDir
     ? join(basePath, SYSML_DIR, cycleOutputDir)
     : join(basePath, SYSML_DIR); // Fallback for unknown cycles
-  const coveredSet = await findCoveredFiles(sysmlDir);
+  let coveredSet = await findCoveredFiles(sysmlDir);
+
+  // If readFiles provided, intersect: a file is covered only if documented AND read
+  if (readFiles && readFiles.size > 0) {
+    const normalizedReadFiles = new Set([...readFiles].map(normalizeExtension));
+    coveredSet = new Set([...coveredSet].filter(f => normalizedReadFiles.has(f)));
+  }
+
   result.coveredFiles = [...coveredSet].sort();
 
   // Calculate missing files (normalize extensions for comparison)

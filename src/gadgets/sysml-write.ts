@@ -97,7 +97,7 @@ export const sysmlWrite = createGadget({
    PERMANENTLY DELETED.
 
    Use this when fixing E3002 "feature not found" errors caused by wrong element order:
-   1. First, use SysMLRead to get the COMPLETE current content of the scope
+   1. First, use \`SysMLQuery(select="Scope::*")\` to see all elements in the scope
    2. Include ALL existing elements in your element parameter
    3. Reorder them correctly (declarations before redefinitions)
    4. Then use replaceScope=true
@@ -375,28 +375,15 @@ To create a new scope, use createScope=true:
 
           const errorDiags = result.diagnostics.filter((d) => d.severity === "error");
 
-          // Show parse error details with context
+          // Show parse error details - pass through sysml2 stderr verbatim for full context
+          // (includes source line, caret pointer, note, and help lines)
           const parseErrors = errorDiags.filter((d) => !d.code || !d.code.startsWith("E3"));
           if (parseErrors.length > 0) {
-            const firstError = parseErrors[0];
-            // Try to read the modified file to show the error in context
-            let context = "";
-            try {
-              const modifiedContent = await readFile(fullPath, "utf-8");
-              const lines = modifiedContent.split("\n");
-              const badLine = lines[firstError.line - 1] || "";
-              const lineNumWidth = String(firstError.line).length;
-              const pointer = " ".repeat(lineNumWidth + 3 + firstError.column - 1) + "^";
-              context = `\n${firstError.line} | ${badLine}\n${pointer}`;
-            } catch {
-              // Couldn't read modified file, just show error without context
-            }
-
             return `path=${fullPath} status=error mode=upsert (rolled back)
 
 SYNTAX ERROR - the fragment could not be parsed.
 
-Line ${firstError.line}:${firstError.column}: ${firstError.message}${context}
+${result.stderr || `Line ${parseErrors[0].line}:${parseErrors[0].column}: ${parseErrors[0].message}`}
 
 Check the element syntax and try again.`;
           }
@@ -493,7 +480,7 @@ To allow semantic errors, use validateSemantics=false (default).`;
           return `path=${fullPath} status=unchanged mode=upsert delta=+0 bytes
 Content identical - no changes made. All elements in your fragment already exist in this file.
 Do NOT re-send the same elements. Only send NEW or MODIFIED elements.
-If the error is elsewhere, use SysMLRead to inspect other files, SysMLQuery to find elements by name, or SysMLList to see all files.
+If the error is elsewhere, use SysMLQuery to inspect other files, or SysMLList to see all files.
 
 Current file contents:
 ${newContent}`;
@@ -507,7 +494,7 @@ ${newContent}`;
           return `path=${fullPath} status=warning mode=upsert delta=${delta}
 WARNING: No elements were added or replaced.
 The element may already exist, or the scope '${at}' was not found.
-Use SysMLRead to inspect this or other files, SysMLQuery to search for the element by name, or SysMLList to see all files.
+Use SysMLQuery to inspect other files, or SysMLList to see all files.
 
 Current file contents:
 ${newContent}`;

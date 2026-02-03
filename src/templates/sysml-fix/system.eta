@@ -29,7 +29,7 @@ When fixing SysML issues, **always verify against actual source code**:
 
 ## Workflow for Each Issue
 
-1. **Read the SysML file**: Use SysMLRead to get the current content with line numbers
+1. **Read the SysML file**: Use `SysMLQuery(select="Scope::*")` to understand what elements exist
 2. **Read the source code**: Use ReadFiles/RipGrep to get the actual code the SysML represents
 3. **Compare and understand**: Identify discrepancies between SysML and actual code
 4. **Fix the issue**: Use SysMLWrite (element+at) for upserts, or SysMLCreate (force=true) to reset corrupted files
@@ -37,11 +37,12 @@ When fixing SysML issues, **always verify against actual source code**:
 ## Issue-Specific Fix Guidance
 
 ### Syntax Errors
-- Read the file with SysMLRead to see the error location
+- Review the error details from validation output
 - Common fixes:
   - Missing semicolons at end of statements
   - Unbalanced braces { }
   - Incorrect keyword usage (e.g., `part def` not `partdef`)
+  - Reserved keyword as attribute name (`from`, `to`, etc.) → use single quotes: `attribute 'from' : String;`
   - Missing quotes around string values
 - If file is severely corrupted: Use SysMLCreate with force=true to reset it, then re-add content
 - For minor fixes: Use SysMLWrite to upsert corrected elements
@@ -73,7 +74,7 @@ You MUST include ALL existing elements, not just the ones you're reordering.
 If you only provide partial content, the rest will be PERMANENTLY DELETED.
 
 When the issue is element ordering:
-1. First, use SysMLRead to get the COMPLETE current content of the scope
+1. First, use `SysMLQuery(select="Scope::*")` to get the complete list of elements in the scope
 2. Include ALL existing elements in your element parameter
 3. Reorder them correctly (declarations before redefinitions)
 4. Then use replaceScope=true
@@ -124,7 +125,7 @@ These are likely VALID files that were added after initial ingest. Options:
 2. **Delete them** - Only if they're truly obsolete or duplicate
 
 DO NOT automatically add to expectedOutputs without understanding why they exist.
-Use SysMLRead to examine the orphaned file content before deciding.
+Use `SysMLQuery` to examine the elements in the orphaned file before deciding.
 
 ### Coverage Issues
 - missing-file: A file referenced in manifest coverage doesn't exist
@@ -165,7 +166,7 @@ Coverage-mismatch means source files exist but aren't documented in the SysML mo
 ReadFiles(paths: "apps/backend/src/modules/payments/payments.service.ts")
 # Found: PaymentsService with methods processPayment, refund, getHistory
 
-SysMLRead(path: "behavior/services.sysml")
+SysMLQuery(select="SystemBehavior::PaymentsService")
 # Check if PaymentsService already exists
 
 SysMLWrite(
@@ -193,7 +194,7 @@ The trailing message will explicitly tell you when you may finish.
 
 When fixing connection-related issues (reused ports, self-loops, missing ports, duplicates):
 
-1. **Read the connection and both module `part def`s** — use SysMLRead to inspect the connection and the definitions on each end.
+1. **Read the connection and both module `part def`s** — use `SysMLQuery` to inspect the connection and the definitions on each end.
 2. **Verify ports exist on both ends** — if a connection references a port not declared on a module's `part def`, add the missing port definition first before fixing the connection.
 3. **Never reuse an unrelated port** — if a port is already serving another logical data flow, create a new correctly-typed port instead of reusing it. Each distinct data flow gets its own port.
 4. **Remove duplicate or self-referencing connections** — use SysMLWrite with `delete` to remove connections that wire the same pair of ports twice, or that connect a module to itself.
@@ -299,9 +300,9 @@ package MyPackage {
 
 ## Available Gadgets
 
-### SysMLRead
-Read a SysML file with line numbers.
-- `path`: Path relative to .sysml/ (e.g., "data/entities.sysml")
+### SysMLQuery
+Query the SysML model for specific elements.
+- `select`: Element path pattern (e.g., "DomainEntities::*", "UserService")
 
 ### SysMLCreate
 Create new SysML files.
@@ -345,7 +346,7 @@ Signal that fixing is complete.
 
 ### Fix a syntax error (reset corrupted file):
 ```
-SysMLRead(path: "data/entities.sysml")
+SysMLQuery(select="DomainEntities::*")
 # Found: Line 15 has syntax error, file is corrupted
 SysMLCreate(path: "data/entities.sysml", package: "DomainEntities", force: true)
 # Then re-add content via SysMLWrite upserts
@@ -353,7 +354,7 @@ SysMLCreate(path: "data/entities.sysml", package: "DomainEntities", force: true)
 
 ### Fix missing entity (read source first):
 ```
-SysMLRead(path: "data/entities.sysml")
+SysMLQuery(select="DomainEntities::*")
 ReadFiles(paths: "src/models/User.ts")
 # Found: User entity missing createdAt, updatedAt attributes
 SysMLWrite(
@@ -365,7 +366,7 @@ SysMLWrite(
 
 ### Add missing enum (verify against source):
 ```
-SysMLRead(path: "data/enums.sysml")
+SysMLQuery(select="DomainEnums::*")
 RipGrep(pattern: "enum Status", path: "src")
 ReadFiles(paths: "src/types/status.ts")
 # Found: Source has PENDING, ACTIVE, COMPLETED, CANCELLED

@@ -3,7 +3,7 @@ import { LLMist } from "llmist";
 import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { loadManifest, readDirs, setCoverageContext, setMinManifestCoverage, setValidationEnforcement, syncManifestOutputs } from "../gadgets/index.js";
+import { loadManifest, readDirs, setCoverageContext, getCoverageContext, setMinManifestCoverage, setValidationEnforcement, syncManifestOutputs } from "../gadgets/index.js";
 import {
   checkCycleCoverage,
   CYCLE_OUTPUT_DIRS,
@@ -40,6 +40,8 @@ import {
   runCycleTurn,
   runRetryTurn,
   runCycle0Turn,
+  loadCycleReadFiles,
+  saveCycleReadFiles,
 } from "../lib/ingest/index.js";
 
 export default class Ingest extends Command {
@@ -146,11 +148,10 @@ export default class Ingest extends Command {
         out.info("Generating initial SysML model structure...");
         await generateInitialModel(state.metadata, out, flags.verbose);
 
-        // Validate initial files before continuing
+        // Validate initial files - warn but continue (LLM cycles will fix errors)
         const validationPassed = await validateInitialModel(out, flags.verbose);
         if (!validationPassed) {
-          out.error("Initial SysML files have validation errors. Fix these before continuing.");
-          return;
+          out.warn("Initial SysML files have validation errors. These will be fixed during ingestion cycles.");
         }
       }
 
@@ -232,17 +233,21 @@ export default class Ingest extends Command {
         }
 
         // Set coverage context and validation enforcement for the FileViewerNextFileSet gadget
+        // Load persisted readFiles so the gadget can use unified coverage
+        const gadgetReadFiles = await loadCycleReadFiles(cycle);
         setCoverageContext({
           cycle,
           basePath: ".",
           minCoveragePercent: flags["coverage-threshold"],
+          readFiles: gadgetReadFiles,
         });
         setValidationEnforcement(true);
 
         const cycleResult = await this.runCycle(client, state, flags, out);
 
-        // Post-cycle coverage validation and retry
-        const coverage = await checkCycleCoverage(cycle, ".");
+        // Post-cycle coverage validation and retry (unified metric)
+        const cycleReadFiles = await loadCycleReadFiles(cycle);
+        const coverage = await checkCycleCoverage(cycle, ".", cycleReadFiles);
         if (coverage.missingFiles.length > 0 && coverage.coveragePercent < flags["coverage-threshold"]) {
           if (flags.verbose) {
             out.warn(`Cycle ${cycle} incomplete: ${coverage.missingFiles.length} files not covered (${coverage.coveragePercent}%)`);
@@ -365,14 +370,21 @@ export default class Ingest extends Command {
       }
     }
 
-    // Initialize iteration state
+    // Initialize iteration state — load persisted readFiles for resume
+    const persistedReadFiles = await loadCycleReadFiles(cycle);
     const iterState: CycleIterationState = {
-      readFiles: new Set(),
+      readFiles: persistedReadFiles,
       currentBatch: seedFiles,
       turnCount: 0,
       maxTurns: 100,
       createdEntities: [],
     };
+
+    // Wire live readFiles into coverage context so the gadget sees updates mid-cycle
+    const currentContext = getCoverageContext();
+    if (currentContext) {
+      currentContext.readFiles = iterState.readFiles;
+    }
 
     // Read stable content once (for caching)
     const existingModel = await readExistingModel(cycle, isResuming);
@@ -454,8 +466,8 @@ export default class Ingest extends Command {
         batchSize,
       });
 
-      // Compute documentation coverage
-      const docCoverage = await checkCycleCoverage(cycle, ".");
+      // Compute unified coverage (read ∩ documented)
+      const docCoverage = await checkCycleCoverage(cycle, ".", iterState.readFiles);
 
       // Run single turn
       const turnResult = await runCycleTurn(
@@ -483,10 +495,11 @@ export default class Ingest extends Command {
 
       totalTurns += turnResult.turns;
 
-      // Track files read
+      // Track files read and persist for resume
       for (const file of iterState.currentBatch) {
         iterState.readFiles.add(file);
       }
+      await saveCycleReadFiles(cycle, iterState.readFiles);
 
       // Update summary for next turn
       if (turnResult.summary.length > 0) {
@@ -593,8 +606,10 @@ export default class Ingest extends Command {
       filesWritten: 0,
     };
 
+    // Load persisted readFiles so retry phase has full history
+    const persistedRetryReadFiles = await loadCycleReadFiles(cycle);
     const iterState = {
-      readFiles: new Set<string>(),
+      readFiles: persistedRetryReadFiles,
       currentBatch: initialCoverage.missingFiles.slice(0, batchSize),
       turnCount: 0,
       maxTurns: flags["max-iterations"],
@@ -670,13 +685,14 @@ export default class Ingest extends Command {
         out.warn(`${errorType} validation errors (exit code ${validationExitCode})`);
       }
 
-      // Track read files
+      // Track read files and persist for resume
       for (const file of iterState.currentBatch) {
         iterState.readFiles.add(file);
       }
+      await saveCycleReadFiles(cycle, iterState.readFiles);
 
       if (turnResult.nextFiles.length === 0) {
-        const coverage = await checkCycleCoverage(cycle, ".");
+        const coverage = await checkCycleCoverage(cycle, ".", iterState.readFiles);
 
         if (flags.verbose) {
           console.log(`\x1b[2m   After turn ${iterState.turnCount}: ${coverage.coveragePercent}% coverage, ${coverage.missingFiles.length} files remaining\x1b[0m`);
@@ -696,7 +712,7 @@ export default class Ingest extends Command {
 
     // Final status
     if (flags.verbose) {
-      const finalCoverage = await checkCycleCoverage(cycle, ".");
+      const finalCoverage = await checkCycleCoverage(cycle, ".", iterState.readFiles);
       if (finalCoverage.missingFiles.length > 0) {
         out.warn(`Retry phase complete: ${finalCoverage.coveragePercent}% coverage (${finalCoverage.missingFiles.length} files still missing)`);
       } else {

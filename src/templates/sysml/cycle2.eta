@@ -127,7 +127,7 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
 
    **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
    If modifying an existing index:
-   1. First use `SysMLRead("structure/_index.sysml")` to see current content
+   1. First use `SysMLQuery(select="SystemArchitecture::*")` to see current imports
    2. Then use SysMLWrite with `element` + `at` to upsert imports
    3. Do NOT assume the file matches these examples - it may already have other imports
 

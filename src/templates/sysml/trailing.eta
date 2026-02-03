@@ -2,10 +2,9 @@
 ---
 ## Turn <%= it.iteration %>/<%= it.maxIterations %> Progress
 
-- Files analyzed: **<%= it.readCount %>**
-- Expected files: ~**<%= it.expectedCount %>**
+- Files read: **<%= it.readCount %>** / ~**<%= it.expectedCount %>**
 <% const coveragePercent = it.docCoveragePercent ?? (it.expectedCount > 0 ? Math.round((it.readCount / it.expectedCount) * 100) : 100); %>
-- Documentation Coverage: **<%= coveragePercent %>%**
+- Coverage: **<%= coveragePercent %>%** (files both read and documented)
 
 <% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
 <% const hasValidationWarnings = it.validationExitCode === 0 && it.validationOutput && it.validationOutput.includes('warning'); %>
@@ -22,7 +21,7 @@
 - Analyze new source files
 
 **Do:**
-1. Use `SysMLRead` to examine each file mentioned in the errors
+1. Use `SysMLQuery` to inspect the elements mentioned in the errors (e.g., `SysMLQuery(select="Scope::Element")`)
 2. Use `SysMLWrite` to fix the specific issues
 3. Validation re-runs automatically after each write — check that errors decrease
 

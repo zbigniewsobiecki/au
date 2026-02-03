@@ -197,7 +197,7 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
 
    **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
    If modifying an existing index:
-   1. First use `SysMLRead("behavior/_index.sysml")` to see current content
+   1. First use `SysMLQuery(select="SystemBehavior::*")` to see current imports
    2. Then use SysMLWrite with `element` + `at` to upsert imports
    3. Do NOT assume the file matches these examples - it may already have other imports
 
@@ -402,7 +402,7 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
 
 ### ID Sequencing Convention
 
-**CRITICAL**: Before assigning any ID, use `SysMLRead` to check existing files and find the highest ID in use.
+**CRITICAL**: Before assigning any ID, use `SysMLQuery` to check existing elements and find the highest ID in use.
 
 | Category | Format | Example |
 |----------|--------|---------|
