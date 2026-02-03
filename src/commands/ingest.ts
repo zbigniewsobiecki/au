@@ -3,7 +3,7 @@ import { LLMist } from "llmist";
 import { writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { loadManifest, readDirs, setCoverageContext, setMinManifestCoverage, syncManifestOutputs } from "../gadgets/index.js";
+import { loadManifest, readDirs, setCoverageContext, setMinManifestCoverage, setValidationEnforcement, syncManifestOutputs } from "../gadgets/index.js";
 import {
   checkCycleCoverage,
   CYCLE_OUTPUT_DIRS,
@@ -231,12 +231,13 @@ export default class Ingest extends Command {
           continue;
         }
 
-        // Set coverage context for the FileViewerNextFileSet gadget
+        // Set coverage context and validation enforcement for the FileViewerNextFileSet gadget
         setCoverageContext({
           cycle,
           basePath: ".",
           minCoveragePercent: flags["coverage-threshold"],
         });
+        setValidationEnforcement(true);
 
         const cycleResult = await this.runCycle(client, state, flags, out);
 
@@ -258,8 +259,20 @@ export default class Ingest extends Command {
           cycleResult.filesWritten += retryResult.filesWritten;
         }
 
-        // Clear coverage context after cycle completes
+        // Post-cycle validation safety net: warn if validation errors remain
+        try {
+          const finalValidation = await validateModelFull(".sysml");
+          if (finalValidation.exitCode !== 0) {
+            const errorType = finalValidation.exitCode === 1 ? "Syntax" : "Semantic";
+            out.warn(`Cycle ${cycle} has ${errorType.toLowerCase()} validation errors. Run 'au validate --fix' to resolve.`);
+          }
+        } catch {
+          // sysml2 not available
+        }
+
+        // Clear coverage context and validation enforcement after cycle completes
         setCoverageContext(null);
+        setValidationEnforcement(false);
 
         // Sync manifest with actual outputs from this cycle
         const syncResult = await syncManifestOutputs(cycle, ".");

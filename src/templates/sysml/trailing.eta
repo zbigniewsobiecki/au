@@ -10,6 +10,26 @@
 <% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
 <% const hasValidationWarnings = it.validationExitCode === 0 && it.validationOutput && it.validationOutput.includes('warning'); %>
 
+<% if (hasValidationErrors) { %>
+
+## 🛑 STOP — Fix Validation Errors Before Continuing
+
+**Ingestion is paused.** You must resolve all validation errors shown below before analyzing new files or writing new SysML definitions.
+
+**Do not:**
+- Request new file batches via `FileViewerNextFileSet`
+- Write new SysML definitions for uncovered source files
+- Analyze new source files
+
+**Do:**
+1. Use `SysMLRead` to examine each file mentioned in the errors
+2. Use `SysMLWrite` to fix the specific issues
+3. Validation re-runs automatically after each write — check that errors decrease
+
+Once all errors are resolved, the next status update will show normal ingestion instructions and you can resume coverage work.
+
+<% } %>
+
 <% if (it.validationOutput && it.validationOutput.trim().length > 0) { %>
 <% if (it.validationExitCode === 0) { %>
 ## ⚠️ Model Validation Warnings
@@ -63,10 +83,5 @@ Coverage is good. You may finish if you've:
 <% } %>
 
 <%~ include("./partials/maximize-extraction", it) %>
-
-<% } else { %>
-<% /* When there ARE errors, don't show exploration instructions */ %>
-
-**After fixing all validation errors**, you can continue with file exploration.
 
 <% } %>

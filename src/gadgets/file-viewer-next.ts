@@ -5,6 +5,7 @@ import {
   formatCoverageResult,
   type CoverageContext,
 } from "../lib/sysml/index.js";
+import { validateModelFull } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 
 /**
@@ -26,6 +27,19 @@ export function setCoverageContext(context: CoverageContext | null): void {
  */
 export function getCoverageContext(): CoverageContext | null {
   return coverageContext;
+}
+
+/**
+ * Whether validation enforcement is enabled.
+ * When true, requesting new files is blocked while validation errors exist.
+ */
+let validationEnforcementEnabled = false;
+
+/**
+ * Enable or disable validation enforcement for new file requests.
+ */
+export function setValidationEnforcement(enabled: boolean): void {
+  validationEnforcementEnabled = enabled;
 }
 
 export const fileViewerNextFileSet = createGadget({
@@ -75,6 +89,22 @@ The missing files MUST be documented before you can finish.`;
       }
 
       return "DONE: No more files requested.";
+    }
+
+    // Block new file requests while validation errors exist
+    if (validationEnforcementEnabled) {
+      try {
+        const validation = await validateModelFull(".sysml");
+        if (validation.exitCode !== 0) {
+          return `ERROR: Cannot request new files while validation errors exist.
+
+Fix all validation errors first, then request new file batches.
+Use SysMLRead to examine files with errors and SysMLWrite to fix them.
+Validation re-runs automatically after each write.`;
+        }
+      } catch {
+        // sysml2 not available - allow the request
+      }
     }
 
     return `[${reason}] Selected ${pathList.length} files: ${pathList.join(", ")}`;

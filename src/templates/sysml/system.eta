@@ -402,6 +402,70 @@ allocation orderProcessingAlloc : FunctionToComponent
     allocate ProcessOrder to OrderModule;
 ```
 
+## End-to-End (E2E) Flow Modeling Philosophy
+
+Every user-facing feature should be modeled as a **3-step E2E flow**:
+
+| Step | Name | Purpose | SysML Construct |
+|------|------|---------|-----------------|
+| **Step 1** | **Action Flow** | Logic & sequencing | `action def` with `flow from`, `first..then` |
+| **Step 2** | **Item Flow** | Architecture & data paths | `interface def` / `connection def` with `flow from X to Y` |
+| **Step 3** | **Allocation** | Binding actions to modules | `allocate ActionDef.subAction to Module` |
+
+### Complete E2E Example: LoginFlow
+
+```sysml
+// ── E2E Step 1: Action Flow (behavior/operations.sysml) ──
+action def LoginE2E {
+    doc /*E2E login flow: validate → authenticate → issue tokens */
+    in credentials; out tokens; out error [0..1];
+
+    action validate  { in creds; out validCreds; }
+    action authenticate { in validCreds; out user; out authError [0..1]; }
+    action issueTokens { in user; out tokens; }
+
+    flow from credentials to validate.creds;
+    flow from validate.validCreds to authenticate.validCreds;
+    flow from authenticate.user to issueTokens.user;
+    flow from issueTokens.tokens to tokens;
+    flow from authenticate.authError to error;
+
+    first validate then authenticate;
+    first authenticate then issueTokens;
+}
+
+// ── E2E Step 2: Item Flow (structure/interfaces.sysml) ──
+interface def LoginInterface {
+    doc /*Data paths for login feature */
+    end client : ~AuthPort;
+    end server : AuthPort;
+    flow from client.credentials to server.credentials;
+    flow from server.tokens to client.tokens;
+}
+
+connection def LoginConnection {
+    end gateway;
+    end authModule;
+    // Item flow: typed data crossing the connection
+    flow loginData : Credentials from gateway to authModule;
+}
+
+// ── E2E Step 3: Allocation (analysis/allocations.sysml) ──
+// Granular: bind each sub-action to a specific module
+allocate LoginE2E.validate to ApiGateway;
+allocate LoginE2E.authenticate to AuthModule;
+allocate LoginE2E.issueTokens to AuthModule;
+```
+
+### When to Use Each Combination
+
+| Scenario | Steps | Example |
+|----------|-------|---------|
+| Multi-step user feature | **1 + 2 + 3** (full E2E) | Login, Checkout, Registration |
+| Simple CRUD operation | **1 + 3** (action + allocation) | CreateUser, DeleteItem |
+| Infrastructure wiring | **2 only** (item flow) | Database connection, Cache link |
+| Cross-cutting concern | **1 + 3** (action + allocation) | Auth middleware, Rate limiting |
+
 ## Constraint Expressions (Advanced)
 
 Constraints with actual expressions for analysis:

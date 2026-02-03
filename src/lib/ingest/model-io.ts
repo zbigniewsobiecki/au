@@ -2,7 +2,7 @@
  * Model I/O utilities for reading and writing SysML models.
  */
 
-import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
+import { access, mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import fg from "fast-glob";
 
@@ -10,6 +10,29 @@ import { SYSML_DIR, CYCLE_SYSML_PATTERNS } from "./constants.js";
 import { generateInitialFiles, regenerateModelIndex, CYCLE_OUTPUT_DIRS, type ProjectMetadata } from "../sysml/index.js";
 import { runSysml2Multi, formatFile } from "../sysml/sysml2-cli.js";
 import { Output } from "../output.js";
+
+/**
+ * Read the full SysML model without cycle filtering.
+ * Returns concatenated content with `=== path ===` delimiters,
+ * or empty string if no .sysml files exist.
+ */
+export async function readFullModel(): Promise<string> {
+  const files = await fg("**/*.sysml", {
+    cwd: SYSML_DIR,
+    onlyFiles: true,
+  });
+
+  if (files.length === 0) return "";
+
+  const contents: string[] = [];
+  for (const file of files.sort()) {
+    try {
+      const content = await readFile(join(SYSML_DIR, file), "utf-8");
+      contents.push(`=== ${file} ===\n${content}`);
+    } catch { /* skip */ }
+  }
+  return contents.join("\n\n");
+}
 
 /**
  * Read existing SysML files from the model, filtered by cycle.
@@ -73,10 +96,21 @@ export async function generateInitialModel(
   await mkdir(join(SYSML_DIR, "verification"), { recursive: true });
   await mkdir(join(SYSML_DIR, "analysis"), { recursive: true });
 
-  // Write files
+  // Write files (skip existing to preserve completed cycle output on resume)
   const writtenPaths: string[] = [];
+  let skippedCount = 0;
   for (const [path, content] of Object.entries(files)) {
     const fullPath = join(SYSML_DIR, path);
+    try {
+      await access(fullPath);
+      skippedCount++;
+      if (verbose) {
+        console.log(`  Skipped (exists): ${fullPath}`);
+      }
+      continue;
+    } catch {
+      // File doesn't exist - create it
+    }
     await writeFile(fullPath, content, "utf-8");
     writtenPaths.push(fullPath);
     if (verbose) {
@@ -93,7 +127,9 @@ export async function generateInitialModel(
     }
   }
 
-  out.success(`Created ${Object.keys(files).length} initial SysML files`);
+  const totalFiles = Object.keys(files).length;
+  const skippedStr = skippedCount > 0 ? ` (${skippedCount} skipped, already exist)` : "";
+  out.success(`Created ${totalFiles - skippedCount} initial SysML files${skippedStr}`);
 }
 
 /**

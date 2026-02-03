@@ -31,13 +31,17 @@ These are undefined references or type mismatches:
 **Common errors and fixes:**
 - **E3006 "cannot be typed by"**: The type exists but can't be used as a typing relationship. Use `:>` (specializes) instead of `:` for item definitions, or ensure you're referencing the correct type.
 - **E3001 "undefined type"**: Create the missing type definition, or add an import if it exists elsewhere.
-- **E3002 "feature not found"**: The referenced feature doesn't exist in the parent type - check the parent definition.
+- **E3002 "feature not found"**: The referenced feature doesn't exist in the parent type.
+  **Most common cause**: Using `part :>> name` as a direct child of a package. Packages don't inherit features — use `part name : Type { }` instead of `part :>> name`. Check the parent definition and fix the reference.
 - **E3003 "undefined namespace"**: The imported package doesn't exist. Create the package file FIRST, then import it.
+
+**Important: Delete operations and semantic errors:**
+Delete operations may fail when pre-existing semantic errors (E3xxx) exist in the file. If a delete keeps failing with the same error, use SysMLWrite upsert to replace the broken element with a corrected version instead of trying to delete it.
 
 **Workflow:**
 1. `SysMLRead` the file mentioned in the error
 2. If needed, `ReadFiles` to check how the type is used in source code
-3. `SysMLWrite` to fix the specific issue
+3. `SysMLWrite` to fix the specific issue (prefer upsert over delete for broken elements)
 4. Repeat until validation passes
 
 <% } %>
@@ -61,7 +65,7 @@ These are undefined references or type mismatches:
 |-----------|--------|---------|
 | File doesn't exist | `SysMLCreate` | `SysMLCreate(path="data/enums.sysml", package="DomainEnums")` |
 | File exists, add/update content | `SysMLWrite` | `SysMLWrite(path="data/enums.sysml", element="...", at="DomainEnums")` |
-| File exists, fix ordering (E3002) | `SysMLWrite` | Use `replaceScope=true` to reorder declarations |
+| File exists, fix ordering (E3002) | `SysMLWrite` | Use targeted delete + upsert to fix specific elements. Only use `replaceScope=true` on SMALL scopes (< 20 definitions) |
 | File corrupted/unrecoverable | `SysMLCreate` | Use `force=true` only for syntax errors that can't be fixed |
 
 **CRITICAL: NEVER use SysMLCreate on existing files without `force=true`!**

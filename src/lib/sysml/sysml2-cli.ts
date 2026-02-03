@@ -579,7 +579,7 @@ export async function setElement(
 export async function deleteElements(
   targetFile: string,
   patterns: string[],
-  options?: { dryRun?: boolean }
+  options?: { dryRun?: boolean; allowSemanticErrors?: boolean }
 ): Promise<DeleteResult> {
   const args = ["--color=never", ...getLibraryPathArgs()];
 
@@ -590,6 +590,10 @@ export async function deleteElements(
 
   if (options?.dryRun) {
     args.push("--dry-run");
+  }
+
+  if (options?.allowSemanticErrors) {
+    args.push("--allow-semantic-errors");
   }
 
   args.push("-f", "json");
@@ -610,7 +614,8 @@ export async function deleteElements(
 
     proc.on("close", (code) => {
       const diagnostics = parseDiagnosticOutput(stderr);
-      const success = code === 0;
+      // Exit 0 = clean success, Exit 2 with --allow-semantic-errors = success with warnings
+      const success = code === 0 || (code === 2 && !!options?.allowSemanticErrors);
 
       // Try to parse JSON output for details
       let deleted = 0;

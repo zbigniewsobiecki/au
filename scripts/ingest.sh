@@ -118,7 +118,9 @@ fi
 if [[ "$COMMAND" == "ingest" ]]; then
     CLI_ARGS+=(
         "-v"
-        "-m" "openrouter:google/gemini-3-flash-preview"
+        #"-m" "openrouter:deepseek/deepseek-v3.2"
+        "-m" "gemini:gemini-3-flash-preview"
+        #"-m" "openrouter:google/gemini-3-flash-preview"
     )
 fi
 

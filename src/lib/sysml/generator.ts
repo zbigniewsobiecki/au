@@ -730,6 +730,12 @@ export function generateStructureTemplate(): string {
         end client : ~ServicePort;
     }
 
+    interface def ItemFlowInterface {
+        doc /*Template: interface with explicit item flows (E2E Step 2) */
+        end provider : ServicePort;
+        end consumer : ~ServicePort;
+    }
+
     // Connection patterns
     connection def ModuleConnection {
         doc /*Standard connection between modules */
@@ -895,6 +901,25 @@ export function generateBehaviorTemplate(): string {
         // Control flow sequencing
         first validate then process;
         first process then respond;
+    }
+
+    // E2E feature flow template (Step 1 of 3-step pattern)
+    action def E2EFlowTemplate {
+        doc /*Template for E2E feature flows (Step 1 of 3-step pattern) */
+
+        in request; out response; out error [0..1];
+
+        action validate { in data; out validated; }
+        action execute { in validated; out result; }
+        action respond { in result; out response; }
+
+        flow from request to validate.data;
+        flow from validate.validated to execute.validated;
+        flow from execute.result to respond.result;
+        flow from respond.response to response;
+
+        first validate then execute;
+        first execute then respond;
     }
 
     // Event handler template
@@ -1087,12 +1112,17 @@ export function generateAnalysisTemplate(): string {
         uptime >= target
     }
 
-    // Allocation definitions for traceability
+    // Allocation definitions for traceability (E2E Step 3: Binding)
     package BehaviorAllocations {
-        doc /*Maps behaviors to implementing modules */
+        doc /*E2E Step 3: Allocation (Binding).
+             Maps action defs to implementing modules.
+             Use granular sub-action allocation: allocate ActionDef.subAction to Module. */
 
         allocation def OperationToModule :> BehaviorToModule {
-            doc /*Maps operations to their implementing modules */
+            doc /*Maps operations to their implementing modules.
+                 For E2E flows, allocate each sub-action separately:
+                 allocate LoginE2E.validate to ApiGateway;
+                 allocate LoginE2E.authenticate to AuthModule; */
         }
     }
 

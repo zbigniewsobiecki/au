@@ -330,9 +330,17 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
           onNextFiles(nextFiles);
         }
 
-        // If LLM signals completion (empty paths), break out of event loop
+        // If LLM signals completion (empty paths), check gadget result before breaking
         if (nextFiles.length === 0) {
-          break;
+          const gadgetResult = result.result ?? "";
+          if (gadgetResult.startsWith("ERROR:")) {
+            // Gadget rejected completion - let LLM see the error and continue
+            if (options.verbose) {
+              console.log(`\x1b[33m   ⚠ Completion rejected: coverage too low\x1b[0m`);
+            }
+          } else {
+            break;
+          }
         }
       } else if (options.verbose) {
         out.gadgetResult(result.gadgetName);
@@ -378,7 +386,9 @@ export async function runCycleTurn(
     docMissingFiles: string[];
   }
 ): Promise<{ nextFiles: string[]; summary: string[]; turns: number; validationResult: ValidationResult | null }> {
-  const { expectedCount, cycle, docCoveragePercent, docMissingFiles } = trailingContext;
+  const { expectedCount, cycle, docMissingFiles } = trailingContext;
+  let { docCoveragePercent } = trailingContext;
+  let latestDocMissingFiles = docMissingFiles;
 
   // Run full model validation before turn
   let validationResult: ValidationResult | null = null;
@@ -408,13 +418,15 @@ export async function runCycleTurn(
     terminateOnTextOnly: true,
     trackEntities: iterState,
     trailingMessage: () => {
+      // Use live coverage data (updated by onFileWrite callback)
+      const liveReadCount = iterState.readFiles.size + (iterState.currentBatch?.length ?? 0);
       return render("sysml/trailing", {
         iteration: iterState.turnCount,
         maxIterations: options.maxIterations,
-        readCount: iterState.readFiles.size,
+        readCount: liveReadCount,
         expectedCount,
         docCoveragePercent,
-        docMissingFiles: docMissingFiles.slice(0, 20),
+        docMissingFiles: latestDocMissingFiles.slice(0, 20),
         validationExitCode: validationResult?.exitCode ?? 0,
         validationOutput: validationResult?.output ?? "",
         sourceFileErrors,
@@ -438,20 +450,29 @@ export async function runCycleTurn(
         // Ignore errors
       }
 
-      // Show real-time coverage
-      if (options.verbose && expectedCount > 0) {
-        const coverage = await checkCycleCoverage(cycle, ".");
-        if (coverage.expectedFiles.length > 0) {
-          const coveragePercent = Math.round(coverage.coveragePercent);
-          const covered = coverage.expectedFiles.length - coverage.missingFiles.length;
-          console.log(`\x1b[2m      📄 Coverage: ${covered}/${coverage.expectedFiles.length} (${coveragePercent}%)\x1b[0m`);
+      // Refresh coverage metrics for trailing message and CLI display
+      if (expectedCount > 0) {
+        try {
+          const coverage = await checkCycleCoverage(cycle, ".");
+          if (coverage.expectedFiles.length > 0) {
+            // Update live coverage for trailing message
+            docCoveragePercent = Math.round(coverage.coveragePercent);
+            latestDocMissingFiles = coverage.missingFiles;
 
-          if (coverage.missingFiles.length > 0) {
-            const sample = coverage.missingFiles.slice(0, 3).map(f => `"${f}"`).join(', ');
-            const moreCount = coverage.missingFiles.length - 3;
-            const moreStr = moreCount > 0 ? ` (+${moreCount} more)` : '';
-            console.log(`\x1b[2m      Still need: ${sample}${moreStr}\x1b[0m`);
+            if (options.verbose) {
+              const covered = coverage.expectedFiles.length - coverage.missingFiles.length;
+              console.log(`\x1b[2m      📄 Coverage: ${covered}/${coverage.expectedFiles.length} (${docCoveragePercent}%)\x1b[0m`);
+
+              if (coverage.missingFiles.length > 0) {
+                const sample = coverage.missingFiles.slice(0, 3).map(f => `"${f}"`).join(', ');
+                const moreCount = coverage.missingFiles.length - 3;
+                const moreStr = moreCount > 0 ? ` (+${moreCount} more)` : '';
+                console.log(`\x1b[2m      Still need: ${sample}${moreStr}\x1b[0m`);
+              }
+            }
           }
+        } catch {
+          // Coverage check failed - continue with existing values
         }
       }
     },

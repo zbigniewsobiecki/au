@@ -181,6 +181,16 @@ The trailing message shows real-time coverage progress. You MUST:
 
 The trailing message will explicitly tell you when you may finish.
 
+### Connection Wiring Issues
+
+When fixing connection-related issues (reused ports, self-loops, missing ports, duplicates):
+
+1. **Read the connection and both module `part def`s** — use SysMLRead to inspect the connection and the definitions on each end.
+2. **Verify ports exist on both ends** — if a connection references a port not declared on a module's `part def`, add the missing port definition first before fixing the connection.
+3. **Never reuse an unrelated port** — if a port is already serving another logical data flow, create a new correctly-typed port instead of reusing it. Each distinct data flow gets its own port.
+4. **Remove duplicate or self-referencing connections** — use SysMLWrite with `delete` to remove connections that wire the same pair of ports twice, or that connect a module to itself.
+5. **Skip connections that don't reflect actual code dependencies** — use ReadFiles/RipGrep to verify the dependency exists in source code before adding new ports or connections.
+
 ### Expected Outputs (missing files)
 Files declared in manifest expectedOutputs don't exist.
 - Create the missing file with appropriate SysML content

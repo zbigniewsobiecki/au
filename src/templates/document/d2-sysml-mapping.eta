@@ -1,0 +1,183 @@
+## SysML-to-D2 Diagram Mapping Guide
+
+When the SysML model is available, use these mappings to create accurate D2 diagrams.
+Pre-generated diagrams may be provided in the initial prompt — use them directly or
+customize them for the specific document context.
+
+### Using Pre-Generated Diagrams
+
+If pre-generated diagrams are provided:
+1. **Embed directly** when the diagram matches the document's topic
+2. **Customize** by adding/removing elements, changing labels, or adjusting layout
+3. **Combine** multiple pre-generated diagrams into one when the document covers overlapping topics
+4. **Extend** with additional context from your SysML reading
+
+### SysML Construct → D2 Pattern Mapping
+
+#### `item def` with attributes → Entity/ERD Diagram (`sql_table`)
+
+**SysML pattern to look for:**
+```sysml
+item def Customer :> BaseEntity {
+    attribute firstName : String;
+    attribute email : String;
+    attribute status : CustomerStatus;
+}
+
+connection def CustomerOrders {
+    end customer : Customer [1];
+    end orders : Order [0..*];
+}
+```
+
+**Produces D2:**
+```d2
+Customer: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  firstName: string
+  email: string
+  status: CustomerStatus
+}
+
+Order: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  customerId: uuid {constraint: foreign_key}
+  total: number
+}
+
+Customer <-> Order: "1 to many"
+```
+
+**When to use:** Documents about data models, database schema, domain entities.
+
+---
+
+#### `state def` with transitions → State Machine Diagram
+
+**SysML pattern to look for:**
+```sysml
+state def OrderLifecycle {
+    state Pending;
+    state Processing;
+    state Shipped;
+    state Delivered;
+    state Cancelled;
+
+    transition first Pending then Processing;
+    transition first Processing then Shipped;
+    transition first Shipped then Delivered;
+    transition first Pending then Cancelled;
+}
+```
+
+**Produces D2:**
+```d2
+direction: right
+
+Pending: Pending {style.fill: "#e8f5e9"}
+Processing: Processing {style.fill: "#fff3e0"}
+Shipped: Shipped {style.fill: "#e3f2fd"}
+Delivered: Delivered {style.fill: "#fce4ec"}
+Cancelled: Cancelled {style.fill: "#f3e5f5"}
+
+Pending -> Processing
+Processing -> Shipped
+Shipped -> Delivered
+Pending -> Cancelled
+```
+
+**When to use:** Documents about entity lifecycles, workflows, status tracking.
+
+---
+
+#### `action def` with `first...then` → Action Flow Diagram
+
+**SysML pattern to look for:**
+```sysml
+action def RegisterUser {
+    in request : CreateUserRequest;
+    out response : UserResponse;
+
+    action validateInput { ... }
+    action checkExistingEmail { ... }
+    action hashPassword { ... }
+    action createUser { ... }
+    action generateTokens { ... }
+
+    first validateInput then checkExistingEmail;
+    first checkExistingEmail then hashPassword;
+    first hashPassword then createUser;
+    first createUser then generateTokens;
+}
+```
+
+**Produces D2:**
+```d2
+direction: down
+
+request: {shape: parallelogram; "CreateUserRequest"}
+validateInput: "Validate Input"
+checkExistingEmail: "Check Existing Email"
+hashPassword: "Hash Password"
+createUser: "Create User"
+generateTokens: "Generate Tokens"
+response: {shape: parallelogram; "UserResponse"}
+
+request -> validateInput
+validateInput -> checkExistingEmail
+checkExistingEmail -> hashPassword
+hashPassword -> createUser
+createUser -> generateTokens
+generateTokens -> response
+```
+
+**When to use:** Documents about processes, API operations, business workflows.
+
+---
+
+#### `part def` hierarchy with ports → Architecture Diagram
+
+**SysML pattern to look for:**
+```sysml
+part def AuthModule :> ServiceModule {
+    :>> path = "src/auth";
+    :>> responsibility = "Authentication";
+    :>> layer = "service";
+    port authApi : AuthPort;
+}
+
+part authModule : AuthModule;
+connection apiToAuth connect apiGateway.authClient to authModule.authApi;
+```
+
+**Produces D2:**
+```d2
+direction: down
+
+Presentation: {
+  ApiGateway: "Request routing"
+}
+
+Service: {
+  AuthModule: "Authentication"
+  UserModule: "User management"
+}
+
+Presentation.ApiGateway -> Service.AuthModule: "auth"
+Presentation.ApiGateway -> Service.UserModule: "users"
+```
+
+**When to use:** Documents about system architecture, module overview, component relationships.
+
+### Diagram Placement Guidelines
+
+| Document Type | Recommended Diagrams |
+|--------------|---------------------|
+| overview | Architecture diagram showing major components |
+| process | Action flow diagram for the documented process |
+| component | Architecture diagram (zoomed to this component) + state diagrams if relevant |
+| integration | Architecture diagram showing the integration point |
+| pattern | Flow diagram showing how the pattern is applied |
+| reference | Entity diagram for data model references |

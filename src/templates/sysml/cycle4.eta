@@ -496,6 +496,41 @@ action def {Operation} {
 }
 ```
 
+**Compact E2E Action Flow Pattern (E2E Step 1)**
+
+For key user-facing features, define a **compact E2E action flow** that captures the entire feature logic in one `action def`. This is Step 1 of the 3-step E2E flow pattern.
+
+```sysml
+// E2E Step 1: Compact action flow for login feature
+action def LoginE2E {
+    doc /*E2E login flow: validate → authenticate → issue tokens */
+    in credentials; out tokens; out error [0..1];
+
+    action validate  { in creds; out validCreds; }
+    action authenticate { in validCreds; out user; out authError [0..1]; }
+    action issueTokens { in user; out tokens; }
+
+    // Data flows — full chain from input to output
+    flow from credentials to validate.creds;
+    flow from validate.validCreds to authenticate.validCreds;
+    flow from authenticate.user to issueTokens.user;
+    flow from issueTokens.tokens to tokens;
+
+    // Error flows
+    flow from authenticate.authError to error;
+
+    // Control flow — explicit sequencing
+    first validate then authenticate;
+    first authenticate then issueTokens;
+}
+```
+
+**Key rules for E2E action flows:**
+- Name with `E2E` suffix to distinguish from simple operations (e.g., `LoginE2E`, `CheckoutE2E`)
+- Include all sub-actions inline with typed `in`/`out` features
+- Wire all data flows (`flow from`) and control flows (`first..then`) in one block
+- Cross-reference: Step 2 in `structure/interfaces.sysml` (Cycle 2), Step 3 in `analysis/allocations.sysml` (Cycle 6)
+
 ### What to Look For
 
 - **Happy path**: Normal operation flow with data transformations
@@ -534,6 +569,7 @@ This cycle focuses ONLY on behavioral modeling. Verification and analysis will b
 - [ ] **Query parameters** and filter types documented for list endpoints
 - [ ] **Analytics/aggregation methods** captured (getStats, getMonthly*, getSummary)
 - [ ] **Filter interfaces** documented for entities with complex querying
+- [ ] Key user-facing features have **compact E2E action flows** (LoginE2E pattern)
 - [ ] Side effects marked clearly
 - [ ] Output is limited to `behavior/` directory only
 

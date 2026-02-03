@@ -339,28 +339,37 @@
    }
    ```
 
-   **analysis/allocations.sysml** - Map behaviors to implementing modules:
+   **analysis/allocations.sysml** - E2E Step 3: Bind behaviors to implementing modules:
    ```sysml
    package BehaviorAllocations {
        import SysMLPrimitives::*;
        import SystemArchitecture::*;
        import SystemBehavior::*;
 
-       doc /*Maps operations to implementing modules for traceability */
+       doc /*E2E Step 3: Allocation (Binding).
+            Maps action defs (Step 1) to implementing modules.
+            Step 1 sources: behavior/operations.sysml (action defs with flow from / first..then).
+            Step 2 sources: structure/interfaces.sysml (interface/connection defs with item flows). */
 
        // Allocation type for operation-to-module mapping
        allocation def OperationAllocation :> BehaviorToModule {
-           doc /*Maps an operation to its implementing module */
+           doc /*Maps operations to their implementing modules */
        }
 
-       // Allocate specific operations to modules
+       // ── Coarse-grained allocations (whole action → module) ──
        allocate RegisterUser to UserModule;
        allocate Login to AuthModule;
        allocate ProcessOrder to OrderModule;
        allocate ProcessPayment to PaymentModule;
 
+       // ── Granular E2E allocations (sub-action → module) ──
+       // Bind each step of LoginE2E (Step 1) to the module that implements it
+       allocate LoginE2E.validate to ApiGateway;        // input validation at gateway
+       allocate LoginE2E.authenticate to AuthModule;    // credential check in auth module
+       allocate LoginE2E.issueTokens to AuthModule;     // token generation in auth module
+
        // Critical path allocations with metadata
-       @CriticalPath
+       @CriticalPath;
        allocate Checkout to CheckoutModule;
    }
    ```
@@ -469,6 +478,15 @@ allocation {name} : OperationAllocation
     allocate {Operation} to {Module};
 ```
 
+**Granular E2E Allocation Pattern** - Bind sub-actions to modules (E2E Step 3):
+```sysml
+// Step 3: Bind each sub-action from an E2E action def to the module that implements it
+// Source: action def LoginE2E { action validate; action authenticate; action issueTokens; }
+allocate LoginE2E.validate to ApiGateway;
+allocate LoginE2E.authenticate to AuthModule;
+allocate LoginE2E.issueTokens to AuthModule;
+```
+
 **Constraint Pattern** - Define with expressions:
 ```sysml
 constraint def {ConstraintName} {
@@ -505,6 +523,7 @@ action def SearchProducts { /* ... */ }
 - [ ] Security controls analyzed
 - [ ] Observability setup documented
 - [ ] **Allocations** mapping operations to modules
+- [ ] **E2E allocations** bind sub-actions to modules (`allocate ActionDef.subAction to Module`)
 - [ ] **Constraints** with actual expressions (not just doc placeholders)
 - [ ] **Metadata annotations** for critical paths
 - [ ] **Access control mapping** in `analysis/access-control.sysml`

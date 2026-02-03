@@ -449,21 +449,36 @@ For more details on authentication, see the [Authentication Guide](../guides/aut
 
 ## D2 Diagrams
 
-For documents with `includeDiagram` set, include a D2 diagram:
+For documents with `includeDiagram` set, you MUST include a D2 diagram in a fenced code block with `d2` language tag.
 
-```d2
-# Architecture diagram example
-Frontend -> Backend: API calls
-Backend -> Database: queries
-Backend -> ExternalService: webhooks
-```
+### Diagram Types and When to Use Them
 
-Diagram types:
-- **architecture**: System overview
-- **sequence**: Request flows
-- **entity**: Data models
-- **state**: State machines
-- **flow**: Data pipelines
+| Type | Use When | D2 Pattern |
+|------|----------|------------|
+| **architecture** | System overview, module relationships | Nested containers with connections |
+| **entity** | Data models, database schema | `sql_table` shapes with relationship arrows |
+| **state** | Entity lifecycles, workflows | Colored nodes with transition arrows |
+| **flow** | Processes, API operations, pipelines | Directed flow with parallelogram I/O |
+| **sequence** | Request flows, user journeys | Vertical flow with labeled arrows |
+
+### Pre-Generated Diagrams
+
+Pre-generated D2 diagrams may be provided in the initial prompt under a "Pre-Generated Diagrams" section. These are extracted programmatically from the SysML model and are accurate. When available:
+
+1. **Use them directly** — embed the D2 code block as-is when the diagram matches
+2. **Customize** — adjust labels, add/remove nodes, or change layout for the document's context
+3. **Combine** — merge multiple pre-generated diagrams if the document spans topics
+4. **Extend** — add nodes or connections based on your SysML reading
+
+### Creating D2 Diagrams from SysML
+
+When no pre-generated diagram is available, create one from the SysML content you've read:
+
+<%= it.d2MappingGuide %>
+
+### D2 Syntax Reference
+
+<%= it.d2Examples %>
 
 ## Troubleshooting Documents
 

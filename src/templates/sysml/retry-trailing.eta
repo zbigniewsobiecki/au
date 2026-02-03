@@ -11,6 +11,25 @@
 
 <% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
 
+<% if (hasValidationErrors) { %>
+
+## 🛑 STOP — Fix Validation Errors Before Continuing
+
+**Retry is paused.** You must resolve all validation errors shown below before writing new SysML definitions.
+
+**Do not:**
+- Request completion via `FileViewerNextFileSet(paths="")`
+- Write new SysML definitions for uncovered source files
+
+**Do:**
+1. Use `SysMLRead` to examine each file mentioned in the errors
+2. Use `SysMLWrite` to fix the specific issues (write to `.sysml/<%= it.cycleOutputDir %>/`)
+3. Validation re-runs automatically after each write — check that errors decrease
+
+Once all errors are resolved, the next status update will show normal retry instructions and you can resume coverage work.
+
+<% } %>
+
 <% if (it.validationOutput && it.validationOutput.trim().length > 0) { %>
 <% if (it.validationExitCode === 0) { %>
 ## ⚠️ Model Validation Warnings
@@ -51,9 +70,5 @@ These files need `@SourceFile { :>> path = "..."; }` metadata:
 **IMPORTANT**: Keep iterating until ALL missing files have been covered.
 
 <%~ include("./partials/maximize-extraction", it) %>
-
-<% } else { %>
-
-**After fixing all validation errors**, continue with coverage improvements.
 
 <% } %>

@@ -23,6 +23,9 @@ import {
   type EditDebugMetadata,
 } from "../lib/edit-debug.js";
 
+/** Tracks repeated delete failures per file:pattern to break retry loops */
+const deleteFailureTracker = new Map<string, number>();
+
 /**
  * Clean up stale .tmp files for a given target file.
  *
@@ -232,6 +235,24 @@ Use either:
   - OR Redefinition: ':>> httpApi { ... }' (no type, no extra :>>)
 
 Do NOT combine both: ':>> httpApi : HTTPPort' or ':>> name :>> name'`;
+      }
+
+      // Guard: reject replaceScope on large elements to prevent token bombs
+      if (replaceScope && element) {
+        const elementBytes = Buffer.byteLength(element, "utf-8");
+        if (elementBytes > 10_000) {
+          return `path=${fullPath} status=error mode=upsert
+
+ELEMENT TOO LARGE FOR replaceScope (${elementBytes} bytes).
+
+replaceScope=true rewrites the entire scope and outputs all content as tokens.
+For large scopes, use targeted SysMLWrite operations instead:
+1. Use SysMLWrite with delete to remove broken elements
+2. Use SysMLWrite upsert to add/update specific elements
+3. Only use replaceScope=true on small scopes (< 10KB)
+
+Do NOT rewrite entire packages — fix individual elements.`;
+        }
       }
 
       // Check if file exists - CLI upsert requires existing file to parse
@@ -561,7 +582,10 @@ Added: ${result.added}, Replaced: ${result.replaced}${validationNote}${diffOutpu
         : {};
 
       try {
-        const result = await deleteElements(fullPath, [deletePattern!], { dryRun });
+        const result = await deleteElements(fullPath, [deletePattern!], {
+          dryRun,
+          allowSemanticErrors: true,  // Allow deletes despite E3xxx errors - matches set path behavior
+        });
 
         if (!result.success) {
           const errorDiags = result.diagnostics.filter((d) => d.severity === "error");
@@ -597,6 +621,11 @@ Added: ${result.added}, Replaced: ${result.replaced}${validationNote}${diffOutpu
 
         const dryRunNote = dryRun ? " (dry run)" : "";
         if (result.deleted === 0) {
+          // Circuit breaker: track repeated failures to prevent retry loops
+          const failKey = `${fullPath}:${deletePattern}`;
+          const failCount = (deleteFailureTracker.get(failKey) ?? 0) + 1;
+          deleteFailureTracker.set(failKey, failCount);
+
           // Debug logging for no-op delete
           if (debugEnabled) {
             writeEditDebug({
@@ -613,10 +642,24 @@ Added: ${result.added}, Replaced: ${result.replaced}${validationNote}${diffOutpu
             }).catch(() => {});
           }
 
+          if (failCount >= 3) {
+            deleteFailureTracker.delete(failKey);
+            return `path=${fullPath} status=error mode=delete
+
+REPEATED FAILURE (${failCount} attempts): Cannot delete '${deletePattern}'.
+
+**Do NOT retry this delete.** Instead:
+1. Use SysMLWrite to upsert a corrected version of the element
+2. Or use SysMLCreate(path="...", force=true) to recreate the file`;
+          }
+
           return `path=${fullPath} status=success mode=delete${dryRunNote} delta=+0 bytes
 Element not found: ${deletePattern}
 (Nothing was deleted)`;
         }
+
+        // Successful delete — clear any failure tracking
+        deleteFailureTracker.delete(`${fullPath}:${deletePattern}`);
 
         // Get new file size for delta calculation
         const newContent = await readFile(fullPath, "utf-8");
