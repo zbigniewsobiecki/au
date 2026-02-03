@@ -9,7 +9,7 @@ import { writeFile, mkdir, stat, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
 import { runSysml2 } from "../lib/sysml/sysml2-cli.js";
-import { generateColoredDiff } from "../lib/diff-utils.js";
+import { generatePlainDiff } from "../lib/diff-utils.js";
 import {
   isDebugEnabled,
   writeEditDebug,
@@ -215,7 +215,7 @@ Fix the syntax errors and try again.`;
     // Generate diff for force overwrite cases (shows what was replaced)
     let diffOutput = "";
     if (fileExists && originalContent !== finalContent) {
-      diffOutput = "\n\n" + generateColoredDiff(originalContent, finalContent, Infinity);
+      diffOutput = "\n\n" + generatePlainDiff(originalContent, finalContent, Infinity);
     }
 
     return `path=${fullPath} status=success delta=${delta}

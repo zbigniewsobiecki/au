@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { loadManifest, type Manifest, type ManifestProject } from "../gadgets/manifest-write.js";
 import { SysMLCoverageValidator } from "./sysml-model-validator.js";
 import { validateModelFull, parseMultiFileDiagnosticOutput } from "./sysml/sysml2-cli.js";
+import { validateSourceFilePaths as validateSourceFiles, type SourceFileError } from "./sysml/index.js";
 import fg from "fast-glob";
 
 const SYSML_DIR = ".sysml";
@@ -55,6 +56,8 @@ export interface CoverageStats {
   brokenReferences: number;
   /** Actual paths that are broken references */
   brokenPaths: string[];
+  /** Detailed errors for broken references (includes sysml file and line) */
+  brokenPathErrors: SourceFileError[];
   /** Per-cycle: expected vs covered from manifest sourceFiles */
   cycleCoverage: Record<string, CycleCoverageStats>;
 }
@@ -224,7 +227,10 @@ export class SysMLStats {
         // Gather coverage stats using validator
         const validator = new SysMLCoverageValidator();
         const coveredFiles = await validator.getCoveredFilesFromPath(basePath);
-        const brokenPaths = await validator.validateSourceFilePaths(basePath);
+        // Use the coverage-checker's validateSourceFilePaths for detailed errors
+        const sourceFileValidation = await validateSourceFiles(join(basePath, ".sysml"), basePath);
+        const brokenPathErrors = sourceFileValidation.errors;
+        const brokenPaths = brokenPathErrors.map(e => e.referencedPath);
         const validationResult = await validator.validate(basePath);
 
         // Build per-cycle coverage from validation mismatches
@@ -264,6 +270,7 @@ export class SysMLStats {
           referencedFiles: coveredFiles.size,
           brokenReferences: brokenPaths.length,
           brokenPaths,
+          brokenPathErrors,
           cycleCoverage,
         };
       } catch {

@@ -16,7 +16,7 @@ import {
   deleteElements,
 } from "../lib/sysml/sysml2-cli.js";
 import { GADGET_REASON_DESCRIPTION } from "../lib/constants.js";
-import { generateColoredDiff } from "../lib/diff-utils.js";
+import { generatePlainDiff } from "../lib/diff-utils.js";
 import {
   isDebugEnabled,
   writeEditDebug,
@@ -273,6 +273,7 @@ File does not exist. Create it first:
           dryRun,
           parseOnly: false,  // Always run full validation (syntax + semantic)
           replaceScope,
+          forceReplace: replaceScope,  // The gadget description already warns about data loss; suppress the CLI's redundant guard
           allowSemanticErrors: true,  // Allow writes despite E3xxx errors - agent builds model iteratively
         });
 
@@ -470,21 +471,26 @@ To allow semantic errors, use validateSemantics=false (default).`;
         // Check if content is unchanged - tell LLM clearly so it doesn't keep retrying
         if (originalContent === newContent) {
           return `path=${fullPath} status=unchanged mode=upsert delta=+0 bytes
-Content identical - no changes made. The fix may already be applied, or the error is elsewhere.
-Check if another file has the issue, or if the element name/scope is different than expected.`;
+Content identical - no changes made. All elements in your fragment already exist in this file.
+Do NOT re-send the same elements. Only send NEW or MODIFIED elements.
+If the error is elsewhere, use SysMLRead to inspect other files, SysMLQuery to find elements by name, or SysMLList to see all files.
+
+Current file contents:
+${newContent}`;
         }
 
         // Generate diff for CLI display (colors for human, plain +/- for LLM)
-        const diffOutput = "\n\n" + generateColoredDiff(originalContent, newContent, Infinity);
+        const diffOutput = "\n\n" + generatePlainDiff(originalContent, newContent, Infinity);
 
         // Warn if no changes were made but element was provided
         if (result.added === 0 && result.replaced === 0 && element && element.trim()) {
           return `path=${fullPath} status=warning mode=upsert delta=${delta}
 WARNING: No elements were added or replaced.
 The element may already exist, or the scope '${at}' was not found.
+Use SysMLRead to inspect this or other files, SysMLQuery to search for the element by name, or SysMLList to see all files.
 
-Fragment attempted:
-${element.slice(0, 300)}${element.length > 300 ? '...' : ''}`;
+Current file contents:
+${newContent}`;
         }
 
         const actionDesc = result.replaced > 0 ? "replaced" : "added";
@@ -633,8 +639,10 @@ Element not found: ${deletePattern}
           }).catch(() => {});
         }
 
+        const diffOutput = "\n\n" + generatePlainDiff(originalContent, newContent, Infinity);
+
         return `path=${fullPath} status=success mode=delete${dryRunNote} delta=${delta}
-Deleted: ${result.deleted} element(s) matching: ${deletePattern}`;
+Deleted: ${result.deleted} element(s) matching: ${deletePattern}${diffOutput}`;
       } catch (err) {
         // Debug logging for delete exception
         if (debugEnabled) {

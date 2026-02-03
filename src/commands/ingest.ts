@@ -165,29 +165,40 @@ export default class Ingest extends Command {
 
       // Run Cycle 0 (repository discovery) if needed
       if (runCycle0) {
-        const cycle0Result = await this.runCycle0(client, state, flags, out);
-        state.cycleHistory.push(cycle0Result);
-        state.totalInputTokens += cycle0Result.inputTokens;
-        state.totalOutputTokens += cycle0Result.outputTokens;
-        state.totalCachedTokens += cycle0Result.cachedTokens;
-        state.totalCost += cycle0Result.cost;
-
-        // Regenerate data/_index.sysml with discovered entity stubs
-        const manifest = await loadManifest();
-        if (manifest?.discoveredEntities || manifest?.discoveredDomains) {
-          const dataModel = generateDataModelTemplate(
-            manifest.discoveredEntities,
-            manifest.discoveredDomains
-          );
-          await writeFile(
-            join(SYSML_DIR, "data/_index.sysml"),
-            dataModel,
-            "utf-8"
-          );
+        const existingManifest = await loadManifest();
+        if (existingManifest && Object.keys(existingManifest.cycles).length > 0) {
           if (flags.verbose) {
-            const entityCount = manifest.discoveredEntities?.length ?? 0;
-            const domainCount = manifest.discoveredDomains?.length ?? 0;
-            console.log(`\x1b[2m   Regenerated data/_index.sysml with ${entityCount} entity stubs, ${domainCount} domains\x1b[0m`);
+            console.log();
+            console.log(`\x1b[34m━━━ Cycle 0: Repository Discovery ━━━\x1b[0m`);
+            console.log(`\x1b[32m   ✓ Manifest already exists (${Object.keys(existingManifest.cycles).length} cycles defined)\x1b[0m`);
+          } else {
+            console.log(`[Cycle 0] Repository Discovery - skipped (manifest exists)`);
+          }
+        } else {
+          const cycle0Result = await this.runCycle0(client, state, flags, out);
+          state.cycleHistory.push(cycle0Result);
+          state.totalInputTokens += cycle0Result.inputTokens;
+          state.totalOutputTokens += cycle0Result.outputTokens;
+          state.totalCachedTokens += cycle0Result.cachedTokens;
+          state.totalCost += cycle0Result.cost;
+
+          // Regenerate data/_index.sysml with discovered entity stubs
+          const manifest = await loadManifest();
+          if (manifest?.discoveredEntities || manifest?.discoveredDomains) {
+            const dataModel = generateDataModelTemplate(
+              manifest.discoveredEntities,
+              manifest.discoveredDomains
+            );
+            await writeFile(
+              join(SYSML_DIR, "data/_index.sysml"),
+              dataModel,
+              "utf-8"
+            );
+            if (flags.verbose) {
+              const entityCount = manifest.discoveredEntities?.length ?? 0;
+              const domainCount = manifest.discoveredDomains?.length ?? 0;
+              console.log(`\x1b[2m   Regenerated data/_index.sysml with ${entityCount} entity stubs, ${domainCount} domains\x1b[0m`);
+            }
           }
         }
       }
@@ -204,6 +215,21 @@ export default class Ingest extends Command {
 
       for (let cycle = startCycle; cycle <= endCycle; cycle++) {
         state.currentCycle = cycle;
+
+        // Resume: skip cycles already at/above coverage threshold
+        const preCoverage = await checkCycleCoverage(cycle, ".");
+        if (preCoverage.expectedFiles.length > 0 && preCoverage.coveragePercent >= flags["coverage-threshold"]) {
+          if (flags.verbose) {
+            console.log();
+            console.log(`\x1b[34m━━━ Cycle ${cycle}/${TOTAL_CYCLES}: ${cycleNames[cycle] ?? `Cycle ${cycle}`} ━━━\x1b[0m`);
+            console.log(`\x1b[32m   ✓ Already complete (${preCoverage.coveragePercent}% coverage, ${preCoverage.coveredFiles.length}/${preCoverage.expectedFiles.length} files)\x1b[0m`);
+          } else {
+            console.log(`[Cycle ${cycle}/${TOTAL_CYCLES}] ${cycleNames[cycle] ?? `Cycle ${cycle}`} - skipped (${preCoverage.coveragePercent}% complete)`);
+          }
+          await syncManifestOutputs(cycle, ".");
+          await updateModelIndex(state.metadata, flags.verbose);
+          continue;
+        }
 
         // Set coverage context for the FileViewerNextFileSet gadget
         setCoverageContext({
@@ -289,8 +315,28 @@ export default class Ingest extends Command {
     }
 
     // Get seed files (can be empty - that's OK with exploration model)
-    const seedFiles = await getFilesForCycle(cycle, state.metadata?.primaryLanguage, batchSize);
+    let seedFiles = await getFilesForCycle(cycle, state.metadata?.primaryLanguage, batchSize);
     const manifestHints = await getManifestHintsForCycle(cycle, state.metadata?.primaryLanguage);
+
+    // Resume: filter seed files to only uncovered ones
+    const resumeCoverage = await checkCycleCoverage(cycle, ".");
+    const isResuming = resumeCoverage.coveredFiles.length > 0;
+    if (isResuming && resumeCoverage.missingFiles.length > 0) {
+      const missingSet = new Set(resumeCoverage.missingFiles);
+      const filtered = seedFiles.filter(f => missingSet.has(f));
+      // If all seed files are already covered but other files are missing, use those instead
+      if (filtered.length === 0) {
+        seedFiles = resumeCoverage.missingFiles.slice(0, batchSize);
+      } else {
+        seedFiles = filtered;
+      }
+      if (flags.verbose) {
+        console.log(`\x1b[2m   Resume: seeding ${seedFiles.length} uncovered files (${resumeCoverage.coveredFiles.length} already documented)\x1b[0m`);
+      }
+    } else if (isResuming && resumeCoverage.missingFiles.length === 0) {
+      // Everything covered — Change 1 should have caught this, but guard anyway
+      seedFiles = [];
+    }
 
     if (flags.verbose) {
       if (seedFiles.length > 0) {
@@ -316,7 +362,7 @@ export default class Ingest extends Command {
     };
 
     // Read stable content once (for caching)
-    const existingModel = await readExistingModel(cycle);
+    const existingModel = await readExistingModel(cycle, isResuming);
     const repoMap = await readDirs.execute({
       paths: ".",
       depth: 4,
@@ -547,7 +593,7 @@ export default class Ingest extends Command {
       console.log(`\x1b[2m   Missing files: ${totalMissing}\x1b[0m`);
     }
 
-    const existingModel = await readExistingModel(cycle);
+    const existingModel = await readExistingModel(cycle, true);
     const systemPrompt = render("sysml/system", {});
 
     const options: CycleTurnOptions = {
