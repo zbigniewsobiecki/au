@@ -121,6 +121,7 @@ export interface AgentTurnConfig {
   onFileWrite?: (path: string, mode: string, delta: string | null, diff: string | null) => void | Promise<void>;
   onNextFiles?: (files: string[]) => void;
   trackEntities?: CycleIterationState;
+  getCoveragePercent?: () => number | undefined;
 }
 
 /**
@@ -197,13 +198,16 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
   // Function to print pending turn summary with gadget count
   const printPendingTurnSummary = () => {
     if (pendingTurnSummary && options.verbose) {
+      const coveragePercent = config.getCoveragePercent?.();
       console.log(formatTurnSummary(
         pendingTurnSummary.turnNumber,
         pendingTurnSummary.inputTokens,
         pendingTurnSummary.outputTokens,
         pendingTurnSummary.cachedTokens,
         pendingTurnSummary.cost,
-        iterationGadgetCount
+        iterationGadgetCount,
+        undefined,
+        coveragePercent
       ));
       pendingTurnSummary = null;
     }
@@ -285,7 +289,7 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
             // Extract entities from element content for cross-turn tracking
             const params = result.parameters as { path?: string; element?: string };
             if (params?.element && params?.path && trackEntities) {
-              const newEntities = extractEntitiesFromSysml(params.element, params.path);
+              const newEntities = await extractEntitiesFromSysml(params.element, params.path);
               trackEntities.createdEntities.push(...newEntities);
             }
 
@@ -417,6 +421,7 @@ export async function runCycleTurn(
     maxIterations: Math.min(options.maxIterations, 30),
     terminateOnTextOnly: true,
     trackEntities: iterState,
+    getCoveragePercent: () => docCoveragePercent > 0 ? docCoveragePercent : undefined,
     trailingMessage: () => {
       // Use live coverage data (updated by onFileWrite callback)
       const liveReadCount = iterState.readFiles.size + (iterState.currentBatch?.length ?? 0);
@@ -541,6 +546,11 @@ export async function runRetryTurn(
     gadgets: "retry",
     maxIterations: Math.min(options.maxIterations, 30),
     terminateOnTextOnly: false,
+    getCoveragePercent: () => {
+      if (totalMissing <= 0) return undefined;
+      const pct = Math.round(((totalMissing - stillMissingCount) / totalMissing) * 100);
+      return pct > 0 ? pct : undefined;
+    },
     trailingMessage: () => {
       return render("sysml/retry-trailing", {
         iteration: iterState.turnCount,

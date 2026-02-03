@@ -35,6 +35,12 @@ export interface Sysml2Element {
   parent: string | null;
 }
 
+export interface ListEntry {
+  id: string;    // e.g. "Pkg::Car"
+  name: string;  // e.g. "Car"
+  kind: string;  // e.g. "part def"
+}
+
 export interface Sysml2Relationship {
   id: string;
   kind: string;
@@ -805,6 +811,80 @@ export async function formatFile(
       }
     });
 
+    proc.stdin.end();
+  });
+}
+
+// ============================================================================
+// CLI-based List (Discovery) Operation
+// ============================================================================
+
+/**
+ * List element names and kinds from SysML files using the CLI --list option.
+ *
+ * @param filesOrDir - Array of file/directory paths to query
+ * @param options - Options for the list operation
+ * @returns Promise resolving to an array of ListEntry objects
+ */
+export async function listElements(
+  filesOrDir: string[],
+  options?: {
+    select?: string[];
+    recursive?: boolean;
+    parseOnly?: boolean;
+    stdin?: string;
+  }
+): Promise<ListEntry[]> {
+  const args = ["--list", "--color=never", ...getLibraryPathArgs()];
+
+  if (options?.parseOnly) {
+    args.push("-P");
+  }
+
+  if (options?.recursive) {
+    args.push("-r");
+  }
+
+  if (options?.select) {
+    for (const pat of options.select) {
+      args.push("-s", pat);
+    }
+  }
+
+  args.push("-f", "json");
+  args.push(...filesOrDir);
+
+  return new Promise((resolve) => {
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
+
+    let stdout = "";
+
+    proc.stdout.on("data", (data) => {
+      stdout += data;
+    });
+
+    proc.on("close", () => {
+      if (stdout.trim()) {
+        try {
+          const parsed = JSON.parse(stdout);
+          if (Array.isArray(parsed)) {
+            resolve(parsed);
+            return;
+          }
+        } catch {
+          // fall through
+        }
+      }
+      resolve([]);
+    });
+
+    proc.on("error", () => {
+      resolve([]);
+    });
+
+    if (options?.stdin) {
+      proc.stdin.write(options.stdin);
+    }
     proc.stdin.end();
   });
 }

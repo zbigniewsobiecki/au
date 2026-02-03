@@ -3,9 +3,8 @@
  * Provides functions for generating SysML v2 code from discovered project metadata.
  */
 
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { ProjectMetadata, ExternalDependency } from "./discovery.js";
+import { listElements } from "./sysml2-cli.js";
 
 /**
  * Escape a string for use in SysML.
@@ -1202,39 +1201,14 @@ export function generateInitialFiles(metadata: ProjectMetadata): GeneratedFiles 
 
 /**
  * Discover all top-level package names in the SysML directory.
- * Scans all .sysml files (excluding _model.sysml) and extracts package names.
+ * Uses sysml2 --list to enumerate elements and filters for packages.
  */
 export async function discoverModelPackages(sysmlDir: string): Promise<string[]> {
-  const packages = new Set<string>();
-  const packageRegex = /^package\s+(\w+)/gm;
-
-  async function scanDir(dir: string): Promise<void> {
-    try {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-
-        if (entry.isDirectory()) {
-          await scanDir(fullPath);
-        } else if (entry.name.endsWith(".sysml") && entry.name !== "_model.sysml") {
-          try {
-            const content = await readFile(fullPath, "utf-8");
-            let match;
-            while ((match = packageRegex.exec(content)) !== null) {
-              packages.add(match[1]);
-            }
-          } catch {
-            // Skip unreadable files
-          }
-        }
-      }
-    } catch {
-      // Directory doesn't exist
-    }
-  }
-
-  await scanDir(sysmlDir);
-  return [...packages].sort();
+  const entries = await listElements([sysmlDir], { recursive: true, parseOnly: true });
+  const packages = entries
+    .filter((e) => e.kind === "package")
+    .map((e) => e.name);
+  return [...new Set(packages)].sort();
 }
 
 /**

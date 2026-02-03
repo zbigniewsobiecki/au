@@ -63,6 +63,9 @@ In SysML, declarations must come before redefinitions.
 - Error: `E3002: feature 'X' not found` even though X is defined in the same file
 - The element X is defined AFTER it's referenced/redefined
 
+**NEVER delete type definitions to fix E3002.** Deleting a `port def`, `item def`, `part def`,
+`action def`, `enum def`, or `state def` causes cascading E3001 errors. Use SysMLWrite upsert.
+
 **Fix using replaceScope (DANGER - read carefully!):**
 
 ⚠️ **DATA LOSS WARNING**: `replaceScope=true` CLEARS the entire scope first!
@@ -87,6 +90,11 @@ SysMLWrite(
   replaceScope=true
 )
 ```
+
+### Destructive Operations Warning
+
+NEVER use delete to fix type-related errors (E3001, E3002, E3006). Deleting type definitions
+causes cascading failures. Always use SysMLWrite upsert to fix definitions in-place.
 
 ### Count Mismatches
 The manifest counts reflect what EXISTS in the codebase. The SysML model is INCOMPLETE.

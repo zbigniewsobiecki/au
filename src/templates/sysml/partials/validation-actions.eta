@@ -33,10 +33,13 @@ These are undefined references or type mismatches:
 - **E3001 "undefined type"**: Create the missing type definition, or add an import if it exists elsewhere.
 - **E3002 "feature not found"**: The referenced feature doesn't exist in the parent type.
   **Most common cause**: Using `part :>> name` as a direct child of a package. Packages don't inherit features — use `part name : Type { }` instead of `part :>> name`. Check the parent definition and fix the reference.
+  **NEVER delete type definitions to fix E3002** — deleting `port def`, `item def`, `part def`, etc. causes cascading E3001 errors. Use SysMLWrite upsert to fix definitions in-place.
 - **E3003 "undefined namespace"**: The imported package doesn't exist. Create the package file FIRST, then import it.
 
 **Important: Delete operations and semantic errors:**
 Delete operations may fail when pre-existing semantic errors (E3xxx) exist in the file. If a delete keeps failing with the same error, use SysMLWrite upsert to replace the broken element with a corrected version instead of trying to delete it.
+
+**CRITICAL: NEVER delete type definitions** (`port def`, `item def`, `part def`, `action def`, `enum def`, `state def`, `interface def`) to resolve any error. Use SysMLWrite upsert to fix them in-place.
 
 **Workflow:**
 1. `SysMLRead` the file mentioned in the error
@@ -65,7 +68,7 @@ Delete operations may fail when pre-existing semantic errors (E3xxx) exist in th
 |-----------|--------|---------|
 | File doesn't exist | `SysMLCreate` | `SysMLCreate(path="data/enums.sysml", package="DomainEnums")` |
 | File exists, add/update content | `SysMLWrite` | `SysMLWrite(path="data/enums.sysml", element="...", at="DomainEnums")` |
-| File exists, fix ordering (E3002) | `SysMLWrite` | Use targeted delete + upsert to fix specific elements. Only use `replaceScope=true` on SMALL scopes (< 20 definitions) |
+| File exists, fix ordering (E3002) | `SysMLWrite` | Use upsert to fix definitions. NEVER delete type definitions |
 | File corrupted/unrecoverable | `SysMLCreate` | Use `force=true` only for syntax errors that can't be fixed |
 
 **CRITICAL: NEVER use SysMLCreate on existing files without `force=true`!**

@@ -167,7 +167,6 @@ export const sysmlWrite = createGadget({
       .string()
       .optional()
       .describe("Element path to delete (e.g., 'DataModel::Entities::OldUser')"),
-
     // Common options
     dryRun: z
       .boolean()

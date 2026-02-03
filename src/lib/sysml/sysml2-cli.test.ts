@@ -7,7 +7,7 @@ import { writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
-import { setElement } from "./sysml2-cli.js";
+import { setElement, listElements } from "./sysml2-cli.js";
 
 // Check if sysml2 CLI is available
 function hasSysml2(): boolean {
@@ -145,6 +145,66 @@ describeSysml2("sysml2 CLI wrapper", () => {
 
       // Should report accurate counts
       expect(result.added).toBe(2);
+    });
+  });
+
+  describe("listElements", () => {
+    it("should list elements from a file", async () => {
+      const modelFile = join(testDir, "model.sysml");
+      await writeFile(modelFile, "package Pkg { part def Car; part def Truck; }");
+
+      const entries = await listElements([modelFile], { parseOnly: true });
+
+      expect(entries.length).toBeGreaterThanOrEqual(1);
+      const names = entries.map((e) => e.name);
+      expect(names).toContain("Pkg");
+    });
+
+    it("should list elements from stdin", async () => {
+      const content = "package Demo { item def Widget; enum def Color { enum Red; enum Blue; } }";
+
+      const entries = await listElements([], { stdin: content, parseOnly: true });
+
+      expect(entries.length).toBeGreaterThanOrEqual(1);
+      const names = entries.map((e) => e.name);
+      expect(names).toContain("Demo");
+    });
+
+    it("should list children with select pattern", async () => {
+      const modelFile = join(testDir, "model.sysml");
+      await writeFile(modelFile, "package Pkg { part def Car; part def Truck; }");
+
+      const entries = await listElements([modelFile], {
+        parseOnly: true,
+        select: ["Pkg::*"],
+      });
+
+      const names = entries.map((e) => e.name);
+      expect(names).toContain("Car");
+      expect(names).toContain("Truck");
+    });
+
+    it("should list from a directory recursively", async () => {
+      const subDir = join(testDir, "models");
+      await mkdir(subDir, { recursive: true });
+      await writeFile(join(subDir, "a.sysml"), "package A { part def X; }");
+      await writeFile(join(subDir, "b.sysml"), "package B { part def Y; }");
+
+      const entries = await listElements([subDir], { recursive: true, parseOnly: true });
+
+      const names = entries.map((e) => e.name);
+      expect(names).toContain("A");
+      expect(names).toContain("B");
+    });
+
+    it("should return empty array for empty input", async () => {
+      const entries = await listElements([], { stdin: "", parseOnly: true });
+      expect(entries).toEqual([]);
+    });
+
+    it("should return empty array on syntax errors without throwing", async () => {
+      const entries = await listElements([], { stdin: "not valid {{{", parseOnly: true });
+      expect(Array.isArray(entries)).toBe(true);
     });
   });
 });

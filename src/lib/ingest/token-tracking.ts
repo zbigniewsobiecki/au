@@ -43,14 +43,18 @@ export function formatTurnSummary(
   cachedTokens: number,
   cost: number,
   gadgetCount?: number,
-  prefix: string = "Turn"
+  prefix: string = "Turn",
+  coveragePercent?: number
 ): string {
   const usageStr = formatTokenUsage(inputTokens, outputTokens, cachedTokens);
   const costStr = formatCost(cost);
   const gadgetStr = gadgetCount !== undefined && gadgetCount > 0
     ? ` · ${gadgetCount} gadget${gadgetCount !== 1 ? "s" : ""}`
     : "";
-  return `\x1b[2m   ⤷ ${prefix} ${turnNumber}: ${usageStr} · ${costStr}${gadgetStr}\x1b[0m`;
+  const coverageStr = coveragePercent !== undefined && coveragePercent > 0
+    ? ` · ${coveragePercent}%`
+    : "";
+  return `\x1b[2m   ⤷ ${prefix} ${turnNumber}: ${usageStr} · ${costStr}${gadgetStr}${coverageStr}\x1b[0m`;
 }
 
 /**
