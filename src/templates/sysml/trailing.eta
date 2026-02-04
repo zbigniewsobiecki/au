@@ -21,7 +21,7 @@
 - Analyze new source files
 
 **Do:**
-1. Use `SysMLQuery` to inspect the elements mentioned in the errors (e.g., `SysMLQuery(select="Scope::Element")`)
+1. Use `SysMLRead` to inspect the file containing the error (use `SysMLList()` to find it)
 2. Use `SysMLWrite` to fix the specific issues
 3. Validation re-runs automatically after each write — check that errors decrease
 
@@ -79,6 +79,10 @@ Once all errors are resolved, the next status update will show normal ingestion 
 Coverage is good. You may finish if you've:
 - Extracted all relevant SysML elements
 - Included `@SourceFile { :>> path = "<filepath>"; }` metadata for each covered file
+<% } %>
+
+<% if (it.createdEntities && it.createdEntities.length > 10) { %>
+**DO NOT re-write existing SysML definitions.** If SysMLWrite returns "Replaced: N, Added: 0", stop writing to that file and move to uncovered source files.
 <% } %>
 
 <%~ include("./partials/maximize-extraction", it) %>

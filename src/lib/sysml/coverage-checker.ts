@@ -216,16 +216,19 @@ function findManifestCycle(
 /**
  * Check coverage for a specific cycle.
  *
- * When `readFiles` is provided, a file is considered covered only if it
- * appears in BOTH the documented set (@SourceFile annotations) AND the
- * readFiles set.  This gives a unified metric: coverage = |read ∩ documented| / |expected|.
+ * Coverage is based purely on @SourceFile annotations in .sysml files:
+ * coverage = |documented| / |expected|.  The presence of a @SourceFile marker
+ * is sufficient proof the LLM processed the file.
  *
- * Callers without readFiles (e.g. the pre-cycle skip check) continue using
- * doc-only coverage, which is fine for detecting previously completed cycles.
+ * The `readFiles` parameter is retained for informational / logging purposes
+ * but no longer gates the covered set — previously, an intersection with
+ * readFiles caused coverage to be stuck at ~3% because only files delivered
+ * via FileViewerNextFileSet batches were tracked, while files the LLM read
+ * via the ReadFiles gadget were not.
  *
  * @param cycle - The cycle number (1-6)
  * @param basePath - Base path of the project (default: ".")
- * @param readFiles - Optional set of files that have been read; when provided, intersects with documented set
+ * @param readFiles - Optional set of files that have been read (informational only)
  * @returns Coverage result with expected, covered, and missing files
  */
 export async function checkCycleCoverage(
@@ -267,13 +270,7 @@ export async function checkCycleCoverage(
   const sysmlDir = cycleOutputDir
     ? join(basePath, SYSML_DIR, cycleOutputDir)
     : join(basePath, SYSML_DIR); // Fallback for unknown cycles
-  let coveredSet = await findCoveredFiles(sysmlDir);
-
-  // If readFiles provided, intersect: a file is covered only if documented AND read
-  if (readFiles && readFiles.size > 0) {
-    const normalizedReadFiles = new Set([...readFiles].map(normalizeExtension));
-    coveredSet = new Set([...coveredSet].filter(f => normalizedReadFiles.has(f)));
-  }
+  const coveredSet = await findCoveredFiles(sysmlDir);
 
   result.coveredFiles = [...coveredSet].sort();
 

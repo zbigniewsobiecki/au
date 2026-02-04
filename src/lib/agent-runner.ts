@@ -55,12 +55,11 @@ export async function runAgentWithEvents(
         } else if (result.gadgetName === "VerifyFinding") {
           // VerifyFinding details already shown in gadgetCall — just show compact ✓
           out.gadgetResult(result.gadgetName);
-        } else {
-          let summary: string | undefined;
-          if (isFileReadingGadget(result.gadgetName)) {
-            summary = formatResultSize(result.result);
-          }
+        } else if (isFileReadingGadget(result.gadgetName)) {
+          const summary = formatResultSize(result.result);
           out.gadgetResult(result.gadgetName, summary);
+        } else {
+          out.gadgetResultContent(result.gadgetName, result.result);
         }
       }
 

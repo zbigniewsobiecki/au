@@ -54,6 +54,7 @@ export interface Sysml2Result {
   relationships: Sysml2Relationship[];
   diagnostics: Sysml2Diagnostic[];
   success: boolean;
+  exitCode: number;             // 0=success, 1=parse error, 2=semantic error
   stdout?: string; // Raw stdout from sysml2
   stderr?: string; // Raw stderr from sysml2
 }
@@ -114,12 +115,13 @@ export async function runSysml2(
 
     proc.on("close", (code) => {
       const diagnostics = parseDiagnosticOutput(stderr);
-      const success = code === 0;
+      const exitCode = code ?? 1;
+      const success = exitCode === 0;
 
       if (options?.json && stdout.trim()) {
         try {
           const json = JSON.parse(stdout);
-          resolve({ ...json, diagnostics, success, stdout: stdout || undefined, stderr: stderr || undefined });
+          resolve({ ...json, diagnostics, success, exitCode, stdout: stdout || undefined, stderr: stderr || undefined });
         } catch {
           resolve({
             meta: { version: "1.0", source: "<stdin>" },
@@ -127,6 +129,7 @@ export async function runSysml2(
             relationships: [],
             diagnostics,
             success: false,
+            exitCode,
             stdout: stdout || undefined,
             stderr: stderr || undefined,
           });
@@ -138,6 +141,7 @@ export async function runSysml2(
           relationships: [],
           diagnostics,
           success,
+          exitCode,
           stdout: stdout || undefined,
           stderr: stderr || undefined,
         });
@@ -456,7 +460,7 @@ export async function setElement(
     parseOnly?: boolean;
     replaceScope?: boolean;
     forceReplace?: boolean;  // Suppress data loss warning when replaceScope deletes more elements than fragment provides
-    allowSemanticErrors?: boolean;  // Allow writes despite E3xxx errors
+    allowSemanticErrors?: boolean;
   }
 ): Promise<SetResult> {
   // Write fragment to a temporary file
@@ -527,7 +531,7 @@ export async function setElement(
       await cleanup();
 
       const diagnostics = parseDiagnosticOutput(stderr);
-      const success = code === 0;
+      const success = code === 0 || (code === 2 && !!options?.allowSemanticErrors);
 
       // Try to parse JSON output for details
       let added = 0;
@@ -620,7 +624,6 @@ export async function deleteElements(
 
     proc.on("close", (code) => {
       const diagnostics = parseDiagnosticOutput(stderr);
-      // Exit 0 = clean success, Exit 2 with --allow-semantic-errors = success with warnings
       const success = code === 0 || (code === 2 && !!options?.allowSemanticErrors);
 
       // Try to parse JSON output for details

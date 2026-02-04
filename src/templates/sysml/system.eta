@@ -852,11 +852,9 @@ SysMLWrite(
 SysMLWrite(path="data/entities.sysml", delete="DataModel::Entities::OldUser")
 ```
 
-### SysMLQuery - Element selection:
+### SysMLRead - Read file contents:
 ```
-SysMLQuery(select="DataModel::Entities::*")   // Direct children
-SysMLQuery(select="DataModel::Entities::**")  // All descendants
-SysMLQuery(select="UserService")              // Find by name
+SysMLRead(path="data/entities.sysml")  // Returns file content with line numbers
 ```
 
 ### SysMLDelete - Dedicated element removal:
@@ -865,9 +863,9 @@ SysMLDelete(path="data/entities.sysml", element="DomainEntities::OldUser")
 SysMLDelete(path="data/entities.sysml", element="DomainEntities::Legacy", recursive=true)
 ```
 
-### SysMLQuery(select, query, type)
-Query SysML model for elements, relationships, and cross-references.
-Use `select` for semantic queries: `SysMLQuery(select="Scope::*")` (children), `SysMLQuery(select="Element")` (find by name).
+### SysMLRead(path)
+Read a SysML file from the .sysml/ directory. Returns content with line numbers.
+Use `SysMLList()` to discover file paths first.
 
 ### SysMLList()
 List all SysML files in the model.
@@ -877,7 +875,7 @@ List all SysML files in the model.
 Index files (`_index.sysml`) **accumulate imports across cycles**. They are NOT rewritten fresh each time.
 
 **Before editing any existing file:**
-1. Use `SysMLQuery(select="Scope::*")` to check what elements exist
+1. Use `SysMLRead(path="...")` to check what elements exist (use `SysMLList()` to find paths)
 2. Use CLI upsert mode (`element` + `at`) for semantic edits
 3. The CLI handles finding and replacing elements automatically
 
@@ -896,7 +894,7 @@ SysMLCreate(
 )
 
 // 2. Check what's in the file
-SysMLQuery(select="DomainEntities::*")
+SysMLRead(path="data/entities.sysml")
 
 // 3. Add or update an element at a specific scope
 SysMLWrite(
@@ -912,8 +910,6 @@ SysMLDelete(path="data/entities.sysml", element="DomainEntities::OldEntity")
 ### ProjectMetaRead()
 Get project metadata (language, framework, architecture, etc.)
 
-### FileDiscoverCustom(patterns, maxFiles?)
-Find files using custom glob patterns (e.g., "**/routes/**/*.ts").
 
 ### ReadFiles(paths)
 Read source file contents for analysis.
@@ -1121,7 +1117,7 @@ enum def OrderStatus {
 4. **Cross-reference properly**: Use imports to connect packages
 5. **Validate before writing**: The SysMLWrite gadget validates syntax by default
 6. **Use upserts for edits**: When editing existing files, use SysMLWrite with `element` + `at` for semantic upserts
-7. **Query before editing**: Use `SysMLQuery` to check what exists before upserting
+7. **Query before editing**: Use `SysMLRead` to check what exists before upserting
 
 ## Package Linking (CRITICAL)
 
@@ -1148,7 +1144,7 @@ Every SysML file with a `package` declaration MUST be imported by its parent `_i
    }
    ```
 
-   **⚠️ WARNING**: This file accumulates state. Always check with `SysMLQuery` or `SysMLList` before editing!
+   **⚠️ WARNING**: This file accumulates state. Always check with `SysMLRead` or `SysMLList` before editing!
 
 3. **Create file AND update index together** - never leave orphaned packages
 
@@ -1170,7 +1166,7 @@ Before creating a new file, check `SysMLList()` to see existing packages.
 
 Before creating any SysML element:
 
-1. **Check before creating**: Use `SysMLQuery(select="ElementName")` to verify if an element already exists
+1. **Check before creating**: Use `SysMLList()` + `SysMLRead(path="...")` to verify if an element already exists
 2. **Update don't recreate**: If a duplicate is found, use SysMLWrite with `element` + `at` to upsert it instead of recreating
 3. **Single location per entity**: Never define the same entity in multiple files
 

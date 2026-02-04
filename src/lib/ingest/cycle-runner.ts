@@ -25,7 +25,6 @@ import {
   sysmlRead,
   sysmlList,
   projectMetaRead,
-  fileDiscoverCustom,
   readFiles,
   readDirs,
   ripGrep,
@@ -43,11 +42,9 @@ import { validateModelFull, type ValidationResult } from "../sysml/sysml2-cli.js
 const CYCLE_GADGETS = [
   sysmlCreate,
   sysmlWrite,
-  sysmlQuery,
   sysmlRead,
   sysmlList,
   projectMetaRead,
-  fileDiscoverCustom,
   readFiles,
   readDirs,
   ripGrep,
@@ -59,7 +56,6 @@ const CYCLE0_GADGETS = [
   manifestRead,
   enumerateDirectories,
   projectMetaRead,
-  fileDiscoverCustom,
   readFiles,
   readDirs,
   ripGrep,
@@ -68,7 +64,6 @@ const CYCLE0_GADGETS = [
 const RETRY_GADGETS = [
   sysmlCreate,
   sysmlWrite,
-  sysmlQuery,
   sysmlRead,
   sysmlList,
   readFiles,
@@ -350,7 +345,7 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
           }
         }
       } else if (options.verbose) {
-        out.gadgetResult(result.gadgetName);
+        out.gadgetResultContent(result.gadgetName, result.result);
       }
     }
   }

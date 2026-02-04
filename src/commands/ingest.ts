@@ -223,7 +223,7 @@ export default class Ingest extends Command {
           if (flags.verbose) {
             console.log();
             console.log(`\x1b[34m━━━ Cycle ${cycle}/${TOTAL_CYCLES}: ${cycleNames[cycle] ?? `Cycle ${cycle}`} ━━━\x1b[0m`);
-            console.log(`\x1b[32m   ✓ Already complete (${preCoverage.coveragePercent}% coverage, ${preCoverage.coveredFiles.length}/${preCoverage.expectedFiles.length} files)\x1b[0m`);
+            console.log(`\x1b[32m   ✓ Already complete (${preCoverage.coveragePercent}% coverage, ${preCoverage.expectedFiles.length - preCoverage.missingFiles.length}/${preCoverage.expectedFiles.length} files)\x1b[0m`);
           } else {
             console.log(`[Cycle ${cycle}/${TOTAL_CYCLES}] ${cycleNames[cycle] ?? `Cycle ${cycle}`} - skipped (${preCoverage.coveragePercent}% complete)`);
           }

@@ -137,6 +137,23 @@ export class Output {
     }
   }
 
+  // Gadget result with content preview (for informational gadgets like SysMLQuery, RipGrep)
+  gadgetResultContent(name: string, content?: string, maxLines: number = 25): void {
+    if (this.verbose) {
+      if (content) {
+        const lines = content.split("\n");
+        const show = lines.slice(0, maxLines);
+        for (const line of show) {
+          console.log(chalk.dim("   " + line));
+        }
+        if (lines.length > maxLines) {
+          console.log(chalk.dim(`   ... +${lines.length - maxLines} more lines`));
+        }
+      }
+      console.log(chalk.green("✓") + " " + chalk.green(name));
+    }
+  }
+
   // Gadget error
   gadgetError(name: string, error: string): void {
     console.log(chalk.red("✗") + " " + chalk.red(name) + " " + chalk.dim(error));

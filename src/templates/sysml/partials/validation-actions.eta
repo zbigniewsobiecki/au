@@ -42,7 +42,7 @@ Delete operations may fail when pre-existing semantic errors (E3xxx) exist in th
 **CRITICAL: NEVER delete type definitions** (`port def`, `item def`, `part def`, `action def`, `enum def`, `state def`, `interface def`) to resolve any error. Use SysMLWrite upsert to fix them in-place.
 
 **Workflow:**
-1. Use `SysMLQuery` to inspect the elements mentioned in the error
+1. Use `SysMLRead` to inspect the file containing the error
 2. If needed, `ReadFiles` to check how the type is used in source code
 3. `SysMLWrite` to fix the specific issue (prefer upsert over delete for broken elements)
 4. Repeat until validation passes

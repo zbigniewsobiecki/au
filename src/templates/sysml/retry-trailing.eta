@@ -22,7 +22,7 @@
 - Write new SysML definitions for uncovered source files
 
 **Do:**
-1. Use `SysMLQuery` to inspect the elements mentioned in the errors (e.g., `SysMLQuery(select="Scope::Element")`)
+1. Use `SysMLRead` to inspect the file containing the error (use `SysMLList()` to find it)
 2. Use `SysMLWrite` to fix the specific issues (write to `.sysml/<%= it.cycleOutputDir %>/`)
 3. Validation re-runs automatically after each write — check that errors decrease
 
@@ -68,6 +68,10 @@ These files need `@SourceFile { :>> path = "..."; }` metadata:
 3. When done, call `FileViewerNextFileSet(paths="")` to check coverage
 
 **IMPORTANT**: Keep iterating until ALL missing files have been covered.
+
+<% if (it.createdEntities && it.createdEntities.length > 10) { %>
+**DO NOT re-write existing SysML definitions.** If SysMLWrite returns "Replaced: N, Added: 0", stop writing to that file and move to uncovered source files.
+<% } %>
 
 <%~ include("./partials/maximize-extraction", it) %>
 

@@ -61,11 +61,7 @@ SysMLDelete(path="data/entities.sysml", element="DomainEntities::Legacy", recurs
       const result = await deleteElements(fullPath, [pattern], { dryRun });
 
       if (!result.success) {
-        const errors = result.diagnostics
-          .filter((d) => d.severity === "error")
-          .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
-          .join("\n");
-        return `path=${fullPath} status=error\n\nDelete failed:\n${errors || result.stderr || "Unknown error"}`;
+        return `path=${fullPath} status=error\n\nDelete failed:\n${result.stderr || "Unknown error"}`;
       }
 
       const dryRunNote = dryRun ? " (dry run)" : "";

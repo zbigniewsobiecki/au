@@ -97,7 +97,7 @@ export const sysmlWrite = createGadget({
    PERMANENTLY DELETED.
 
    Use this when fixing E3002 "feature not found" errors caused by wrong element order:
-   1. First, use \`SysMLQuery(select="Scope::*")\` to see all elements in the scope
+   1. First, use \`SysMLRead\` to see all elements in the file
    2. Include ALL existing elements in your element parameter
    3. Reorder them correctly (declarations before redefinitions)
    4. Then use replaceScope=true
@@ -129,11 +129,9 @@ export const sysmlWrite = createGadget({
 
 **Validation:**
    - Full validation (syntax + semantic) runs on every write
-   - By default, semantic errors (E3xxx) are reported but don't block the write
-   - Use validateSemantics=true to block/rollback on semantic errors:
-     \`\`\`
-     SysMLWrite(path="...", element="...", at="...", validateSemantics=true)
-     \`\`\`
+   - Syntax errors block writes and trigger rollback
+   - Semantic errors (E3xxx) are reported as warnings but do NOT block writes
+     (during incremental ingestion, cross-file type errors are expected)
 
 **To create new files, use SysMLCreate:**
    SysMLCreate(path="...", package="PackageName")
@@ -172,12 +170,8 @@ export const sysmlWrite = createGadget({
       .boolean()
       .optional()
       .describe("Preview changes without writing (default: false)"),
-    validateSemantics: z
-      .boolean()
-      .optional()
-      .describe("Block write on semantic errors (default: false). Validation always runs; this controls whether semantic errors cause rollback."),
   }),
-  execute: async ({ reason: _reason, path, element, at, createScope = false, replaceScope = false, delete: deletePattern, dryRun = false, validateSemantics = false }) => {
+  execute: async ({ reason: _reason, path, element, at, createScope = false, replaceScope = false, delete: deletePattern, dryRun = false }) => {
     // Ensure path ends with .sysml
     if (!path.endsWith(".sysml")) {
       return `Error: File path must end with .sysml extension`;
@@ -281,7 +275,6 @@ File does not exist. Create it first:
             scope: at,
             createScope,
             replaceScope,
-            validateSemantics,
             bytesOriginal: Buffer.byteLength(originalContent, "utf-8"),
             dryRun,
           }
@@ -294,7 +287,7 @@ File does not exist. Create it first:
           parseOnly: false,  // Always run full validation (syntax + semantic)
           replaceScope,
           forceReplace: replaceScope,  // The gadget description already warns about data loss; suppress the CLI's redundant guard
-          allowSemanticErrors: true,  // Allow writes despite E3xxx errors - agent builds model iteratively
+          allowSemanticErrors: true,
         });
 
         // Check for "target scope not found" error from stderr
@@ -373,73 +366,13 @@ To create a new scope, use createScope=true:
             }).catch(() => {});
           }
 
-          const errorDiags = result.diagnostics.filter((d) => d.severity === "error");
-
-          // Show parse error details - pass through sysml2 stderr verbatim for full context
-          // (includes source line, caret pointer, note, and help lines)
-          const parseErrors = errorDiags.filter((d) => !d.code || !d.code.startsWith("E3"));
-          if (parseErrors.length > 0) {
-            return `path=${fullPath} status=error mode=upsert (rolled back)
+          return `path=${fullPath} status=error mode=upsert (rolled back)
 
 SYNTAX ERROR - the fragment could not be parsed.
 
-${result.stderr || `Line ${parseErrors[0].line}:${parseErrors[0].column}: ${parseErrors[0].message}`}
+${result.stderr || "Unknown parse error"}
 
 Check the element syntax and try again.`;
-          }
-
-          // Default: show all errors
-          const errors = errorDiags
-            .map((d) => `  Line ${d.line}:${d.column}: ${d.message}`)
-            .join("\n");
-          return `path=${fullPath} status=error mode=upsert (rolled back)\n\nSyntax error:\n${errors || result.stderr || "Unknown error"}`;
-        }
-
-        // When validateSemantics is true, also fail on semantic errors (exit code 2)
-        if (validateSemantics && result.exitCode === 2) {
-          // ATOMIC ROLLBACK: Restore original content on semantic errors
-          await writeFile(fullPath, originalContent, "utf-8");
-
-          const semanticErrors = result.diagnostics
-            .filter((d) => d.severity === "error" && d.code?.startsWith("E3"))
-            .slice(0, 10);  // Limit to first 10 errors
-
-          // Debug logging for semantic rollback
-          if (debugEnabled) {
-            writeEditDebug({
-              metadata: {
-                ...baseDebugMetadata,
-                status: "rollback",
-                bytesResult: Buffer.byteLength(originalContent, "utf-8"),
-                byteDelta: 0,
-                added: result.added,
-                replaced: result.replaced,
-                errorMessage: semanticErrors[0]?.message || "Semantic error",
-                diagnostics: semanticErrors.map((d) => ({
-                  severity: d.severity,
-                  message: d.message,
-                  line: d.line,
-                  column: d.column,
-                })),
-              } as EditDebugMetadata,
-              original: originalContent,
-              fragment: element!,
-              result: originalContent,
-            }).catch(() => {});
-          }
-
-          const errors = semanticErrors
-            .map((d) => `  Line ${d.line}:${d.column}: [${d.code}] ${d.message}`)
-            .join("\n");
-
-          return `path=${fullPath} status=error mode=upsert (rolled back)
-
-SEMANTIC VALIDATION FAILED (validateSemantics=true)
-
-${errors || result.stderr || "Unknown semantic error"}
-
-The write was rolled back because semantic validation is enabled.
-To allow semantic errors, use validateSemantics=false (default).`;
         }
 
         const dryRunNote = dryRun ? " (dry run)" : "";
@@ -479,28 +412,28 @@ To allow semantic errors, use validateSemantics=false (default).`;
         if (originalContent === newContent) {
           return `path=${fullPath} status=unchanged mode=upsert delta=+0 bytes
 Content identical - no changes made. All elements in your fragment already exist in this file.
-Do NOT re-send the same elements. Only send NEW or MODIFIED elements.
-If the error is elsewhere, use SysMLQuery to inspect other files, or SysMLList to see all files.
-
-Current file contents:
-${newContent}`;
+Do NOT re-send the same elements. Focus on uncovered source files instead.
+Use SysMLRead to inspect file contents, or SysMLList to see all files.`;
         }
 
         // Generate diff for CLI display (colors for human, plain +/- for LLM)
-        const diffOutput = "\n\n" + generatePlainDiff(originalContent, newContent, Infinity);
+        const diffOutput = "\n\n" + generatePlainDiff(originalContent, newContent, 50);
 
         // Warn if no changes were made but element was provided
         if (result.added === 0 && result.replaced === 0 && element && element.trim()) {
           return `path=${fullPath} status=warning mode=upsert delta=${delta}
 WARNING: No elements were added or replaced.
 The element may already exist, or the scope '${at}' was not found.
-Use SysMLQuery to inspect other files, or SysMLList to see all files.
-
-Current file contents:
-${newContent}`;
+Use SysMLRead to inspect file contents, or SysMLList to see all files.`;
         }
 
         const actionDesc = result.replaced > 0 ? "replaced" : "added";
+
+        // Add efficiency guidance when all elements already existed
+        let efficiencyNote = "";
+        if (result.replaced > 0 && result.added === 0) {
+          efficiencyNote = `\nNOTE: All ${result.replaced} elements already existed and were updated. No new content added. Focus on writing definitions for uncovered source files.`;
+        }
 
         // Include validation status based on exit code
         // Exit 0 = all good, Exit 2 = semantic errors remain
@@ -508,18 +441,17 @@ ${newContent}`;
         if (result.exitCode === 0) {
           validationNote = "\n✓ Model validation passed";
         } else if (result.exitCode === 2) {
-          const semanticErrors = result.diagnostics
-            .filter((d) => d.severity === "error" && d.code?.startsWith("E3"))
-            .slice(0, 5);
-          if (semanticErrors.length > 0) {
-            validationNote = "\n⚠ Semantic errors remain:\n" +
-              semanticErrors.map((d) => `  Line ${d.line}: ${d.message}`).join("\n");
+          const stderrLines = (result.stderr || "").split("\n").filter(l => l.trim());
+          if (stderrLines.length > 0) {
+            const preview = stderrLines.slice(0, 8).join("\n");
+            const more = stderrLines.length > 8 ? `\n  ... and more (${stderrLines.length} lines total)` : "";
+            validationNote = "\n⚠ Semantic errors remain:\n" + preview + more;
           }
         }
 
         return `path=${fullPath} status=success mode=upsert${dryRunNote} delta=${delta}
 Element ${actionDesc} at scope: ${at}
-Added: ${result.added}, Replaced: ${result.replaced}${validationNote}${diffOutput}`;
+Added: ${result.added}, Replaced: ${result.replaced}${efficiencyNote}${validationNote}${diffOutput}`;
       } catch (err) {
         // ATOMIC ROLLBACK: Restore original content on exception
         await writeFile(fullPath, originalContent, "utf-8");
@@ -570,7 +502,7 @@ Added: ${result.added}, Replaced: ${result.replaced}${validationNote}${diffOutpu
       try {
         const result = await deleteElements(fullPath, [deletePattern!], {
           dryRun,
-          allowSemanticErrors: true,  // Allow deletes despite E3xxx errors - matches set path behavior
+          allowSemanticErrors: true,
         });
 
         if (!result.success) {
@@ -704,7 +636,8 @@ export const sysmlRead = createGadget({
   description: `Read SysML v2 content from the .sysml/ directory.
 
 **Usage:**
-SysMLRead(path="context/requirements.sysml")
+SysMLRead(path="context/requirements.sysml")              — full file
+SysMLRead(path="context/requirements.sysml", offset=100, limit=50) — lines 100-149
 
 Returns the file content with line numbers for easy reference when using search/replace.`,
   schema: z.object({
@@ -712,25 +645,35 @@ Returns the file content with line numbers for easy reference when using search/
     path: z
       .string()
       .describe("File path relative to .sysml/ (e.g., 'context/requirements.sysml')"),
+    offset: z.number().optional().describe("Line number to start reading from (1-based, default: 1)"),
+    limit: z.number().optional().describe("Maximum number of lines to return (default: all lines)"),
   }),
-  execute: async ({ reason: _reason, path }) => {
+  execute: async ({ reason: _reason, path, offset, limit }) => {
     const fullPath = join(".sysml", path);
 
     try {
       const content = await readFile(fullPath, "utf-8");
       const bytes = Buffer.byteLength(content, "utf-8");
       const lines = content.split("\n");
-      const lineNumWidth = String(lines.length).length;
 
-      // Format with line numbers for easy reference
-      const numberedContent = lines
+      const startLine = Math.max(1, offset ?? 1);
+      const startIdx = startLine - 1;
+      const selectedLines =
+        limit != null ? lines.slice(startIdx, startIdx + limit) : lines.slice(startIdx);
+
+      const lineNumWidth = String(lines.length).length;
+      const numberedContent = selectedLines
         .map((line, i) => {
-          const lineNum = String(i + 1).padStart(lineNumWidth, " ");
+          const lineNum = String(startIdx + i + 1).padStart(lineNumWidth, " ");
           return `${lineNum} | ${line}`;
         })
         .join("\n");
 
-      return `=== ${path} (${bytes} bytes, ${lines.length} lines) ===\n${numberedContent}`;
+      const endLine = startIdx + selectedLines.length;
+      const rangeNote =
+        startLine > 1 || limit != null ? ` [lines ${startLine}-${endLine} of ${lines.length}]` : "";
+
+      return `=== ${path} (${bytes} bytes, ${lines.length} lines)${rangeNote} ===\n${numberedContent}`;
     } catch {
       return `Error: File not found: ${fullPath}`;
     }
