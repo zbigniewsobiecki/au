@@ -7,17 +7,18 @@
 - Coverage: **<%= coveragePercent %>%** (files both read and documented)
 <% const stallCount = it.writesWithoutCoverageIncrease ?? 0; %>
 <% if (stallCount > 0) { %>
-- **Stalled writes: <%= stallCount %>** (SysMLWrite calls without coverage increase)
+- **Stalled turns: <%= stallCount %>** (turns without coverage increase)
 <% } %>
 
-<% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
+<% const hasSyntaxErrors = it.validationExitCode === 1; %>
+<% const hasSemanticErrors = it.validationExitCode === 2; %>
 <% const hasValidationWarnings = it.validationExitCode === 0 && it.validationOutput && it.validationOutput.includes('warning'); %>
 
-<% if (hasValidationErrors) { %>
+<% if (hasSyntaxErrors) { %>
 
-## STOP — Fix Validation Errors Before Continuing
+## STOP — Fix Syntax Errors Before Continuing
 
-**Ingestion is paused.** You must resolve all validation errors shown below before analyzing new files or writing new SysML definitions.
+**Ingestion is paused.** You must resolve all syntax errors shown below before analyzing new files or writing new SysML definitions.
 
 **Do not:**
 - Request new file batches via `FileViewerNextFileSet`
@@ -29,7 +30,7 @@
 2. Use `SysMLWrite` to fix the specific issues
 3. Validation re-runs automatically after each write — check that errors decrease
 
-Once all errors are resolved, the next status update will show normal ingestion instructions and you can resume coverage work.
+Once all syntax errors are resolved, the next status update will show normal ingestion instructions and you can resume coverage work.
 
 <% } %>
 
@@ -39,7 +40,7 @@ Once all errors are resolved, the next status update will show normal ingestion 
 <% } else if (it.validationExitCode === 1) { %>
 ## Model Validation Errors (syntax)
 <% } else if (it.validationExitCode === 2) { %>
-## Model Validation Errors (semantic)
+## Semantic Warnings (non-blocking)
 <% } %>
 
 ```
@@ -50,15 +51,23 @@ Once all errors are resolved, the next status update will show normal ingestion 
 
 <%~ include("./partials/validation-actions", it) %>
 
-<% if (!hasValidationErrors) { %>
-<% /* Only show exploration instructions when no errors */ %>
+<% if (hasSemanticErrors && !hasSyntaxErrors) { %>
+## Semantic Errors (non-blocking)
+
+These reference errors will resolve as you cover more files. **Continue coverage work** — do not stop to fix these.
+If a specific error is easy to fix (wrong type name), fix it opportunistically during a write.
+
+<% } %>
+
+<% if (!hasSyntaxErrors) { %>
+<% /* Only show exploration instructions when no syntax errors */ %>
 
 <% const missingFiles = it.docMissingFiles ?? []; %>
 
-<% if (stallCount >= 5) { %>
+<% if (stallCount >= 3) { %>
 ## CRITICAL — COVERAGE STALLED AT <%= coveragePercent %>%
 
-You have written SysML **<%= stallCount %> times** without increasing coverage. You are rewriting content for files that are ALREADY covered.
+You have gone **<%= stallCount %> turns** without increasing coverage. You are rewriting content for files that are ALREADY covered.
 
 **STOP ALL CURRENT WORK.** You MUST ONLY process files from the missing list below.
 
@@ -78,8 +87,8 @@ You have written SysML **<%= stallCount %> times** without increasing coverage. 
 <% } %>
 <% } %>
 
-<% } else if (stallCount >= 2) { %>
-## COVERAGE STALLED — <%= stallCount %> writes without increase (<%= coveragePercent %>%)
+<% } else if (stallCount >= 1) { %>
+## COVERAGE STALLED — <%= stallCount %> turns without increase (<%= coveragePercent %>%)
 
 You are rewriting SysML for files that are already covered. This does NOT increase coverage.
 

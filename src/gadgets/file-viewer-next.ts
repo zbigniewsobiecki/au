@@ -100,20 +100,13 @@ incomplete, you'll receive an error listing the missing files.`,
         console.log(`\x1b[33m   ⚡ Stall override (x${stallState.writesWithoutIncrease}): replacing all ${pathList.length} paths with ${injectedFiles.length} uncovered files\x1b[0m`);
         pathList.length = 0;
         pathList.push(...injectedFiles);
-      } else if (stallState.writesWithoutIncrease >= 3) {
+      } else if (stallState.writesWithoutIncrease >= 1) {
         // Soft inject: replace half the agent paths with uncovered files
         const halfCount = Math.ceil(pathList.length / 2);
         injectedFiles = stallState.missingFiles.slice(0, halfCount);
         stallState.missingFiles.splice(0, injectedFiles.length);
         console.log(`\x1b[33m   ⚡ Stall inject (x${stallState.writesWithoutIncrease}): replacing ${halfCount} of ${pathList.length} paths with ${injectedFiles.length} uncovered files\x1b[0m`);
         pathList.splice(0, halfCount, ...injectedFiles);
-      } else {
-        // Preventive inject: replace first 2 paths with uncovered files
-        const injectCount = Math.min(2, pathList.length, stallState.missingFiles.length);
-        injectedFiles = stallState.missingFiles.slice(0, injectCount);
-        stallState.missingFiles.splice(0, injectedFiles.length);
-        console.log(`\x1b[33m   ⚡ Preventive inject (x${stallState.writesWithoutIncrease}): replacing ${injectCount} of ${pathList.length} paths with uncovered files\x1b[0m`);
-        pathList.splice(0, injectCount, ...injectedFiles);
       }
     }
 
@@ -197,9 +190,10 @@ Do NOT rewrite existing definitions. ONLY write new elements for these uncovered
 
 `;
       } else {
-        directive = `⚡ Coverage guidance: The following ${injectedFiles.length} files are uncovered and need @SourceFile annotations:
+        directive = `⚡ COVERAGE STALL — These ${injectedFiles.length} files were injected because coverage is stalled at ${injectionCoveragePct}%.
+You MUST create @SourceFile annotations for EACH of them:
 ${fileList}
-Prioritize writing new elements for these files over rewriting existing definitions.
+Do NOT rewrite existing definitions. ONLY write new elements for these uncovered files.
 
 `;
       }

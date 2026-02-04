@@ -129,6 +129,19 @@ package SystemContext {
 }
 ```
 
+### ERROR 5: `:>> doc` (doc is a keyword, not a feature)
+```sysml
+// WRONG — doc is NOT a redefinable feature!
+action def ProcessOrder {
+    :>> doc = "Process an order";  // ERROR E3002!
+}
+
+// CORRECT — use doc comment syntax
+action def ProcessOrder {
+    doc /* Process an order */
+}
+```
+
 ### Quick Reference Table
 
 | Error | Wrong | Correct |
@@ -138,6 +151,7 @@ package SystemContext {
 | Dangling metadata | `@external;` (alone) | `@external;` then element |
 | :>> without inheritance | `def X { :>> a = v; }` | `def X { attribute a : T = v; }` |
 | `part :>>` as direct child of package | `package P { part :>> x : T; }` | `package P { part x : T; }` |
+| `:>> doc` (doc is a keyword) | `:>> doc = "text";` | `doc /* text */` |
 
 **:>> Decision Tree:**
 ```

@@ -9,13 +9,14 @@
 <% const coveragePercent = it.totalMissing > 0 ? Math.round(((it.totalMissing - it.stillMissing) / it.totalMissing) * 100) : 100; %>
 - Retry coverage: **<%= coveragePercent %>%**
 
-<% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
+<% const hasSyntaxErrors = it.validationExitCode === 1; %>
+<% const hasSemanticErrors = it.validationExitCode === 2; %>
 
-<% if (hasValidationErrors) { %>
+<% if (hasSyntaxErrors) { %>
 
-## 🛑 STOP — Fix Validation Errors Before Continuing
+## 🛑 STOP — Fix Syntax Errors Before Continuing
 
-**Retry is paused.** You must resolve all validation errors shown below before writing new SysML definitions.
+**Retry is paused.** You must resolve all syntax errors shown below before writing new SysML definitions.
 
 **Do not:**
 - Request completion via `FileViewerNextFileSet(paths="")`
@@ -26,7 +27,7 @@
 2. Use `SysMLWrite` to fix the specific issues (write to `.sysml/<%= it.cycleOutputDir %>/`)
 3. Validation re-runs automatically after each write — check that errors decrease
 
-Once all errors are resolved, the next status update will show normal retry instructions and you can resume coverage work.
+Once all syntax errors are resolved, the next status update will show normal retry instructions and you can resume coverage work.
 
 <% } %>
 
@@ -36,7 +37,7 @@ Once all errors are resolved, the next status update will show normal retry inst
 <% } else if (it.validationExitCode === 1) { %>
 ## ❌ Model Validation Errors (syntax)
 <% } else if (it.validationExitCode === 2) { %>
-## ❌ Model Validation Errors (semantic)
+## ⚠️ Semantic Warnings (non-blocking)
 <% } %>
 
 ```
@@ -47,7 +48,15 @@ Once all errors are resolved, the next status update will show normal retry inst
 
 <%~ include("./partials/validation-actions", it) %>
 
-<% if (!hasValidationErrors) { %>
+<% if (hasSemanticErrors && !hasSyntaxErrors) { %>
+## Semantic Errors (non-blocking)
+
+These reference errors will resolve as you cover more files. **Continue coverage work** — do not stop to fix these.
+If a specific error is easy to fix (wrong type name), fix it opportunistically during a write.
+
+<% } %>
+
+<% if (!hasSyntaxErrors) { %>
 
 <% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
 ## Files Still Missing Coverage

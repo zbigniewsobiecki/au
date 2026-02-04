@@ -123,8 +123,9 @@ export interface AgentTurnConfig {
   onFileWrite?: (path: string, mode: string, delta: string | null, diff: string | null) => void | Promise<void>;
   onNextFiles?: (files: string[]) => void;
   trackEntities?: CycleIterationState;
-  getCoveragePercent?: () => number | undefined;
+  getCoveragePercent?: () => { percent: number; covered: number; total: number } | undefined;
   abortSignal?: AbortSignal;
+  onTurnEnd?: () => Promise<void>;
 }
 
 /**
@@ -150,6 +151,8 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
   const textState = createTextBlockState();
   const summary: string[] = [];
   let nextFiles: string[] = [];
+  let turnHadWrites = false;
+  let pendingTurnEndCheck = false;
 
   // Select gadget set
   const gadgetSet = gadgets === "cycle0" ? CYCLE0_GADGETS
@@ -199,9 +202,17 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
   } | null = null;
 
   // Function to print pending turn summary with gadget count
+  let lastCoveredCount: number | undefined;
   const printPendingTurnSummary = () => {
     if (pendingTurnSummary && options.verbose) {
-      const coveragePercent = config.getCoveragePercent?.();
+      const coverageInfo = config.getCoveragePercent?.();
+      let delta: number | undefined;
+      if (coverageInfo) {
+        if (lastCoveredCount !== undefined) {
+          delta = coverageInfo.covered - lastCoveredCount;
+        }
+        lastCoveredCount = coverageInfo.covered;
+      }
       console.log(formatTurnSummary(
         pendingTurnSummary.turnNumber,
         pendingTurnSummary.inputTokens,
@@ -210,7 +221,7 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
         pendingTurnSummary.cost,
         iterationGadgetCount,
         undefined,
-        coveragePercent
+        coverageInfo ? { ...coverageInfo, delta } : undefined
       ));
       pendingTurnSummary = null;
     }
@@ -247,6 +258,12 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
         cachedTokens: iterationCachedTokens,
         cost: iterationCost,
       };
+
+      // Schedule turn-end check if the previous turn had writes
+      if (turnHadWrites) {
+        pendingTurnEndCheck = true;
+        turnHadWrites = false;
+      }
     } else if (event.type === "gadget_call") {
       // Track gadget count in onAll to ensure correct timing with turn summary
       iterationGadgetCount++;
@@ -255,6 +272,14 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
 
   // Stream events
   for await (const event of agent.run()) {
+    // Process pending turn-end check (from previous turn's llm_call_complete)
+    if (pendingTurnEndCheck) {
+      pendingTurnEndCheck = false;
+      if (config.onTurnEnd) {
+        await config.onTurnEnd();
+      }
+    }
+
     // Check for abort signal (set by stall detection in cycle-runner)
     if (config.abortSignal?.aborted) break;
 
@@ -291,6 +316,7 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
             summary.push(`Error writing ${parsed.path}`);
           } else {
             filesWritten++;
+            turnHadWrites = true;
 
             // Extract entities from element content for cross-turn tracking
             const params = result.parameters as { path?: string; element?: string };
@@ -358,6 +384,11 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
     }
   }
 
+  // Process final turn-end check
+  if (turnHadWrites && config.onTurnEnd) {
+    await config.onTurnEnd();
+  }
+
   // Print final turn summary
   printPendingTurnSummary();
 
@@ -404,6 +435,8 @@ export async function runCycleTurn(
   // Stall tracking: use exact covered count instead of rounded % to avoid false stalls
   let writesWithoutCoverageIncrease = 0;
   let previousCoveredCount = 0;
+  let docCoveredCount = 0;
+  let docTotalCount = 0;
 
   // Shared stall state for file-viewer-next injection + AbortController for extreme stall
   const abortController = new AbortController();
@@ -445,7 +478,7 @@ export async function runCycleTurn(
     terminateOnTextOnly: true,
     trackEntities: iterState,
     abortSignal: abortController.signal,
-    getCoveragePercent: () => docCoveragePercent > 0 ? docCoveragePercent : undefined,
+    getCoveragePercent: () => docCoveragePercent > 0 ? { percent: docCoveragePercent, covered: docCoveredCount, total: docTotalCount } : undefined,
     trailingMessage: () => {
       // readCount = all files the agent has seen (FVNFS batches + ReadFiles)
       const liveReadCount = iterState.readFiles.size;
@@ -466,7 +499,7 @@ export async function runCycleTurn(
       // Track FVNFS reads so readCount stays accurate
       for (const f of files) iterState.readFiles.add(f);
     },
-    onFileWrite: async (path, mode, delta, diff) => {
+    onFileWrite: async () => {
       cycleState.filesWritten++;
 
       // Re-run validation after SysML writes so trailing message shows current state
@@ -483,54 +516,52 @@ export async function runCycleTurn(
       } catch {
         // Ignore errors
       }
+    },
+    onTurnEnd: async () => {
+      if (expectedCount <= 0) return;
+      try {
+        const coverage = await checkCycleCoverage(cycle, ".", iterState.readFiles);
+        invalidateCoverageCache();
+        if (coverage.expectedFiles.length > 0) {
+          docCoveragePercent = Math.round(coverage.coveragePercent);
+          latestDocMissingFiles = coverage.missingFiles;
 
-      // Refresh coverage metrics for trailing message and CLI display (unified: read ∩ documented)
-      if (expectedCount > 0) {
-        try {
-          const coverage = await checkCycleCoverage(cycle, ".", iterState.readFiles);
-          invalidateCoverageCache(); // keep SysMLWrite's cache in sync
-          if (coverage.expectedFiles.length > 0) {
-            // Update live coverage for trailing message
-            docCoveragePercent = Math.round(coverage.coveragePercent);
-            latestDocMissingFiles = coverage.missingFiles;
+          const currentCoveredCount = coverage.expectedFiles.length - coverage.missingFiles.length;
+          docCoveredCount = currentCoveredCount;
+          docTotalCount = coverage.expectedFiles.length;
+          if (currentCoveredCount > previousCoveredCount) {
+            writesWithoutCoverageIncrease = 0;
+            previousCoveredCount = currentCoveredCount;
+          } else {
+            writesWithoutCoverageIncrease++;
+          }
 
-            // Stall detection: use exact covered count (avoids rounding false-stalls)
-            const currentCoveredCount = coverage.expectedFiles.length - coverage.missingFiles.length;
-            if (currentCoveredCount > previousCoveredCount) {
-              writesWithoutCoverageIncrease = 0;
-              previousCoveredCount = currentCoveredCount;
-            } else {
-              writesWithoutCoverageIncrease++;
-            }
+          // Sync shared stall state
+          sharedStallState.writesWithoutIncrease = writesWithoutCoverageIncrease;
+          sharedStallState.missingFiles = [...latestDocMissingFiles];
+          sharedStallState.coveragePercent = docCoveragePercent;
 
-            // Sync shared stall state for file-viewer-next injection + sysml-write rejection
-            sharedStallState.writesWithoutIncrease = writesWithoutCoverageIncrease;
-            sharedStallState.missingFiles = [...latestDocMissingFiles];
-            sharedStallState.coveragePercent = docCoveragePercent;
-
-            // Abort on extreme stall
-            if (writesWithoutCoverageIncrease >= 8) {
-              if (options.verbose) {
-                console.log(`\x1b[31m   ✖ Extreme stall (${writesWithoutCoverageIncrease} writes without coverage increase) — aborting turn\x1b[0m`);
-              }
-              abortController.abort();
-            }
-
+          // Abort on extreme stall
+          if (writesWithoutCoverageIncrease >= 8) {
             if (options.verbose) {
-              const covered = coverage.expectedFiles.length - coverage.missingFiles.length;
-              console.log(`\x1b[2m      📄 Coverage: ${covered}/${coverage.expectedFiles.length} (${docCoveragePercent}%)${writesWithoutCoverageIncrease > 0 ? ` [stalled x${writesWithoutCoverageIncrease}]` : ''}\x1b[0m`);
+              console.log(`\x1b[31m   ✖ Extreme stall (${writesWithoutCoverageIncrease} turns without coverage increase) — aborting\x1b[0m`);
+            }
+            abortController.abort();
+          }
 
-              if (coverage.missingFiles.length > 0) {
-                const sample = coverage.missingFiles.slice(0, 3).map(f => `"${f}"`).join(', ');
-                const moreCount = coverage.missingFiles.length - 3;
-                const moreStr = moreCount > 0 ? ` (+${moreCount} more)` : '';
-                console.log(`\x1b[2m      Still need: ${sample}${moreStr}\x1b[0m`);
-              }
+          if (options.verbose) {
+            const covered = coverage.expectedFiles.length - coverage.missingFiles.length;
+            console.log(`\x1b[2m      📄 Coverage: ${covered}/${coverage.expectedFiles.length} (${docCoveragePercent}%)${writesWithoutCoverageIncrease > 0 ? ` [stalled x${writesWithoutCoverageIncrease}]` : ''}\x1b[0m`);
+            if (coverage.missingFiles.length > 0) {
+              const sample = coverage.missingFiles.slice(0, 3).map(f => `"${f}"`).join(', ');
+              const moreCount = coverage.missingFiles.length - 3;
+              const moreStr = moreCount > 0 ? ` (+${moreCount} more)` : '';
+              console.log(`\x1b[2m      Still need: ${sample}${moreStr}\x1b[0m`);
             }
           }
-        } catch {
-          // Coverage check failed - continue with existing values
         }
+      } catch {
+        // Coverage check failed - continue with existing values
       }
     },
   });
@@ -605,8 +636,9 @@ export async function runRetryTurn(
     terminateOnTextOnly: false,
     getCoveragePercent: () => {
       if (totalMissing <= 0) return undefined;
-      const pct = Math.round(((totalMissing - stillMissingCount) / totalMissing) * 100);
-      return pct > 0 ? pct : undefined;
+      const covered = totalMissing - stillMissingCount;
+      const pct = Math.round((covered / totalMissing) * 100);
+      return pct > 0 ? { percent: pct, covered, total: totalMissing } : undefined;
     },
     trailingMessage: () => {
       return render("sysml/retry-trailing", {

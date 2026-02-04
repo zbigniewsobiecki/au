@@ -44,16 +44,18 @@ export function formatTurnSummary(
   cost: number,
   gadgetCount?: number,
   prefix: string = "Turn",
-  coveragePercent?: number
+  coverageInfo?: { percent: number; covered: number; total: number; delta?: number }
 ): string {
   const usageStr = formatTokenUsage(inputTokens, outputTokens, cachedTokens);
   const costStr = formatCost(cost);
   const gadgetStr = gadgetCount !== undefined && gadgetCount > 0
     ? ` · ${gadgetCount} gadget${gadgetCount !== 1 ? "s" : ""}`
     : "";
-  const coverageStr = coveragePercent !== undefined && coveragePercent > 0
-    ? ` · ${coveragePercent}%`
-    : "";
+  let coverageStr = "";
+  if (coverageInfo !== undefined && coverageInfo.percent > 0) {
+    const deltaStr = coverageInfo.delta !== undefined ? ` ${coverageInfo.delta >= 0 ? "+" : ""}${coverageInfo.delta}` : "";
+    coverageStr = ` · ${coverageInfo.percent}% (${coverageInfo.covered}/${coverageInfo.total}${deltaStr})`;
+  }
   return `\x1b[2m   ⤷ ${prefix} ${turnNumber}: ${usageStr} · ${costStr}${gadgetStr}${coverageStr}\x1b[0m`;
 }
 

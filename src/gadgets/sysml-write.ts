@@ -485,7 +485,7 @@ Use SysMLRead to inspect file contents, or SysMLList to see all files.`;
         }
 
         // Reject zero-coverage writes at severe stall
-        if (sysmlWriteStallState && sysmlWriteStallState.writesWithoutIncrease >= 6
+        if (sysmlWriteStallState && sysmlWriteStallState.writesWithoutIncrease >= 3
             && result.added === 0 && result.replaced > 0) {
           const pct = sysmlWriteStallState.coveragePercent ?? 0;
           const stalls = sysmlWriteStallState.writesWithoutIncrease;
