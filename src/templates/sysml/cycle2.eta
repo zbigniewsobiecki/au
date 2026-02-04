@@ -438,7 +438,7 @@ This cycle focuses ONLY on architectural structure. Data models, behaviors, etc.
 <% if (it.isIterative) { %>
 ### File Selection Priority for Structure Analysis
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. Module entry points (`index.ts`, `index.js`, `mod.rs`, `__init__.py`)
 2. Module files (`*.module.ts`, `*.module.js`)
 3. Main/App files (`main.ts`, `app.ts`, `server.ts`)

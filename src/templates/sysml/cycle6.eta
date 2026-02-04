@@ -536,7 +536,7 @@ action def SearchProducts { /* ... */ }
 <% if (it.isIterative) { %>
 ### File Selection Priority for Analysis
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. Config files (`config.ts`, `*.config.ts`, `*.config.js`)
 2. Middleware stack (`middleware/*.ts`, `*.middleware.ts`)
 3. Auth/Security (`auth/*.ts`, `guards/*.ts`, `*.guard.ts`)

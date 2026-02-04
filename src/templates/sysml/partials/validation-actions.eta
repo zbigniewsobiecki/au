@@ -34,6 +34,11 @@ These are undefined references or type mismatches:
 - **E3002 "feature not found"**: The referenced feature doesn't exist in the parent type.
   **Most common cause**: Using `part :>> name` as a direct child of a package. Packages don't inherit features — use `part name : Type { }` instead of `part :>> name`. Check the parent definition and fix the reference.
   **NEVER delete type definitions to fix E3002** — deleting `port def`, `item def`, `part def`, etc. causes cascading E3001 errors. Use SysMLWrite upsert to fix definitions in-place.
+  **Recovery steps for E3002:**
+  1. `SysMLRead` the file to find all `:>>` lines causing E3002
+  2. Use `SysMLWrite` upsert to REPLACE each broken element with correct syntax: `part name : Type { ... }` (no `:>>`)
+  3. Do NOT try to delete first — upsert handles replacement atomically
+  4. If the `:>>` is inside a definition (not a package), verify the parent type actually defines the feature being redefined
 - **E3003 "undefined namespace"**: The imported package doesn't exist. Create the package file FIRST, then import it.
 
 **Important: Delete operations and semantic errors:**

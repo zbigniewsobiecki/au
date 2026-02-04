@@ -93,7 +93,7 @@ The following entities have already been created in this cycle. **Do NOT recreat
 <% if (it.fileViewerContents) { %>
 <%= it.fileViewerContents %>
 <% } else { %>
-*Empty - use FileDiscover or ReadFiles to find relevant files*
+*Use FileViewerNextFileSet to request files (returns contents automatically), or ReadFiles for ad-hoc reads.*
 <% } %>
 
 <% if (it.manifestHints?.directories && it.manifestHints.directories.length > 0) { %>
@@ -112,9 +112,13 @@ Use `FileDiscover` to find specific file types, or `ReadFiles` to read directly.
 1. **Explore** using `FileDiscover` or `ReadFiles` to find relevant files
 2. **Analyze** files in the File Viewer above
 3. **Write SysML** using `SysMLWrite` for discovered elements
-4. **Request more files** using `FileViewerNextFileSet(paths="file1\nfile2\n...")`
+4. **Request & read more files** using `FileViewerNextFileSet(paths="file1\nfile2\n...")` — returns file contents directly, no need for a separate ReadFiles call
 5. Select up to <%= it.batchSize || 8 %> files per batch for thorough analysis
 6. When done with this cycle, call `FileViewerNextFileSet(paths="")`
+7. **Breadth over depth**: Focus on covering NEW source files that don't have SysML definitions yet.
+   Do NOT refine or rewrite existing definitions unless they contain errors, factual inaccuracies, or
+   problems visible in the source code. If SysMLWrite reports "All N elements already existed" or the
+   file shrinks, you are re-writing content that already exists — move on to uncovered files instead.
 
 <% if (it.manifestHints?.expectedFileCount && it.manifestHints.expectedFileCount > 5) { %>
 ## CRITICAL: Coverage Requirements

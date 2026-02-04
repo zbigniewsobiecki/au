@@ -303,7 +303,7 @@ package SystemRequirements {
 <% if (it.isIterative) { %>
 ### File Selection Priority for Discovery
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. README files (`README.md`, `README.*`)
 2. Package manifests (`package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`)
 3. Docker files (`Dockerfile`, `docker-compose.yml`)

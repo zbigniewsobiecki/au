@@ -69,10 +69,14 @@ Once all errors are resolved, the next status update will show normal ingestion 
 ## Required Actions
 
 <% if (coveragePercent < 80) { %>
-1. Use `FileDiscover` or `ReadFiles` to find more files
+1. Use `FileDiscover` to find file paths, or `ReadFiles` for ad-hoc reads
 2. Analyze and write SysML for discovered elements
 3. Include `@SourceFile { :>> path = "<filepath>"; }` metadata
-4. Request next batch with `FileViewerNextFileSet(paths="...")`
+4. Request next batch with `FileViewerNextFileSet(paths="...")` — returns file contents directly
+
+**Priority: Cover new ground.** Do not rewrite existing definitions unless they have errors.
+If SysMLWrite reports "All N elements already existed" or the file size decreases, skip that content
+and request files you haven't processed yet.
 
 **DO NOT call `FileViewerNextFileSet(paths="")` until coverage >= 80%**
 <% } else { %>

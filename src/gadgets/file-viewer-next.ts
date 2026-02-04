@@ -1,5 +1,7 @@
 import { createGadget, z } from "llmist";
+import { readFile } from "node:fs/promises";
 import { parsePathList } from "../lib/command-utils.js";
+import { createFileFilter } from "../lib/file-filter.js";
 import {
   checkCycleCoverage,
   formatCoverageResult,
@@ -44,10 +46,11 @@ export function setValidationEnforcement(enabled: boolean): void {
 
 export const fileViewerNextFileSet = createGadget({
   name: "FileViewerNextFileSet",
-  description: `Select the next batch of files to view in the file viewer.
+  description: `Select the next batch of files and read their contents in one step.
 Call EXACTLY ONCE per turn.
 Pass file paths as a newline-separated string.
 Pass an empty string when all documentation is complete.
+Returns file contents directly — no need for a separate ReadFiles call.
 
 Example:
   paths="src/index.ts
@@ -107,6 +110,27 @@ Validation re-runs automatically after each write.`;
       }
     }
 
-    return `[${reason}] Selected ${pathList.length} files: ${pathList.join(", ")}`;
+    // Read file contents (same logic as ReadFiles gadget)
+    const filter = await createFileFilter();
+    const fileContents: string[] = [];
+
+    for (const filePath of pathList) {
+      if (!filter.accepts(filePath)) {
+        continue;
+      }
+      try {
+        const content = await readFile(filePath, "utf-8");
+        fileContents.push(`=== ${filePath} ===\n${content}`);
+      } catch (error) {
+        fileContents.push(`=== ${filePath} ===\nError reading file: ${error}`);
+      }
+    }
+
+    const header = `[${reason}] Selected ${pathList.length} files:`;
+    if (fileContents.length === 0) {
+      return `${header}\n\nNo valid files to read (all filtered out or do not exist).`;
+    }
+
+    return `${header}\n\n${fileContents.join("\n\n")}`;
   },
 });

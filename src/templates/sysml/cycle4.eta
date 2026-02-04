@@ -32,6 +32,15 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
 *Use FileDiscover to find relevant files*
 <% } %>
 
+### Type Dependency Rule
+
+**CRITICAL**: Before writing an operation that references a DTO or data type (e.g., `CreateUserRequest`, `VehicleFilters`), verify the type exists in `data/dtos.sysml` or another data file. If it doesn't exist, create the type definition FIRST, then write the operation. Writing an operation that references an undefined type causes E3001 errors that block validation.
+
+When you need a DTO type during cycle 4, just upsert it — the upsert handles duplicates automatically:
+  `SysMLWrite(path="data/dtos.sysml", element="item def CreateUserRequest { ... }", at="DataTransferObjects")`
+
+Then write the operation that references it. No need to SysMLRead first — if the type already exists, the upsert will update it harmlessly.
+
 ### Your Tasks
 
 1. **Find behavior sources**:
@@ -574,9 +583,16 @@ This cycle focuses ONLY on behavioral modeling. Verification and analysis will b
 - [ ] Output is limited to `behavior/` directory only
 
 <% if (it.isIterative) { %>
+### Write Efficiency
+
+- After reading source files, write ALL new operations from the current batch in a **single SysMLWrite call** per target file. Do not split across multiple writes to the same file.
+- **Only include NEW elements** in your fragment. Existing elements are preserved automatically by upsert — you never need to re-send them.
+- Do not re-read the target file between writes to the same scope — the upsert handles conflicts automatically.
+- A fragment with 5 new elements is better than one with 5 new + 100 existing re-sent.
+
 ### File Selection Priority for Behavior Analysis
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. Service files (`*.service.ts`, `*.service.js`)
 2. Controller files (`*.controller.ts`, `*.handler.ts`)
 3. Route files (`*.routes.ts`, `routes/*.ts`)

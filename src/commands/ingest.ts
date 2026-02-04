@@ -533,8 +533,9 @@ export default class Ingest extends Command {
           llmDone = true;
         }
       } else {
+        // LLM selected files via FileViewerNextFileSet which already returned contents
         iterState.currentBatch = turnResult.nextFiles.slice(0, batchSize);
-        fileViewerContents = await readFileContents(iterState.currentBatch);
+        fileViewerContents = "";
       }
 
       // Progress update

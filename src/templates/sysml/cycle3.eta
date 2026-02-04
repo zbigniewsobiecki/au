@@ -412,7 +412,7 @@ This cycle focuses ONLY on data model extraction. Behaviors, verification, etc. 
 <% if (it.isIterative) { %>
 ### File Selection Priority for Data Extraction
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. Schema files (`*.prisma`, `*.graphql`, `*.proto`, `*.sql`)
 2. Type definition files (`*.types.ts`, `*.d.ts`, `types/*.ts`)
 3. Model files (`*.model.ts`, `models/*.ts`)

@@ -417,7 +417,11 @@ Use SysMLRead to inspect file contents, or SysMLList to see all files.`;
         }
 
         // Generate diff for CLI display (colors for human, plain +/- for LLM)
-        const diffOutput = "\n\n" + generatePlainDiff(originalContent, newContent, 50);
+        // Suppress or limit diff for pure-replacement writes (no new content — diff is noise)
+        const diffLineLimit = (result.added === 0 && result.replaced > 0) ? 0
+          : (result.added > 0 && result.replaced > 0 && result.added < result.replaced * 0.1) ? 5
+          : 50;
+        const diffOutput = diffLineLimit === 0 ? "" : "\n\n" + generatePlainDiff(originalContent, newContent, diffLineLimit);
 
         // Warn if no changes were made but element was provided
         if (result.added === 0 && result.replaced === 0 && element && element.trim()) {

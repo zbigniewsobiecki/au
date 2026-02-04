@@ -58,7 +58,7 @@ SysMLDelete(path="data/entities.sysml", element="DomainEntities::Legacy", recurs
     const pattern = hasWildcard ? element : (recursive ? `${element}::**` : element);
 
     try {
-      const result = await deleteElements(fullPath, [pattern], { dryRun });
+      const result = await deleteElements(fullPath, [pattern], { dryRun, allowSemanticErrors: true });
 
       if (!result.success) {
         return `path=${fullPath} status=error\n\nDelete failed:\n${result.stderr || "Unknown error"}`;
