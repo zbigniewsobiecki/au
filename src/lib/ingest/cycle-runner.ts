@@ -32,6 +32,9 @@ import {
   manifestRead,
   enumerateDirectories,
   fileViewerNextFileSet,
+  invalidateCoverageCache,
+  setStallState,
+  setSysmlWriteStallState,
 } from "../../gadgets/index.js";
 import { checkCycleCoverage, validateSourceFilePaths, type CoverageResult, type SourceFileError } from "../sysml/index.js";
 import { validateModelFull, type ValidationResult } from "../sysml/sysml2-cli.js";
@@ -84,6 +87,7 @@ export interface TrailingMessageContext {
   validationExitCode?: number;
   validationOutput?: string;
   sourceFileErrors?: SourceFileError[];
+  writesWithoutCoverageIncrease?: number;
 }
 
 /**
@@ -120,6 +124,7 @@ export interface AgentTurnConfig {
   onNextFiles?: (files: string[]) => void;
   trackEntities?: CycleIterationState;
   getCoveragePercent?: () => number | undefined;
+  abortSignal?: AbortSignal;
 }
 
 /**
@@ -250,6 +255,9 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
 
   // Stream events
   for await (const event of agent.run()) {
+    // Check for abort signal (set by stall detection in cycle-runner)
+    if (config.abortSignal?.aborted) break;
+
     if (event.type === "text") {
       if (options.verbose) {
         textState.inTextBlock = true;
@@ -366,6 +374,7 @@ export async function runAgentTurn(config: AgentTurnConfig): Promise<CycleTurnRe
     cachedTokens: totalCachedTokens,
     cost: totalCost,
     filesWritten,
+    aborted: config.abortSignal?.aborted,
   };
 }
 
@@ -387,10 +396,24 @@ export async function runCycleTurn(
     docCoveragePercent: number;
     docMissingFiles: string[];
   }
-): Promise<{ nextFiles: string[]; summary: string[]; turns: number; validationResult: ValidationResult | null }> {
+): Promise<{ nextFiles: string[]; summary: string[]; turns: number; validationResult: ValidationResult | null; aborted?: boolean }> {
   const { expectedCount, cycle, docMissingFiles } = trailingContext;
   let { docCoveragePercent } = trailingContext;
   let latestDocMissingFiles = docMissingFiles;
+
+  // Stall tracking: use exact covered count instead of rounded % to avoid false stalls
+  let writesWithoutCoverageIncrease = 0;
+  let previousCoveredCount = 0;
+
+  // Shared stall state for file-viewer-next injection + AbortController for extreme stall
+  const abortController = new AbortController();
+  const sharedStallState = {
+    writesWithoutIncrease: 0,
+    missingFiles: [...docMissingFiles],
+    coveragePercent: docCoveragePercent,
+  };
+  setStallState(sharedStallState);
+  setSysmlWriteStallState(sharedStallState);
 
   // Run full model validation before turn
   let validationResult: ValidationResult | null = null;
@@ -409,7 +432,9 @@ export async function runCycleTurn(
     // Ignore errors
   }
 
-  const result = await runAgentTurn({
+  let result: CycleTurnResult;
+  try {
+    result = await runAgentTurn({
     client,
     systemPrompt,
     userMessage,
@@ -419,10 +444,11 @@ export async function runCycleTurn(
     maxIterations: Math.min(options.maxIterations, 30),
     terminateOnTextOnly: true,
     trackEntities: iterState,
+    abortSignal: abortController.signal,
     getCoveragePercent: () => docCoveragePercent > 0 ? docCoveragePercent : undefined,
     trailingMessage: () => {
-      // Use live coverage data (updated by onFileWrite callback)
-      const liveReadCount = iterState.readFiles.size + (iterState.currentBatch?.length ?? 0);
+      // readCount = all files the agent has seen (FVNFS batches + ReadFiles)
+      const liveReadCount = iterState.readFiles.size;
       return render("sysml/trailing", {
         iteration: iterState.turnCount,
         maxIterations: options.maxIterations,
@@ -433,7 +459,12 @@ export async function runCycleTurn(
         validationExitCode: validationResult?.exitCode ?? 0,
         validationOutput: validationResult?.output ?? "",
         sourceFileErrors,
+        writesWithoutCoverageIncrease,
       });
+    },
+    onNextFiles: (files) => {
+      // Track FVNFS reads so readCount stays accurate
+      for (const f of files) iterState.readFiles.add(f);
     },
     onFileWrite: async (path, mode, delta, diff) => {
       cycleState.filesWritten++;
@@ -457,14 +488,37 @@ export async function runCycleTurn(
       if (expectedCount > 0) {
         try {
           const coverage = await checkCycleCoverage(cycle, ".", iterState.readFiles);
+          invalidateCoverageCache(); // keep SysMLWrite's cache in sync
           if (coverage.expectedFiles.length > 0) {
             // Update live coverage for trailing message
             docCoveragePercent = Math.round(coverage.coveragePercent);
             latestDocMissingFiles = coverage.missingFiles;
 
+            // Stall detection: use exact covered count (avoids rounding false-stalls)
+            const currentCoveredCount = coverage.expectedFiles.length - coverage.missingFiles.length;
+            if (currentCoveredCount > previousCoveredCount) {
+              writesWithoutCoverageIncrease = 0;
+              previousCoveredCount = currentCoveredCount;
+            } else {
+              writesWithoutCoverageIncrease++;
+            }
+
+            // Sync shared stall state for file-viewer-next injection + sysml-write rejection
+            sharedStallState.writesWithoutIncrease = writesWithoutCoverageIncrease;
+            sharedStallState.missingFiles = [...latestDocMissingFiles];
+            sharedStallState.coveragePercent = docCoveragePercent;
+
+            // Abort on extreme stall
+            if (writesWithoutCoverageIncrease >= 8) {
+              if (options.verbose) {
+                console.log(`\x1b[31m   ✖ Extreme stall (${writesWithoutCoverageIncrease} writes without coverage increase) — aborting turn\x1b[0m`);
+              }
+              abortController.abort();
+            }
+
             if (options.verbose) {
               const covered = coverage.expectedFiles.length - coverage.missingFiles.length;
-              console.log(`\x1b[2m      📄 Coverage: ${covered}/${coverage.expectedFiles.length} (${docCoveragePercent}%)\x1b[0m`);
+              console.log(`\x1b[2m      📄 Coverage: ${covered}/${coverage.expectedFiles.length} (${docCoveragePercent}%)${writesWithoutCoverageIncrease > 0 ? ` [stalled x${writesWithoutCoverageIncrease}]` : ''}\x1b[0m`);
 
               if (coverage.missingFiles.length > 0) {
                 const sample = coverage.missingFiles.slice(0, 3).map(f => `"${f}"`).join(', ');
@@ -480,6 +534,10 @@ export async function runCycleTurn(
       }
     },
   });
+  } finally {
+    setStallState(null);
+    setSysmlWriteStallState(null);
+  }
 
   // Update cycle state with token tracking
   cycleState.inputTokens += result.inputTokens;
@@ -492,6 +550,7 @@ export async function runCycleTurn(
     summary: result.summary,
     turns: result.turns,
     validationResult,
+    aborted: result.aborted,
   };
 }
 

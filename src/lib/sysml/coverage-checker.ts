@@ -263,13 +263,11 @@ export async function checkCycleCoverage(
   }
 
   // Find covered files from .sysml Source: comments
-  // IMPORTANT: Only scan the cycle's specific output directory, not the entire .sysml dir.
-  // This prevents files documented in earlier cycles (e.g., structure/) from being
-  // counted as "covered" for later cycles (e.g., behavior/).
-  const cycleOutputDir = CYCLE_OUTPUT_DIRS[cycle];
-  const sysmlDir = cycleOutputDir
-    ? join(basePath, SYSML_DIR, cycleOutputDir)
-    : join(basePath, SYSML_DIR); // Fallback for unknown cycles
+  // Scan the entire .sysml/ directory — the agent may write @SourceFile annotations
+  // to any subdirectory (structure/, data/, behavior/, etc.). This is safe because
+  // expectedFiles is already cycle-scoped from the manifest, so only the current
+  // cycle's target files are counted in the coverage percentage.
+  const sysmlDir = join(basePath, SYSML_DIR);
   const coveredSet = await findCoveredFiles(sysmlDir);
 
   result.coveredFiles = [...coveredSet].sort();

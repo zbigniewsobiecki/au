@@ -5,13 +5,17 @@
 - Files read: **<%= it.readCount %>** / ~**<%= it.expectedCount %>**
 <% const coveragePercent = it.docCoveragePercent ?? (it.expectedCount > 0 ? Math.round((it.readCount / it.expectedCount) * 100) : 100); %>
 - Coverage: **<%= coveragePercent %>%** (files both read and documented)
+<% const stallCount = it.writesWithoutCoverageIncrease ?? 0; %>
+<% if (stallCount > 0) { %>
+- **Stalled writes: <%= stallCount %>** (SysMLWrite calls without coverage increase)
+<% } %>
 
 <% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
 <% const hasValidationWarnings = it.validationExitCode === 0 && it.validationOutput && it.validationOutput.includes('warning'); %>
 
 <% if (hasValidationErrors) { %>
 
-## 🛑 STOP — Fix Validation Errors Before Continuing
+## STOP — Fix Validation Errors Before Continuing
 
 **Ingestion is paused.** You must resolve all validation errors shown below before analyzing new files or writing new SysML definitions.
 
@@ -31,11 +35,11 @@ Once all errors are resolved, the next status update will show normal ingestion 
 
 <% if (it.validationOutput && it.validationOutput.trim().length > 0) { %>
 <% if (it.validationExitCode === 0) { %>
-## ⚠️ Model Validation Warnings
+## Model Validation Warnings
 <% } else if (it.validationExitCode === 1) { %>
-## ❌ Model Validation Errors (syntax)
+## Model Validation Errors (syntax)
 <% } else if (it.validationExitCode === 2) { %>
-## ❌ Model Validation Errors (semantic)
+## Model Validation Errors (semantic)
 <% } %>
 
 ```
@@ -49,34 +53,96 @@ Once all errors are resolved, the next status update will show normal ingestion 
 <% if (!hasValidationErrors) { %>
 <% /* Only show exploration instructions when no errors */ %>
 
-<% if (coveragePercent < 50) { %>
-⚠️ **COVERAGE TOO LOW** - Document more files with @SourceFile metadata!
-<% } else if (coveragePercent < 80) { %>
-📊 Coverage acceptable but continue to improve
+<% const missingFiles = it.docMissingFiles ?? []; %>
+
+<% if (stallCount >= 5) { %>
+## CRITICAL — COVERAGE STALLED AT <%= coveragePercent %>%
+
+You have written SysML **<%= stallCount %> times** without increasing coverage. You are rewriting content for files that are ALREADY covered.
+
+**STOP ALL CURRENT WORK.** You MUST ONLY process files from the missing list below.
+
+1. Call `FileViewerNextFileSet` with ONLY these uncovered paths
+2. Write SysML for ONLY the new files returned
+3. Do NOT touch any existing SysML definitions
+
+<% if (missingFiles.length > 0) { %>
+### UNCOVERED FILES — Use These Paths in FileViewerNextFileSet
+
+```
+<% for (const file of missingFiles.slice(0, 12)) { %><%= file %>
+<% } %>
+```
+<% if (missingFiles.length > 12) { %>
+*(+<%= missingFiles.length - 12 %> more — request additional batches after processing these)*
+<% } %>
 <% } %>
 
-<% const missingFiles = it.docMissingFiles ?? []; %>
+<% } else if (stallCount >= 2) { %>
+## COVERAGE STALLED — <%= stallCount %> writes without increase (<%= coveragePercent %>%)
+
+You are rewriting SysML for files that are already covered. This does NOT increase coverage.
+
+**STOP** rewriting existing definitions. Instead:
+1. Call `FileViewerNextFileSet` with uncovered file paths listed below
+2. Write SysML for the NEW files only
+3. Each write MUST cover at least one file from the "Files Missing" list
+
 <% if (missingFiles.length > 0) { %>
-### Files Missing @SourceFile Documentation (first 15)
-<% for (const file of missingFiles.slice(0, 15)) { %>
+### Use These Paths in FileViewerNextFileSet
+
+```
+<% for (const file of missingFiles.slice(0, 10)) { %><%= file %>
+<% } %>
+```
+<% if (missingFiles.length > 10) { %>
+*(+<%= missingFiles.length - 10 %> more)*
+<% } %>
+<% } %>
+
+<% } else { %>
+<% /* Normal (non-stalled) flow */ %>
+
+<% if (coveragePercent < 50) { %>
+**COVERAGE TOO LOW** — Document more files with @SourceFile metadata!
+<% } else if (coveragePercent < 80) { %>
+Coverage acceptable but continue to improve.
+<% } %>
+
+<% if (missingFiles.length > 0) { %>
+<%
+  // Group missing files by top-level directory for easier FVNFS batching
+  const dirGroups = {};
+  for (const file of missingFiles) {
+    const parts = file.split('/');
+    const dir = parts.length > 2 ? parts.slice(0, 2).join('/') : parts[0];
+    if (!dirGroups[dir]) dirGroups[dir] = [];
+    dirGroups[dir].push(file);
+  }
+  const sortedDirs = Object.keys(dirGroups).sort((a, b) => dirGroups[b].length - dirGroups[a].length);
+%>
+### Files Missing @SourceFile Documentation (<%= missingFiles.length %> files)
+<% for (const dir of sortedDirs.slice(0, 8)) { %>
+
+**<%= dir %>/** (<%= dirGroups[dir].length %> files)
+<% for (const file of dirGroups[dir].slice(0, 5)) { %>
 - `<%= file %>`
 <% } %>
-<% if (missingFiles.length > 15) { %>
-*(+<%= missingFiles.length - 15 %> more)*
+<% if (dirGroups[dir].length > 5) { %>
+  *... +<%= dirGroups[dir].length - 5 %> more in this directory*
+<% } %>
+<% } %>
+<% if (sortedDirs.length > 8) { %>
+*(+<%= sortedDirs.length - 8 %> more directories)*
 <% } %>
 <% } %>
 
 ## Required Actions
 
 <% if (coveragePercent < 80) { %>
-1. Use `FileDiscover` to find file paths, or `ReadFiles` for ad-hoc reads
-2. Analyze and write SysML for discovered elements
-3. Include `@SourceFile { :>> path = "<filepath>"; }` metadata
-4. Request next batch with `FileViewerNextFileSet(paths="...")` — returns file contents directly
-
-**Priority: Cover new ground.** Do not rewrite existing definitions unless they have errors.
-If SysMLWrite reports "All N elements already existed" or the file size decreases, skip that content
-and request files you haven't processed yet.
+1. Request uncovered files with `FileViewerNextFileSet(paths="...")`
+2. Write SysML with `@SourceFile { :>> path = "<filepath>"; }` metadata
+3. Do NOT rewrite existing definitions — only cover new files
 
 **DO NOT call `FileViewerNextFileSet(paths="")` until coverage >= 80%**
 <% } else { %>
@@ -85,8 +151,6 @@ Coverage is good. You may finish if you've:
 - Included `@SourceFile { :>> path = "<filepath>"; }` metadata for each covered file
 <% } %>
 
-<% if (it.createdEntities && it.createdEntities.length > 10) { %>
-**DO NOT re-write existing SysML definitions.** If SysMLWrite returns "Replaced: N, Added: 0", stop writing to that file and move to uncovered source files.
 <% } %>
 
 <%~ include("./partials/maximize-extraction", it) %>

@@ -22,9 +22,77 @@ import {
   writeEditDebug,
   type EditDebugMetadata,
 } from "../lib/edit-debug.js";
+import { getCoverageContext } from "./file-viewer-next.js";
+import { checkCycleCoverage, type CoverageResult } from "../lib/sysml/index.js";
 
 /** Tracks repeated delete failures per file:pattern to break retry loops */
 const deleteFailureTracker = new Map<string, number>();
+
+// ---------------------------------------------------------------------------
+// Coverage cache (avoids re-scanning hundreds of files on every SysMLWrite)
+// ---------------------------------------------------------------------------
+let cachedCoverage: CoverageResult | null = null;
+let cachedCoverageTime = 0;
+const COVERAGE_CACHE_TTL_MS = 10_000; // 10 seconds
+
+async function getCachedCoverage(): Promise<CoverageResult | null> {
+  const ctx = getCoverageContext();
+  if (!ctx) return null;
+
+  const now = Date.now();
+  if (cachedCoverage && now - cachedCoverageTime < COVERAGE_CACHE_TTL_MS) {
+    return cachedCoverage;
+  }
+
+  try {
+    cachedCoverage = await checkCycleCoverage(ctx.cycle, ctx.basePath, ctx.readFiles);
+    cachedCoverageTime = now;
+    return cachedCoverage;
+  } catch {
+    return null;
+  }
+}
+
+/** Invalidate the coverage cache (call after coverage refresh in cycle-runner). */
+export function invalidateCoverageCache(): void {
+  cachedCoverage = null;
+  cachedCoverageTime = 0;
+}
+
+// ---------------------------------------------------------------------------
+// Stall state shared with cycle-runner (for write rejection at severe stall)
+// ---------------------------------------------------------------------------
+let sysmlWriteStallState: {
+  writesWithoutIncrease: number;
+  missingFiles: string[];
+  coveragePercent?: number;
+} | null = null;
+
+/**
+ * Set the stall state for SysMLWrite rejection logic.
+ * Call from cycle-runner to make stall info visible to the gadget.
+ */
+export function setSysmlWriteStallState(state: typeof sysmlWriteStallState): void {
+  sysmlWriteStallState = state;
+}
+
+// ---------------------------------------------------------------------------
+// @SourceFile path extraction from SysML element text
+// ---------------------------------------------------------------------------
+const SOURCE_FILE_REGEX = /@SourceFile\s*\{\s*(?::>>\s*)?path\s*=\s*"([^"]+)"/g;
+
+/** Extract @SourceFile paths from a SysML element string. */
+function extractSourceFilePaths(element: string): string[] {
+  const paths: string[] = [];
+  let match;
+  SOURCE_FILE_REGEX.lastIndex = 0;
+  while ((match = SOURCE_FILE_REGEX.exec(element)) !== null) {
+    const p = match[1].trim();
+    if (p) paths.push(p);
+  }
+  SOURCE_FILE_REGEX.lastIndex = 0;
+  return paths;
+}
 
 /**
  * Clean up stale .tmp files for a given target file.
@@ -416,6 +484,26 @@ Do NOT re-send the same elements. Focus on uncovered source files instead.
 Use SysMLRead to inspect file contents, or SysMLList to see all files.`;
         }
 
+        // Reject zero-coverage writes at severe stall
+        if (sysmlWriteStallState && sysmlWriteStallState.writesWithoutIncrease >= 6
+            && result.added === 0 && result.replaced > 0) {
+          const pct = sysmlWriteStallState.coveragePercent ?? 0;
+          const stalls = sysmlWriteStallState.writesWithoutIncrease;
+          const uncoveredSample = sysmlWriteStallState.missingFiles.slice(0, 10);
+          const fileList = uncoveredSample.map(f => `- ${f}`).join("\n");
+          const moreCount = sysmlWriteStallState.missingFiles.length - uncoveredSample.length;
+          const moreNote = moreCount > 0 ? `\n- ... and ${moreCount} more` : "";
+
+          return `path=${fullPath} status=error mode=upsert
+
+ERROR: Write rejected — coverage stalled at ${pct}% (${stalls} writes without increase).
+All @SourceFile paths in this write are already covered. You MUST write elements
+for UNCOVERED source files instead.
+
+Uncovered files to document:
+${fileList}${moreNote}`;
+        }
+
         // Generate diff for CLI display (colors for human, plain +/- for LLM)
         // Suppress or limit diff for pure-replacement writes (no new content — diff is noise)
         const diffLineLimit = (result.added === 0 && result.replaced > 0) ? 0
@@ -433,10 +521,31 @@ Use SysMLRead to inspect file contents, or SysMLList to see all files.`;
 
         const actionDesc = result.replaced > 0 ? "replaced" : "added";
 
-        // Add efficiency guidance when all elements already existed
+        // Hard warning when all elements already existed — coverage is not increasing
         let efficiencyNote = "";
         if (result.replaced > 0 && result.added === 0) {
-          efficiencyNote = `\nNOTE: All ${result.replaced} elements already existed and were updated. No new content added. Focus on writing definitions for uncovered source files.`;
+          const coverage = await getCachedCoverage();
+          if (coverage && coverage.missingFiles.length > 0) {
+            const pct = coverage.coveragePercent;
+            const missing = coverage.missingFiles.length;
+            const sourcePaths = extractSourceFilePaths(element!);
+            const alreadyCoveredList = sourcePaths.length > 0
+              ? sourcePaths.map(p => `  - ${p}`).join("\n")
+              : "  (could not extract @SourceFile paths from element)";
+            const suggestedFiles = coverage.missingFiles.slice(0, 8);
+            const suggestedPaths = suggestedFiles.map(f => `  "${f}"`).join("\n");
+            const moreCount = missing - suggestedFiles.length;
+            const moreNote = moreCount > 0 ? `\n  ... and ${moreCount} more uncovered files` : "";
+
+            efficiencyNote = `\n\nSTOP — COVERAGE NOT INCREASING (${pct}%, ${missing} files still missing)
+All ${result.replaced} elements ALREADY EXISTED. The files you wrote about are already covered:
+${alreadyCoveredList}
+
+You MUST request UNCOVERED files instead. Use FileViewerNextFileSet with these paths:
+${suggestedPaths}${moreNote}`;
+          } else {
+            efficiencyNote = `\nNOTE: All ${result.replaced} elements already existed and were updated. No new content added.`;
+          }
         }
 
         // Include validation status based on exit code

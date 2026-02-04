@@ -509,6 +509,19 @@ export default class Ingest extends Command {
 
       // Check if LLM is done
       if (turnResult.nextFiles.length === 0) {
+        // Handle aborted turns: re-seed with uncovered files instead of stopping
+        if (turnResult.aborted) {
+          const freshCoverage = await checkCycleCoverage(cycle, ".", iterState.readFiles);
+          if (freshCoverage.missingFiles.length > 0) {
+            iterState.currentBatch = freshCoverage.missingFiles.slice(0, batchSize);
+            fileViewerContents = await readFileContents(iterState.currentBatch);
+            if (flags.verbose) {
+              console.log(`\x1b[33m   ⚡ Re-seeding after abort with ${iterState.currentBatch.length} uncovered files (${freshCoverage.missingFiles.length} remaining)\x1b[0m`);
+            }
+            continue;
+          }
+        }
+
         // Early-termination prevention
         const minFilesExpected = manifestHints?.expectedFileCount ?? 0;
         const coverageRatio = minFilesExpected > 0
