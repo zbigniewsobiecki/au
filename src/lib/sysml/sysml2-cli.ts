@@ -189,6 +189,7 @@ export interface SetResult {
 
 export interface DeleteResult {
   success: boolean;
+  exitCode: number; // 0=success, 1=parse error, 2=semantic error
   modifiedFile: string;
   deleted: number;
   diagnostics: Sysml2Diagnostic[];
@@ -644,6 +645,7 @@ export async function deleteElements(
 
       resolve({
         success,
+        exitCode: code ?? 1,
         modifiedFile: targetFile,
         deleted,
         diagnostics,

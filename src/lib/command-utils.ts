@@ -1,6 +1,6 @@
 import { Flags } from "@oclif/core";
 import { AgentBuilder, LLMist, resolveModel } from "llmist";
-import type { ExecutionEvent, AbstractGadget } from "llmist";
+import type { ExecutionEvent, AbstractGadget, AgentHooks } from "llmist";
 import { stat, readFile } from "node:fs/promises";
 import { Output } from "./output.js";
 import {
@@ -137,6 +137,39 @@ export function createRateLimitConfig(rpm: number, tpm: number): RateLimitConfig
   };
 }
 
+const MAX_GADGET_CALLS_PER_RESPONSE = 15;
+
+export function createGadgetLimitHooks(): { hooks: AgentHooks; signal: AbortSignal } {
+  const abortController = new AbortController();
+  let lastIteration = -1;
+  let callCount = 0;
+
+  return {
+    signal: abortController.signal,
+    hooks: {
+      controllers: {
+        beforeGadgetExecution: async (ctx) => {
+          if (ctx.iteration !== lastIteration) {
+            lastIteration = ctx.iteration;
+            callCount = 0;
+          }
+          callCount++;
+          if (callCount > MAX_GADGET_CALLS_PER_RESPONSE) {
+            abortController.abort(
+              `Gadget call limit exceeded (max ${MAX_GADGET_CALLS_PER_RESPONSE} per response). The LLM issued too many tool calls.`
+            );
+            return {
+              action: "skip",
+              syntheticResult: `Aborted: too many gadget calls.`,
+            };
+          }
+          return { action: "proceed" };
+        },
+      },
+    },
+  };
+}
+
 /**
  * Configures an agent builder with standard retry and rate limit settings.
  */
@@ -146,9 +179,12 @@ export function configureBuilder(
   rpm: number,
   tpm: number
 ): AgentBuilder {
+  const { hooks, signal } = createGadgetLimitHooks();
   return builder
     .withRetry(createRetryConfig(out))
-    .withRateLimits(createRateLimitConfig(rpm, tpm));
+    .withRateLimits(createRateLimitConfig(rpm, tpm))
+    .withHooks(hooks)
+    .withSignal(signal);
 }
 
 /**

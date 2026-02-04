@@ -136,14 +136,14 @@ The missing files MUST be documented before you can finish.`;
       return "DONE: No more files requested.";
     }
 
-    // Block new file requests while validation errors exist
+    // Block new file requests while syntax errors exist (semantic errors are non-blocking)
     if (validationEnforcementEnabled) {
       try {
         const validation = await validateModelFull(".sysml");
-        if (validation.exitCode !== 0) {
-          return `ERROR: Cannot request new files while validation errors exist.
+        if (validation.exitCode === 1) {
+          return `ERROR: Cannot request new files while syntax errors exist.
 
-Fix all validation errors first, then request new file batches.
+Fix all syntax errors first, then request new file batches.
 Use SysMLRead to examine files with errors and SysMLWrite to fix them.
 Validation re-runs automatically after each write.`;
         }

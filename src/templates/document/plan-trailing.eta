@@ -1,0 +1,7 @@
+
+---
+<% if (it.planCaptured) { %>
+DocPlan was successfully captured. You may now call `FinishPlanning` with a summary.
+<% } else { %>
+**DocPlan was NOT captured.** Your previous DocPlan call likely had a parsing error (e.g., duplicate parameter keys like `documents/1/title` appearing twice). Please re-call `DocPlan` with a valid plan — ensure no duplicate keys — then call `FinishPlanning`.
+<% } %>

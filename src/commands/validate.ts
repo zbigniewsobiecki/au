@@ -732,6 +732,7 @@ export default class Validate extends Command {
       sysmlCreate,
       ...(stageName !== "structural" ? [finishSysmlFix] : []),
       sysmlList,
+      sysmlRead,
       sysmlQuery,
       readFiles,
       readDirs,
@@ -773,6 +774,19 @@ export default class Validate extends Command {
 
     builder = configureBuilder(builder, out, flags.rpm, flags.tpm);
 
+    // Count non-coverage issues (agentic findings, broken references — not tracked by validation or coverage)
+    const nonCoverageCategories = ["agentic-error", "agentic-warning", "broken-reference"];
+    const nonCoverageIssues = issues.filter(
+      (issue) => nonCoverageCategories.includes(issue.category) && issue.actionable !== false
+    );
+    const nonCoverageErrorCount = nonCoverageIssues.filter(
+      (i) => i.category === "agentic-error" || i.category === "broken-reference"
+    ).length;
+    const nonCoverageWarningCount = nonCoverageIssues.filter(
+      (i) => i.category === "agentic-warning"
+    ).length;
+    const hasNonCoverageIssues = nonCoverageIssues.length > 0;
+
     // Add trailing message with validation AND coverage feedback
     builder = builder.withTrailingMessage(() => {
       return render("sysml-fix/trailing", {
@@ -790,6 +804,11 @@ export default class Validate extends Command {
         // Validation
         validationExitCode,
         validationOutput,
+        // Non-coverage issues (agentic findings, broken references)
+        hasNonCoverageIssues,
+        nonCoverageErrorCount,
+        nonCoverageWarningCount,
+        nonCoverageTotal: nonCoverageIssues.length,
       });
     });
 

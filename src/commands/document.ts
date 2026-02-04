@@ -4,7 +4,7 @@ import { rm, mkdir, access, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { writeDoc, setTargetDir } from "../gadgets/index.js";
 import { readFullModel } from "../lib/ingest/model-io.js";
-import { docPlan, finishPlanning, finishDocs } from "../gadgets/doc-gadgets.js";
+import { docPlan, finishPlanning, finishDocs, setDocPlanReceived } from "../gadgets/doc-gadgets.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import {
@@ -388,67 +388,97 @@ export default class Document extends Command {
       // Build gadgets based on mode
       const planGadgets = [docPlan, finishPlanning, ...selectReadGadgets({ modelOnly, codeOnly })];
 
-      let planBuilder = new AgentBuilder(client)
-        .withModel(flags.model)
-        .withSystem(planSystemPrompt)
-        .withMaxIterations(flags["plan-iterations"])
-        .withGadgetExecutionMode("sequential")
-        .withGadgetOutputLimitPercent(30)
-        .withGadgets(...planGadgets);
+      const maxPlanAttempts = 3;
 
-      planBuilder = configureBuilder(planBuilder, out, flags.rpm, flags.tpm);
+      for (let attempt = 1; attempt <= maxPlanAttempts; attempt++) {
+        // Reset state for each attempt
+        documentPlan = null;
+        setDocPlanReceived(false);
 
-      // Inject SysML summary as synthetic call (only if available)
-      if (sysmlSummary) {
-        planBuilder.withSyntheticGadgetCall(
-          "SysMLListSummary",
-          { path: "." },
-          sysmlSummary,
-          "gc_init_1"
-        );
-      }
+        if (attempt > 1) {
+          out.warn(`Planning attempt ${attempt}/${maxPlanAttempts}...`);
+        }
 
-      const planAgent = planBuilder.ask(planInitialPrompt);
+        let planBuilder = new AgentBuilder(client)
+          .withModel(flags.model)
+          .withSystem(planSystemPrompt)
+          .withMaxIterations(flags["plan-iterations"])
+          .withGadgetExecutionMode("sequential")
+          .withGadgetOutputLimitPercent(30)
+          .withGadgets(...planGadgets)
+          .withTrailingMessage(() => {
+            return render("document/plan-trailing", {
+              planCaptured: documentPlan !== null,
+            });
+          });
 
-      // Track text block state for planning
-      const planTextState = createTextBlockState();
+        planBuilder = configureBuilder(planBuilder, out, flags.rpm, flags.tpm);
 
-      // Subscribe to planning agent for iteration tracking
-      const planTree = planAgent.getTree();
-      setupIterationTracking(planTree, {
-        out,
-        showCumulativeCostEvery: 5,
-        onIterationChange: () => endTextBlock(planTextState, out),
-      });
+        // Inject SysML summary as synthetic call (only if available)
+        if (sysmlSummary) {
+          planBuilder.withSyntheticGadgetCall(
+            "SysMLListSummary",
+            { path: "." },
+            sysmlSummary,
+            "gc_init_1"
+          );
+        }
 
-      // Run planning agent and capture DocPlan
-      try {
-        await runAgentWithEvents(planAgent, {
+        const planAgent = planBuilder.ask(planInitialPrompt);
+
+        // Track text block state for planning
+        const planTextState = createTextBlockState();
+
+        // Subscribe to planning agent for iteration tracking
+        const planTree = planAgent.getTree();
+        setupIterationTracking(planTree, {
           out,
-          textState: planTextState,
-          onGadgetResult: (gadgetName, result) => {
-            // Capture DocPlan result
-            if (gadgetName === "DocPlan" && result) {
-              // Extract JSON from the result (it's wrapped in <plan> tags)
-              const planMatch = result.match(/<plan>\s*([\s\S]*?)\s*<\/plan>/);
-              if (planMatch) {
-                try {
-                  documentPlan = JSON.parse(planMatch[1]);
-                } catch {
-                  out.warn("Failed to parse documentation plan");
+          showCumulativeCostEvery: 5,
+          onIterationChange: () => endTextBlock(planTextState, out),
+        });
+
+        // Run planning agent and capture DocPlan
+        try {
+          await runAgentWithEvents(planAgent, {
+            out,
+            textState: planTextState,
+            onGadgetResult: (gadgetName, result) => {
+              // Capture DocPlan result
+              if (gadgetName === "DocPlan" && result) {
+                // Extract JSON from the result (it's wrapped in <plan> tags)
+                const planMatch = result.match(/<plan>\s*([\s\S]*?)\s*<\/plan>/);
+                if (planMatch) {
+                  try {
+                    documentPlan = JSON.parse(planMatch[1]);
+                  } catch {
+                    out.warn("Failed to parse documentation plan");
+                  }
                 }
               }
-            }
-          },
-        });
-      } catch (error) {
-        out.error(`Planning failed: ${error instanceof Error ? error.message : error}`);
-        restore();
-        process.exit(1);
+            },
+          });
+        } catch (error) {
+          // TaskCompletionSignal from FinishPlanning is expected
+          if (error instanceof Error && error.message.includes("Planning complete")) {
+            // Normal completion — fall through to check documentPlan
+          } else {
+            out.error(`Planning failed: ${error instanceof Error ? error.message : error}`);
+            restore();
+            process.exit(1);
+          }
+        }
+
+        if (documentPlan) {
+          break;
+        }
+
+        if (attempt < maxPlanAttempts) {
+          out.warn("DocPlan was not captured, retrying with fresh agent...");
+        }
       }
 
       if (!documentPlan) {
-        out.error("No documentation plan was created. Check verbose output for details.");
+        out.error("No documentation plan was created after all attempts. Check verbose output for details.");
         restore();
         process.exit(1);
       }

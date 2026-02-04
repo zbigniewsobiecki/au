@@ -4,7 +4,7 @@ export { ripGrep } from "./rip-grep.js";
 export { finish } from "./finish.js";
 export { gitDiffList } from "./git-diff-list.js";
 export { gitDiff } from "./git-diff.js";
-export { docPlan, finishPlanning, finishDocs, readDoc, reportIssue, finishVerification, finishFixing, finishFeedback, setVerifyTargetDir } from "./doc-gadgets.js";
+export { docPlan, finishPlanning, finishDocs, readDoc, reportIssue, finishVerification, finishFixing, finishFeedback, setVerifyTargetDir, setDocPlanReceived } from "./doc-gadgets.js";
 export type { DocumentOutline, DirectoryStructure, DocPlanStructure } from "./doc-gadgets.js";
 export { writeDoc, setTargetDir } from "./write-doc.js";
 export { fileViewerNextFileSet, setCoverageContext, getCoverageContext, setValidationEnforcement, setStallState } from "./file-viewer-next.js";

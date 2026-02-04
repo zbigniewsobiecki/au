@@ -647,7 +647,10 @@ Added: ${result.added}, Replaced: ${result.replaced}${efficiencyNote}${validatio
             }).catch(() => {});
           }
 
-          return `path=${fullPath} status=error mode=delete\n\nCLI delete failed:\n${errors || result.stderr || "Unknown error"}`;
+          const rawInfo = result.stderr
+            ? result.stderr
+            : `exit code ${result.exitCode}, no stderr captured`;
+          return `path=${fullPath} status=error mode=delete\n\nCLI delete failed:\n${errors || rawInfo}`;
         }
 
         const dryRunNote = dryRun ? " (dry run)" : "";

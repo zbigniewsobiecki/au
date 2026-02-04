@@ -321,6 +321,12 @@ Modify existing SysML files (atomic - rolls back on failure).
 ### SysMLList
 List all SysML files with summaries.
 
+### SysMLRead
+Read SysML file contents with line numbers.
+- `path`: File path relative to .sysml/ (e.g., "data/entities.sysml")
+- `offset`: Optional start line (1-based)
+- `limit`: Optional max lines to return
+
 ### SysMLQuery
 Query the SysML model for specific elements.
 - `select`: Element path pattern (e.g., "DomainEntities::*", "UserService")
