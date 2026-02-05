@@ -1,0 +1,124 @@
+## D2 Diagram Syntax Reference
+
+Use D2 (NOT Mermaid) for all diagrams. D2 produces cleaner, more readable diagrams.
+
+### Basic Syntax
+
+```d2
+# Nodes
+NodeA
+NodeB: "Label with spaces"
+
+# Connections
+NodeA -> NodeB: "connection label"
+NodeA <-> NodeB: "bidirectional"
+
+# Layout direction
+direction: right  # or down
+```
+
+### Common Shapes
+
+```d2
+Database.shape: cylinder
+Queue.shape: queue
+Input.shape: parallelogram
+User.shape: person
+External.shape: cloud
+API.shape: hexagon
+
+# Tables with fields
+Entity: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  name: string
+  foreignId: uuid {constraint: foreign_key}
+}
+```
+
+### Containers (Nesting)
+
+```d2
+OuterGroup: {
+  InnerA: "Component A"
+  InnerB: "Component B"
+  InnerA -> InnerB
+}
+
+# Reference nested nodes
+OuterGroup.InnerA -> OtherNode
+```
+
+### Styling
+
+```d2
+Node: Label {style.fill: "#e8f5e9"}  # pastel green
+```
+
+### Pattern Examples
+
+**Architecture Diagram:**
+```d2
+direction: down
+
+Frontend: {
+  WebApp
+  MobileApp
+}
+
+Backend: {
+  API.shape: hexagon
+  ServiceA
+  ServiceB
+}
+
+Data: {
+  Database.shape: cylinder
+  Cache.shape: cylinder
+}
+
+Frontend.WebApp -> Backend.API: HTTPS
+Backend.ServiceA -> Data.Database
+```
+
+**Flow Diagram:**
+```d2
+direction: down
+
+input: {shape: parallelogram; "Request"}
+step1: "Validate"
+step2: "Process"
+step3: "Save"
+output: {shape: parallelogram; "Response"}
+
+input -> step1 -> step2 -> step3 -> output
+```
+
+**State Diagram:**
+```d2
+direction: right
+
+Pending: Pending {style.fill: "#e8f5e9"}
+Active: Active {style.fill: "#e3f2fd"}
+Done: Done {style.fill: "#fce4ec"}
+
+Pending -> Active: "start"
+Active -> Done: "complete"
+```
+
+**Entity Relationship:**
+```d2
+User: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  email: string
+}
+
+Order: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  userId: uuid {constraint: foreign_key}
+}
+
+User <-> Order: "1 to many"
+```
