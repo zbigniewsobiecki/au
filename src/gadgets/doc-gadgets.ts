@@ -153,6 +153,12 @@ Also provide directoryDescriptions for each category used.`,
       .describe("Descriptions for each directory/category used in the plan"),
   }),
   execute: async ({ documents, directoryDescriptions }) => {
+    // Validate documents array — a parse error (e.g. duplicate keys) may cause
+    // the gadget to execute with empty defaults
+    if (!documents || !Array.isArray(documents) || documents.length === 0) {
+      return "Error: No documents provided in DocPlan. Please provide at least one document in the plan.";
+    }
+
     // Build description lookup
     const descriptionMap = new Map<string, string>();
     for (const { directory, description } of directoryDescriptions || []) {
@@ -192,7 +198,11 @@ Also provide directoryDescriptions for each category used.`,
       )
       .join("\n");
 
-    docPlanReceived = true;
+    if (docCount > 0) {
+      docPlanReceived = true;
+    } else {
+      return "Error: DocPlan received but contained no documents. This likely means a parameter parse error caused the gadget to execute with empty defaults. Please try calling DocPlan again.";
+    }
 
     return `Documentation plan created: ${docCount} documents in ${dirCount} directories\n\n${summary}\n\n<plan>\n${JSON.stringify({ structure }, null, 2)}\n</plan>`;
   },

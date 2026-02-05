@@ -397,6 +397,7 @@ export default class Document extends Command {
 
         if (attempt > 1) {
           out.warn(`Planning attempt ${attempt}/${maxPlanAttempts}...`);
+          out.info("Previous attempt failed to capture a valid documentation plan.");
         }
 
         let planBuilder = new AgentBuilder(client)
