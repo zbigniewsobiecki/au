@@ -107,10 +107,13 @@ CLI_ARGS=(
 # Default hardcoded flags for 'validate' (can be overridden by EXTRA_ARGS if the tool allows it)
 if [[ "$COMMAND" == "validate" ]]; then
     CLI_ARGS+=(
-        "--coverage-threshold" "30"
+        "--coverage-threshold" "80"
         "--fix-iterations" "100"
         "-v"
-        "-m" "openrouter:google/gemini-3-flash-preview"
+        #"-m" "openrouter:google/gemini-3-flash-preview"
+        "-m" "gemini:gemini-3-flash-preview"
+        #"-m" "gemini:gemini-3-pro-preview"
+        #"-m" "gemini:gemini-2.5-flash"
         "--fix-batch-size" "20"
     )
 fi
@@ -118,7 +121,9 @@ fi
 if [[ "$COMMAND" == "ingest" ]]; then
     CLI_ARGS+=(
         "-v"
-        "-m" "openrouter:google/gemini-3-flash-preview"
+        #"-m" "openrouter:deepseek/deepseek-v3.2"
+        "-m" "gemini:gemini-3-flash-preview"
+        #"-m" "openrouter:google/gemini-3-flash-preview"
     )
 fi
 

@@ -32,6 +32,15 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
 *Use FileDiscover to find relevant files*
 <% } %>
 
+### Type Dependency Rule
+
+**CRITICAL**: Before writing an operation that references a DTO or data type (e.g., `CreateUserRequest`, `VehicleFilters`), verify the type exists in `data/dtos.sysml` or another data file. If it doesn't exist, create the type definition FIRST, then write the operation. Writing an operation that references an undefined type causes E3001 errors that block validation.
+
+When you need a DTO type during cycle 4, just upsert it — the upsert handles duplicates automatically:
+  `SysMLWrite(path="data/dtos.sysml", element="item def CreateUserRequest { ... }", at="DataTransferObjects")`
+
+Then write the operation that references it. No need to SysMLRead first — if the type already exists, the upsert will update it harmlessly.
+
 ### Your Tasks
 
 1. **Find behavior sources**:
@@ -197,7 +206,7 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
 
    **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
    If modifying an existing index:
-   1. First use `SysMLRead("behavior/_index.sysml")` to see current content
+   1. First use `SysMLRead(path="behavior/_index.sysml")` to see current imports
    2. Then use SysMLWrite with `element` + `at` to upsert imports
    3. Do NOT assume the file matches these examples - it may already have other imports
 
@@ -402,7 +411,7 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
 
 ### ID Sequencing Convention
 
-**CRITICAL**: Before assigning any ID, use `SysMLRead` to check existing files and find the highest ID in use.
+**CRITICAL**: Before assigning any ID, use `SysMLRead` to check the target file for existing elements and find the highest ID in use.
 
 | Category | Format | Example |
 |----------|--------|---------|
@@ -496,6 +505,41 @@ action def {Operation} {
 }
 ```
 
+**Compact E2E Action Flow Pattern (E2E Step 1)**
+
+For key user-facing features, define a **compact E2E action flow** that captures the entire feature logic in one `action def`. This is Step 1 of the 3-step E2E flow pattern.
+
+```sysml
+// E2E Step 1: Compact action flow for login feature
+action def LoginE2E {
+    doc /*E2E login flow: validate → authenticate → issue tokens */
+    in credentials; out tokens; out error [0..1];
+
+    action validate  { in creds; out validCreds; }
+    action authenticate { in validCreds; out user; out authError [0..1]; }
+    action issueTokens { in user; out tokens; }
+
+    // Data flows — full chain from input to output
+    flow from credentials to validate.creds;
+    flow from validate.validCreds to authenticate.validCreds;
+    flow from authenticate.user to issueTokens.user;
+    flow from issueTokens.tokens to tokens;
+
+    // Error flows
+    flow from authenticate.authError to error;
+
+    // Control flow — explicit sequencing
+    first validate then authenticate;
+    first authenticate then issueTokens;
+}
+```
+
+**Key rules for E2E action flows:**
+- Name with `E2E` suffix to distinguish from simple operations (e.g., `LoginE2E`, `CheckoutE2E`)
+- Include all sub-actions inline with typed `in`/`out` features
+- Wire all data flows (`flow from`) and control flows (`first..then`) in one block
+- Cross-reference: Step 2 in `structure/interfaces.sysml` (Cycle 2), Step 3 in `analysis/allocations.sysml` (Cycle 6)
+
 ### What to Look For
 
 - **Happy path**: Normal operation flow with data transformations
@@ -534,13 +578,21 @@ This cycle focuses ONLY on behavioral modeling. Verification and analysis will b
 - [ ] **Query parameters** and filter types documented for list endpoints
 - [ ] **Analytics/aggregation methods** captured (getStats, getMonthly*, getSummary)
 - [ ] **Filter interfaces** documented for entities with complex querying
+- [ ] Key user-facing features have **compact E2E action flows** (LoginE2E pattern)
 - [ ] Side effects marked clearly
 - [ ] Output is limited to `behavior/` directory only
 
 <% if (it.isIterative) { %>
+### Write Efficiency
+
+- After reading source files, write ALL new operations from the current batch in a **single SysMLWrite call** per target file. Do not split across multiple writes to the same file.
+- **Only include NEW elements** in your fragment. Existing elements are preserved automatically by upsert — you never need to re-send them.
+- Do not re-read the target file between writes to the same scope — the upsert handles conflicts automatically.
+- A fragment with 5 new elements is better than one with 5 new + 100 existing re-sent.
+
 ### File Selection Priority for Behavior Analysis
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. Service files (`*.service.ts`, `*.service.js`)
 2. Controller files (`*.controller.ts`, `*.handler.ts`)
 3. Route files (`*.routes.ts`, `routes/*.ts`)

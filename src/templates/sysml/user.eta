@@ -85,7 +85,7 @@ The following entities have already been created in this cycle. **Do NOT recreat
 *(... and <%= it.createdEntities.length - 50 %> more entities)*
 <% } %>
 
-**Important**: If you need to modify an existing entity, use `SysMLRead` to get the current content, then use `SysMLWrite` with `element` + `at` to upsert.
+**Important**: If you need to modify an existing entity, use `SysMLRead` to check what exists, then use `SysMLWrite` with `element` + `at` to upsert.
 <% } %>
 
 ## File Viewer
@@ -93,7 +93,7 @@ The following entities have already been created in this cycle. **Do NOT recreat
 <% if (it.fileViewerContents) { %>
 <%= it.fileViewerContents %>
 <% } else { %>
-*Empty - use FileDiscover or ReadFiles to find relevant files*
+*Use FileViewerNextFileSet to request files (returns contents automatically), or ReadFiles for ad-hoc reads.*
 <% } %>
 
 <% if (it.manifestHints?.directories && it.manifestHints.directories.length > 0) { %>
@@ -112,9 +112,10 @@ Use `FileDiscover` to find specific file types, or `ReadFiles` to read directly.
 1. **Explore** using `FileDiscover` or `ReadFiles` to find relevant files
 2. **Analyze** files in the File Viewer above
 3. **Write SysML** using `SysMLWrite` for discovered elements
-4. **Request more files** using `FileViewerNextFileSet(paths="file1\nfile2\n...")`
+4. **Request & read more files** using `FileViewerNextFileSet(paths="file1\nfile2\n...")` — returns file contents directly, no need for a separate ReadFiles call
 5. Select up to <%= it.batchSize || 8 %> files per batch for thorough analysis
 6. When done with this cycle, call `FileViewerNextFileSet(paths="")`
+7. Focus on covering NEW source files — do NOT rewrite existing definitions unless they have errors
 
 <% if (it.manifestHints?.expectedFileCount && it.manifestHints.expectedFileCount > 5) { %>
 ## CRITICAL: Coverage Requirements

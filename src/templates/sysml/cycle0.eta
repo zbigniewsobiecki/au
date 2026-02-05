@@ -109,8 +109,9 @@ For each cycle, identify the source files/patterns to be covered. Use glob patte
 
 **Step 4.1: Find schema files**
 ```
-FileDiscoverCustom(patterns="**/*.prisma,**/*.graphql,**/*.gql,**/*.proto,**/*.sql")
+RipGrep(pattern="model |type |message ", fileType="prisma,graphql,proto,sql")
 ```
+Or use `ReadDirs` to browse directories where schemas are typically located.
 
 **Step 4.2: Record patterns in manifest**
 Store patterns in `manifest.cycles[N].sourceFiles`:
@@ -190,10 +191,8 @@ Your patterns must cover these common file categories:
 
 ### Phase 5: Context Discovery
 
-**Gather files for Cycle 1:**
-```
-FileDiscoverCustom(patterns="README.md,README*.md,package.json,**/package.json,docker-compose*.yml,Dockerfile*,.env.example,docs/**/*.md")
-```
+**Gather context files for Cycle 1:**
+Use `ReadDirs` output from Phase 1 to identify README files, package.json, docker-compose files, Dockerfiles, .env.example, and docs/ directories. These are already visible in the directory tree.
 
 ---
 

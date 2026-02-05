@@ -35,6 +35,12 @@ export interface Sysml2Element {
   parent: string | null;
 }
 
+export interface ListEntry {
+  id: string;    // e.g. "Pkg::Car"
+  name: string;  // e.g. "Car"
+  kind: string;  // e.g. "part def"
+}
+
 export interface Sysml2Relationship {
   id: string;
   kind: string;
@@ -48,6 +54,7 @@ export interface Sysml2Result {
   relationships: Sysml2Relationship[];
   diagnostics: Sysml2Diagnostic[];
   success: boolean;
+  exitCode: number;             // 0=success, 1=parse error, 2=semantic error
   stdout?: string; // Raw stdout from sysml2
   stderr?: string; // Raw stderr from sysml2
 }
@@ -108,12 +115,13 @@ export async function runSysml2(
 
     proc.on("close", (code) => {
       const diagnostics = parseDiagnosticOutput(stderr);
-      const success = code === 0;
+      const exitCode = code ?? 1;
+      const success = exitCode === 0;
 
       if (options?.json && stdout.trim()) {
         try {
           const json = JSON.parse(stdout);
-          resolve({ ...json, diagnostics, success, stdout: stdout || undefined, stderr: stderr || undefined });
+          resolve({ ...json, diagnostics, success, exitCode, stdout: stdout || undefined, stderr: stderr || undefined });
         } catch {
           resolve({
             meta: { version: "1.0", source: "<stdin>" },
@@ -121,6 +129,7 @@ export async function runSysml2(
             relationships: [],
             diagnostics,
             success: false,
+            exitCode,
             stdout: stdout || undefined,
             stderr: stderr || undefined,
           });
@@ -132,6 +141,7 @@ export async function runSysml2(
           relationships: [],
           diagnostics,
           success,
+          exitCode,
           stdout: stdout || undefined,
           stderr: stderr || undefined,
         });
@@ -179,6 +189,7 @@ export interface SetResult {
 
 export interface DeleteResult {
   success: boolean;
+  exitCode: number; // 0=success, 1=parse error, 2=semantic error
   modifiedFile: string;
   deleted: number;
   diagnostics: Sysml2Diagnostic[];
@@ -450,7 +461,7 @@ export async function setElement(
     parseOnly?: boolean;
     replaceScope?: boolean;
     forceReplace?: boolean;  // Suppress data loss warning when replaceScope deletes more elements than fragment provides
-    allowSemanticErrors?: boolean;  // Allow writes despite E3xxx errors
+    allowSemanticErrors?: boolean;
   }
 ): Promise<SetResult> {
   // Write fragment to a temporary file
@@ -521,7 +532,7 @@ export async function setElement(
       await cleanup();
 
       const diagnostics = parseDiagnosticOutput(stderr);
-      const success = code === 0;
+      const success = code === 0 || (code === 2 && !!options?.allowSemanticErrors);
 
       // Try to parse JSON output for details
       let added = 0;
@@ -579,7 +590,7 @@ export async function setElement(
 export async function deleteElements(
   targetFile: string,
   patterns: string[],
-  options?: { dryRun?: boolean }
+  options?: { dryRun?: boolean; allowSemanticErrors?: boolean }
 ): Promise<DeleteResult> {
   const args = ["--color=never", ...getLibraryPathArgs()];
 
@@ -590,6 +601,10 @@ export async function deleteElements(
 
   if (options?.dryRun) {
     args.push("--dry-run");
+  }
+
+  if (options?.allowSemanticErrors) {
+    args.push("--allow-semantic-errors");
   }
 
   args.push("-f", "json");
@@ -610,7 +625,7 @@ export async function deleteElements(
 
     proc.on("close", (code) => {
       const diagnostics = parseDiagnosticOutput(stderr);
-      const success = code === 0;
+      const success = code === 0 || (code === 2 && !!options?.allowSemanticErrors);
 
       // Try to parse JSON output for details
       let deleted = 0;
@@ -630,6 +645,7 @@ export async function deleteElements(
 
       resolve({
         success,
+        exitCode: code ?? 1,
         modifiedFile: targetFile,
         deleted,
         diagnostics,
@@ -800,6 +816,80 @@ export async function formatFile(
       }
     });
 
+    proc.stdin.end();
+  });
+}
+
+// ============================================================================
+// CLI-based List (Discovery) Operation
+// ============================================================================
+
+/**
+ * List element names and kinds from SysML files using the CLI --list option.
+ *
+ * @param filesOrDir - Array of file/directory paths to query
+ * @param options - Options for the list operation
+ * @returns Promise resolving to an array of ListEntry objects
+ */
+export async function listElements(
+  filesOrDir: string[],
+  options?: {
+    select?: string[];
+    recursive?: boolean;
+    parseOnly?: boolean;
+    stdin?: string;
+  }
+): Promise<ListEntry[]> {
+  const args = ["--list", "--color=never", ...getLibraryPathArgs()];
+
+  if (options?.parseOnly) {
+    args.push("-P");
+  }
+
+  if (options?.recursive) {
+    args.push("-r");
+  }
+
+  if (options?.select) {
+    for (const pat of options.select) {
+      args.push("-s", pat);
+    }
+  }
+
+  args.push("-f", "json");
+  args.push(...filesOrDir);
+
+  return new Promise((resolve) => {
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
+
+    let stdout = "";
+
+    proc.stdout.on("data", (data) => {
+      stdout += data;
+    });
+
+    proc.on("close", () => {
+      if (stdout.trim()) {
+        try {
+          const parsed = JSON.parse(stdout);
+          if (Array.isArray(parsed)) {
+            resolve(parsed);
+            return;
+          }
+        } catch {
+          // fall through
+        }
+      }
+      resolve([]);
+    });
+
+    proc.on("error", () => {
+      resolve([]);
+    });
+
+    if (options?.stdin) {
+      proc.stdin.write(options.stdin);
+    }
     proc.stdin.end();
   });
 }

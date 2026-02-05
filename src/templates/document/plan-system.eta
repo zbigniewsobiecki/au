@@ -207,24 +207,39 @@ Identify key user journeys or data flows that span multiple components. These de
 
 ## Diagram Strategy
 
-When planning documents, identify opportunities for D2 diagrams using `includeDiagram`:
+When planning documents, identify opportunities for D2 diagrams using `includeDiagram`.
+Pre-generated diagrams will be extracted automatically from the SysML model for supported types.
 
 ### Diagram Types
 
-- **architecture** - System Overview showing major components
-- **sequence** - Request flows and user journeys
-- **entity** - Data models and relationships
-- **state** - State machines and workflows
-- **flow** - Data pipelines and processing flows
+- **architecture** - System overview showing major components and their relationships
+- **sequence** - Request flows, user journeys, and multi-step interactions
+- **entity** - Data models, entity relationships, and database schema
+- **state** - State machines, entity lifecycles, and workflow transitions
+- **flow** - Action flows, data pipelines, and processing sequences
 
-### Detection Hints
+### SysML-Based Detection Hints
 
-Look for these patterns in AU to identify diagram opportunities:
-- Multiple services/packages → architecture diagram
-- Event sourcing/CQRS → sequence diagram
-- Database schemas → entity diagram
-- State machines/workflows → state diagram
-- External integrations → architecture diagram
+Scan the AU model entries for these SysML constructs to determine which diagrams to include:
+
+| SysML Construct Found | Diagram Type | Recommended For |
+|----------------------|--------------|-----------------|
+| `item def ... :> BaseEntity` with attributes | **entity** | Data model docs, architecture docs |
+| `connection def` with cardinality `end` clauses | **entity** | Data model docs, relationship docs |
+| `state def` with `transition first X then Y` | **state** | Component docs covering that entity |
+| `action def` with `first...then` control flow | **flow** | Process docs, API operation docs |
+| `part def ... :> ServiceModule` with `layer` and `port` | **architecture** | System overview, architecture docs |
+| `connection ... connect` between module instances | **architecture** | Architecture docs, integration docs |
+| Multiple `part def` with different `layer` values | **architecture** | Overview docs |
+
+### Assignment Guidelines
+
+- **Overview docs**: Use `includeDiagram: "architecture"` — shows system-wide component layout
+- **Data model / entity docs**: Use `includeDiagram: "entity"` — when the model has `item def` entities with attributes
+- **Process / flow docs**: Use `includeDiagram: "flow"` — when the model has `action def` with sequential steps
+- **Component docs**: Use `includeDiagram: "state"` — when the model has `state def` for that component's entities
+- **Integration docs**: Use `includeDiagram: "architecture"` — focused on the integration point
+- **Only set `includeDiagram`** when the SysML model actually contains the relevant constructs
 
 ## Guidelines
 

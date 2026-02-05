@@ -3,9 +3,8 @@
  * Provides functions for generating SysML v2 code from discovered project metadata.
  */
 
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { ProjectMetadata, ExternalDependency } from "./discovery.js";
+import { listElements } from "./sysml2-cli.js";
 
 /**
  * Escape a string for use in SysML.
@@ -730,6 +729,12 @@ export function generateStructureTemplate(): string {
         end client : ~ServicePort;
     }
 
+    interface def ItemFlowInterface {
+        doc /*Template: interface with explicit item flows (E2E Step 2) */
+        end provider : ServicePort;
+        end consumer : ~ServicePort;
+    }
+
     // Connection patterns
     connection def ModuleConnection {
         doc /*Standard connection between modules */
@@ -895,6 +900,25 @@ export function generateBehaviorTemplate(): string {
         // Control flow sequencing
         first validate then process;
         first process then respond;
+    }
+
+    // E2E feature flow template (Step 1 of 3-step pattern)
+    action def E2EFlowTemplate {
+        doc /*Template for E2E feature flows (Step 1 of 3-step pattern) */
+
+        in request; out response; out error [0..1];
+
+        action validate { in data; out validated; }
+        action execute { in validated; out result; }
+        action respond { in result; out response; }
+
+        flow from request to validate.data;
+        flow from validate.validated to execute.validated;
+        flow from execute.result to respond.result;
+        flow from respond.response to response;
+
+        first validate then execute;
+        first execute then respond;
     }
 
     // Event handler template
@@ -1087,12 +1111,17 @@ export function generateAnalysisTemplate(): string {
         uptime >= target
     }
 
-    // Allocation definitions for traceability
+    // Allocation definitions for traceability (E2E Step 3: Binding)
     package BehaviorAllocations {
-        doc /*Maps behaviors to implementing modules */
+        doc /*E2E Step 3: Allocation (Binding).
+             Maps action defs to implementing modules.
+             Use granular sub-action allocation: allocate ActionDef.subAction to Module. */
 
         allocation def OperationToModule :> BehaviorToModule {
-            doc /*Maps operations to their implementing modules */
+            doc /*Maps operations to their implementing modules.
+                 For E2E flows, allocate each sub-action separately:
+                 allocate LoginE2E.validate to ApiGateway;
+                 allocate LoginE2E.authenticate to AuthModule; */
         }
     }
 
@@ -1172,39 +1201,14 @@ export function generateInitialFiles(metadata: ProjectMetadata): GeneratedFiles 
 
 /**
  * Discover all top-level package names in the SysML directory.
- * Scans all .sysml files (excluding _model.sysml) and extracts package names.
+ * Uses sysml2 --list to enumerate elements and filters for packages.
  */
 export async function discoverModelPackages(sysmlDir: string): Promise<string[]> {
-  const packages = new Set<string>();
-  const packageRegex = /^package\s+(\w+)/gm;
-
-  async function scanDir(dir: string): Promise<void> {
-    try {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-
-        if (entry.isDirectory()) {
-          await scanDir(fullPath);
-        } else if (entry.name.endsWith(".sysml") && entry.name !== "_model.sysml") {
-          try {
-            const content = await readFile(fullPath, "utf-8");
-            let match;
-            while ((match = packageRegex.exec(content)) !== null) {
-              packages.add(match[1]);
-            }
-          } catch {
-            // Skip unreadable files
-          }
-        }
-      }
-    } catch {
-      // Directory doesn't exist
-    }
-  }
-
-  await scanDir(sysmlDir);
-  return [...packages].sort();
+  const entries = await listElements([sysmlDir], { recursive: true, parseOnly: true });
+  const packages = entries
+    .filter((e) => e.kind === "package")
+    .map((e) => e.name);
+  return [...new Set(packages)].sort();
 }
 
 /**

@@ -91,6 +91,7 @@ export interface CycleTurnResult {
   cachedTokens: number;
   cost: number;
   filesWritten: number;
+  aborted?: boolean;
 }
 
 /**

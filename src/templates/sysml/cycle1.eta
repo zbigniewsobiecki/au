@@ -212,7 +212,7 @@ requirement def FR001 :> BaseRequirement {
 
 ### ID Sequencing Convention
 
-**CRITICAL**: Before assigning any ID, use `SysMLRead` to check existing files and find the highest ID in use.
+**CRITICAL**: Before assigning any ID, use `SysMLRead` to check the target file for existing elements and find the highest ID in use.
 
 | Category | Format | Example |
 |----------|--------|---------|
@@ -303,7 +303,7 @@ package SystemRequirements {
 <% if (it.isIterative) { %>
 ### File Selection Priority for Discovery
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. README files (`README.md`, `README.*`)
 2. Package manifests (`package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`)
 3. Docker files (`Dockerfile`, `docker-compose.yml`)

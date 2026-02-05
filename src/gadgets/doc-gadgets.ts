@@ -1,4 +1,4 @@
-import { createGadget, z } from "llmist";
+import { createGadget, z, TaskCompletionSignal } from "llmist";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
@@ -10,6 +10,13 @@ let verifyTargetDir: string | null = null;
 
 export function setVerifyTargetDir(dir: string): void {
   verifyTargetDir = dir;
+}
+
+// Track whether DocPlan was successfully received (reset before each planning attempt)
+let docPlanReceived = false;
+
+export function setDocPlanReceived(value: boolean): void {
+  docPlanReceived = value;
 }
 
 /**
@@ -146,6 +153,12 @@ Also provide directoryDescriptions for each category used.`,
       .describe("Descriptions for each directory/category used in the plan"),
   }),
   execute: async ({ documents, directoryDescriptions }) => {
+    // Validate documents array — a parse error (e.g. duplicate keys) may cause
+    // the gadget to execute with empty defaults
+    if (!documents || !Array.isArray(documents) || documents.length === 0) {
+      return "Error: No documents provided in DocPlan. Please provide at least one document in the plan.";
+    }
+
     // Build description lookup
     const descriptionMap = new Map<string, string>();
     for (const { directory, description } of directoryDescriptions || []) {
@@ -185,18 +198,33 @@ Also provide directoryDescriptions for each category used.`,
       )
       .join("\n");
 
+    if (docCount > 0) {
+      docPlanReceived = true;
+    } else {
+      return "Error: DocPlan received but contained no documents. This likely means a parameter parse error caused the gadget to execute with empty defaults. Please try calling DocPlan again.";
+    }
+
     return `Documentation plan created: ${docCount} documents in ${dirCount} directories\n\n${summary}\n\n<plan>\n${JSON.stringify({ structure }, null, 2)}\n</plan>`;
   },
 });
 
 /**
  * FinishPlanning gadget - signals that planning phase is complete.
+ * Rejects if DocPlan hasn't been successfully received, prompting the LLM to retry.
  */
-export const finishPlanning = createCompletionGadget({
+export const finishPlanning = createGadget({
   name: "FinishPlanning",
   description: `Signal that documentation planning is complete.
 Call this after you have created the DocPlan.`,
-  messagePrefix: "Planning complete",
+  schema: z.object({
+    summary: z.string().describe("Brief summary of completed work"),
+  }),
+  execute: async ({ summary }) => {
+    if (!docPlanReceived) {
+      return "Error: DocPlan was not successfully received. Your previous DocPlan call may have had a parsing error (e.g., duplicate keys). Please call DocPlan again with a valid plan, then call FinishPlanning.";
+    }
+    throw new TaskCompletionSignal(`Planning complete: ${summary}`);
+  },
 });
 
 /**

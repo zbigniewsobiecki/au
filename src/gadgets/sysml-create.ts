@@ -135,61 +135,39 @@ NEVER use SysMLCreate on existing files without force=true.`;
       finalContent = `package ${pkgName} {\n}\n`;
     }
 
-    // Validate content before writing to prevent syntax errors
-    // Only reject on PARSE errors (no error code), not semantic errors (E3001 undefined type, etc.)
-    // Semantic errors are expected during incremental model building - cross-package
-    // references fail until all files exist
+    // Validate content before writing - reject parse errors only
+    // Semantic errors (E3xxx) are expected during incremental building
+    // (types defined in other files won't resolve until all files are ingested)
     try {
       const validation = await runSysml2(finalContent);
-      if (!validation.success) {
-        // Parse errors have no code, semantic errors have codes like E3001
-        const parseErrors = validation.diagnostics
-          .filter((d) => d.severity === "error" && !d.code);
-
-        if (parseErrors.length > 0) {
-          const errors = parseErrors
-            .map((d) => {
-              const lines = finalContent.split("\n");
-              const badLine = lines[d.line - 1] || "";
-              return `Line ${d.line}:${d.column}: ${d.message}\n  ${d.line} | ${badLine}`;
-            })
-            .join("\n\n");
-
-          // Debug logging for syntax error
-          if (debugEnabled) {
-            writeEditDebug({
-              metadata: {
-                ...baseDebugMetadata,
-                status: "error",
-                bytesResult: originalBytes,
-                byteDelta: 0,
-                errorMessage: parseErrors[0]?.message || "Syntax error",
-                diagnostics: parseErrors.map((d) => ({
-                  severity: d.severity,
-                  message: d.message,
-                  line: d.line,
-                  column: d.column,
-                })),
-              } as EditDebugMetadata,
-              original: originalContent,
-              fragment: content || `package ${pkgName} {}`,
-              result: originalContent,
-            }).catch(() => {});
-          }
-
-          return `path=${fullPath} status=error (syntax error)
-
-INVALID SYSML SYNTAX - refusing to write corrupted file.
-
-${errors}
-
-Fix the syntax errors and try again.`;
+      // Only reject on syntax errors (exit 1). Semantic errors (exit 2) are
+      // expected during incremental building — cross-file refs won't resolve yet.
+      if (validation.exitCode === 1) {
+        if (debugEnabled) {
+          writeEditDebug({
+            metadata: {
+              ...baseDebugMetadata,
+              status: "error",
+              bytesResult: originalBytes,
+              byteDelta: 0,
+              errorMessage: validation.stderr?.split("\n")[0] || "Syntax error",
+            } as EditDebugMetadata,
+            original: originalContent,
+            fragment: content || `package ${pkgName} {}`,
+            result: originalContent,
+          }).catch(() => {});
         }
-        // Semantic errors (undefined types) are OK - stdlib may not be fully loaded
+
+        return `path=${fullPath} status=error (syntax error)
+
+INVALID SYSML - refusing to write file with syntax errors.
+
+${validation.stderr || "Unknown parse error"}
+
+Fix the errors and try again.`;
       }
     } catch {
       // sysml2 not available - skip validation (allow write)
-      // This matches the behavior in validator.ts
     }
 
     await writeFile(fullPath, finalContent, "utf-8");

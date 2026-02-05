@@ -9,7 +9,27 @@
 <% const coveragePercent = it.totalMissing > 0 ? Math.round(((it.totalMissing - it.stillMissing) / it.totalMissing) * 100) : 100; %>
 - Retry coverage: **<%= coveragePercent %>%**
 
-<% const hasValidationErrors = it.validationExitCode && it.validationExitCode !== 0; %>
+<% const hasSyntaxErrors = it.validationExitCode === 1; %>
+<% const hasSemanticErrors = it.validationExitCode === 2; %>
+
+<% if (hasSyntaxErrors) { %>
+
+## 🛑 STOP — Fix Syntax Errors Before Continuing
+
+**Retry is paused.** You must resolve all syntax errors shown below before writing new SysML definitions.
+
+**Do not:**
+- Request completion via `FileViewerNextFileSet(paths="")`
+- Write new SysML definitions for uncovered source files
+
+**Do:**
+1. Use `SysMLRead` to inspect the file containing the error (use `SysMLList()` to find it)
+2. Use `SysMLWrite` to fix the specific issues (write to `.sysml/<%= it.cycleOutputDir %>/`)
+3. Validation re-runs automatically after each write — check that errors decrease
+
+Once all syntax errors are resolved, the next status update will show normal retry instructions and you can resume coverage work.
+
+<% } %>
 
 <% if (it.validationOutput && it.validationOutput.trim().length > 0) { %>
 <% if (it.validationExitCode === 0) { %>
@@ -17,7 +37,7 @@
 <% } else if (it.validationExitCode === 1) { %>
 ## ❌ Model Validation Errors (syntax)
 <% } else if (it.validationExitCode === 2) { %>
-## ❌ Model Validation Errors (semantic)
+## ⚠️ Semantic Warnings (non-blocking)
 <% } %>
 
 ```
@@ -28,7 +48,15 @@
 
 <%~ include("./partials/validation-actions", it) %>
 
-<% if (!hasValidationErrors) { %>
+<% if (hasSemanticErrors && !hasSyntaxErrors) { %>
+## Semantic Errors (non-blocking)
+
+These reference errors will resolve as you cover more files. **Continue coverage work** — do not stop to fix these.
+If a specific error is easy to fix (wrong type name), fix it opportunistically during a write.
+
+<% } %>
+
+<% if (!hasSyntaxErrors) { %>
 
 <% if (it.unreadFiles && it.unreadFiles.length > 0) { %>
 ## Files Still Missing Coverage
@@ -50,10 +78,10 @@ These files need `@SourceFile { :>> path = "..."; }` metadata:
 
 **IMPORTANT**: Keep iterating until ALL missing files have been covered.
 
+<% if (it.createdEntities && it.createdEntities.length > 10) { %>
+**DO NOT re-write existing SysML definitions.** If SysMLWrite returns "Replaced: N, Added: 0", stop writing to that file and move to uncovered source files.
+<% } %>
+
 <%~ include("./partials/maximize-extraction", it) %>
-
-<% } else { %>
-
-**After fixing all validation errors**, continue with coverage improvements.
 
 <% } %>

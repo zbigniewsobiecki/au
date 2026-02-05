@@ -33,6 +33,13 @@ Each domain directory contains an `_index.sysml` file that defines the top-level
 - If a behavior creates/updates an entity, does the data model support it?
 - Are bidirectional relationships modeled symmetrically?
 
+### Connection & Port Consistency
+- **Reused ports:** The same port is used in multiple unrelated connections. Each logical data flow should have its own dedicated port.
+- **Self-referencing connections:** Both ends of a connection point to the same module. A module should not connect to itself.
+- **Duplicate connections:** Two or more connections wire the same pair of ports. Only one connection is needed per port pair.
+- **Port type mismatch:** The port types on each end of a connection are not conjugates of each other. Connected ports must have compatible (conjugate) types.
+- **Missing ports:** A connection references a port that is not declared on the module's `part def`. Every port used in a connection must exist on its owning definition.
+
 ## Gadgets Available
 
 ### VerifyFinding
