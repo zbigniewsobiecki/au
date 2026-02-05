@@ -27,8 +27,8 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
       llmist:
-        specifier: 15.14.2
-        version: 15.14.2(ws@8.19.0)
+        specifier: 15.15.1
+        version: 15.15.1(ws@8.19.0)
       micromatch:
         specifier: ^4.0.8
         version: 4.0.8
@@ -1301,8 +1301,8 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
-  llmist@15.14.2:
-    resolution: {integrity: sha512-1LR2YTkmb8O9tW+6K2oEqpWfUecY3W3tqe/PPrFPgokiIzswvh+J4e7UCUs4ow4jfx5jMalRjP3rA8XAb3N9XA==}
+  llmist@15.15.1:
+    resolution: {integrity: sha512-3IS8rHFyP44U6iopbcECIiw5N27vHfjsXb89tHssM1MnpmWgs5DFVg9PehZq9ZazYwBEJ7AYmDy/Co0KQJmDEg==}
     engines: {node: '>=22.0.0'}
 
   load-json-file@4.0.0:
@@ -3389,7 +3389,7 @@ snapshots:
 
   lines-and-columns@1.2.4: {}
 
-  llmist@15.14.2(ws@8.19.0):
+  llmist@15.15.1(ws@8.19.0):
     dependencies:
       '@anthropic-ai/sdk': 0.69.0(zod@4.3.5)
       '@google/genai': 1.35.0

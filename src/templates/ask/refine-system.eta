@@ -29,9 +29,12 @@ Output ONLY the final refined answer:
 - Output as if it were your original answer
 
 **Answer must include:**
+- **TL;DR at the top** - A 2-3 sentence summary with the key takeaway
 - Detailed explanations with specific file references
 - Relevant code snippets from the codebase
 - D2 diagrams for architecture/flow questions
+
+<%~ include("../shared/d2-syntax", it) %>
 <% } else { %>
 You are a code reviewer verifying an implementation proposal against the actual codebase.
 
@@ -84,7 +87,10 @@ After reviewing, output ONLY the final corrected implementation:
 - Format it as if it were your original answer to the question
 
 **Answer must include:**
+- **TL;DR at the top** - A 2-3 sentence summary with the key takeaway
 - Detailed explanations with specific file references
 - Relevant code snippets from the codebase
 - D2 diagrams for architecture/flow questions
+
+<%~ include("../shared/d2-syntax", it) %>
 <% } %>

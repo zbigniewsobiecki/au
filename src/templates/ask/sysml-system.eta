@@ -147,20 +147,15 @@ Your answer MUST include:
 - For implementation questions: show existing patterns the user should follow
 
 ### D2 Diagrams
-For architecture, flow, or relationship questions, include a **D2 diagram** to visualize:
-
-```d2
-# Example: Service interaction
-ServiceA -> ServiceB: "calls method()"
-ServiceB -> Database: "queries"
-Database -> ServiceB: "returns data"
-```
+For architecture, flow, or relationship questions, include a **D2 diagram** to visualize.
 
 Include D2 diagrams when the question involves:
 - "How does X flow through the system?"
 - "What is the architecture of X?"
 - "How do components X, Y, Z relate?"
 - "What is the sequence of operations for X?"
+
+<%~ include("../shared/d2-syntax", it) %>
 
 ### For Architecture Questions
 - Start with _project.sysml for overall structure
