@@ -16,9 +16,11 @@ export class Output {
   // Token and cost tracking
   private totalInputTokens: number = 0;
   private totalOutputTokens: number = 0;
+  private totalCachedInputTokens: number = 0;
   private totalCost: number = 0;
   private iterationInputTokens: number = 0;
   private iterationOutputTokens: number = 0;
+  private iterationCachedInputTokens: number = 0;
   private iterationCost: number = 0;
 
   // Byte tracking for understanding
@@ -69,6 +71,7 @@ export class Output {
     // Reset iteration stats
     this.iterationInputTokens = 0;
     this.iterationOutputTokens = 0;
+    this.iterationCachedInputTokens = 0;
     this.iterationCost = 0;
 
     if (this.verbose) {
@@ -214,17 +217,19 @@ export class Output {
   }
 
   // Iteration stats (tokens and cost)
-  iterationStats(inputTokens: number, outputTokens: number, cost: number): void {
+  iterationStats(inputTokens: number, outputTokens: number, cost: number, cachedInputTokens?: number): void {
     this.iterationInputTokens += inputTokens;
     this.iterationOutputTokens += outputTokens;
+    this.iterationCachedInputTokens += cachedInputTokens || 0;
     this.iterationCost += cost;
 
     this.totalInputTokens += inputTokens;
     this.totalOutputTokens += outputTokens;
+    this.totalCachedInputTokens += cachedInputTokens || 0;
     this.totalCost += cost;
 
     if (this.verbose) {
-      const tokens = this.formatTokens(inputTokens, outputTokens);
+      const tokens = this.formatTokens(inputTokens, outputTokens, cachedInputTokens);
       const costStr = this.formatCost(cost);
       console.log(
         chalk.dim(`   ⤷ ${tokens}`) +
@@ -241,7 +246,7 @@ export class Output {
       console.log(
         chalk.magenta("💰 Cumulative cost: ") +
           chalk.white(this.formatCost(this.totalCost)) +
-          chalk.dim(` (${this.formatTokens(this.totalInputTokens, this.totalOutputTokens)})`)
+          chalk.dim(` (${this.formatTokens(this.totalInputTokens, this.totalOutputTokens, this.totalCachedInputTokens)})`)
       );
       // Bytes line
       const diffStr = this.bytesSinceCheckpoint >= 0
@@ -269,7 +274,7 @@ export class Output {
       console.log(chalk.white(`Iterations: ${this.currentIteration}`));
       console.log(chalk.white(`Time: ${elapsed}s`));
       console.log(
-        chalk.white(`Tokens: ${this.formatTokens(this.totalInputTokens, this.totalOutputTokens)}`)
+        chalk.white(`Tokens: ${this.formatTokens(this.totalInputTokens, this.totalOutputTokens, this.totalCachedInputTokens)}`)
       );
       if (this.totalCost > 0) {
         console.log(chalk.white(`Cost: ${this.formatCost(this.totalCost)}`));
@@ -303,12 +308,17 @@ export class Output {
   }
 
   // Format tokens for display
-  private formatTokens(input: number, output: number): string {
+  private formatTokens(input: number, output: number, cached?: number): string {
     const total = input + output;
-    if (total >= 1000) {
-      return `${(total / 1000).toFixed(1)}k tokens`;
+    const totalStr = total >= 1000 ? `${(total / 1000).toFixed(1)}k` : `${total}`;
+    const inStr = input >= 1000 ? `${(input / 1000).toFixed(1)}k` : `${input}`;
+    const outStr = output >= 1000 ? `${(output / 1000).toFixed(1)}k` : `${output}`;
+
+    if (cached && cached > 0) {
+      const cachedStr = cached >= 1000 ? `${(cached / 1000).toFixed(1)}k` : `${cached}`;
+      return `${totalStr} tokens (in: ${inStr}, out: ${outStr}, cached: ${cachedStr})`;
     }
-    return `${total} tokens`;
+    return `${totalStr} tokens (in: ${inStr}, out: ${outStr})`;
   }
 
   // Format cost for display
