@@ -2,8 +2,9 @@ import { Command, Flags } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
 import { rm, mkdir, access, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { writeDoc, setTargetDir, sysmlList } from "../gadgets/index.js";
-import { docPlan, finishPlanning, finishDocs } from "../gadgets/doc-gadgets.js";
+import { writeDoc, setTargetDir } from "../gadgets/index.js";
+import { readFullModel } from "../lib/ingest/model-io.js";
+import { docPlan, finishPlanning, finishDocs, setDocPlanReceived } from "../gadgets/doc-gadgets.js";
 import { Output } from "../lib/output.js";
 import { render } from "../lib/templates.js";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../lib/command-utils.js";
 import { runAgentWithEvents } from "../lib/agent-runner.js";
 import { formatLabel } from "../lib/formatting.js";
+import { extractDiagrams, type D2Diagram } from "../lib/d2/extractor.js";
 
 interface DocPlanStructure {
   structure: Array<{
@@ -328,17 +330,11 @@ export default class Document extends Command {
     let sysmlSummary: string | null = null;
     if (!codeOnly) {
       out.info("Loading SysML model...");
-      try {
-        sysmlSummary = (await sysmlList.execute({ path: "." })) as string;
-      } catch (error) {
-        out.error(`Failed to load SysML model: ${error instanceof Error ? error.message : error}`);
-        restore();
-        process.exit(1);
-      }
+      sysmlSummary = await readFullModel();
 
-      if (!sysmlSummary || sysmlSummary.trim() === "" || sysmlSummary === "No SysML files found.") {
+      if (!sysmlSummary) {
         if (modelOnly) {
-          out.error("No SysML model found. Run 'au ingest' first to create the model.");
+          out.error("No SysML model found. Run 'au ingest' first.");
           restore();
           process.exit(1);
         } else {
@@ -392,67 +388,98 @@ export default class Document extends Command {
       // Build gadgets based on mode
       const planGadgets = [docPlan, finishPlanning, ...selectReadGadgets({ modelOnly, codeOnly })];
 
-      let planBuilder = new AgentBuilder(client)
-        .withModel(flags.model)
-        .withSystem(planSystemPrompt)
-        .withMaxIterations(flags["plan-iterations"])
-        .withGadgetExecutionMode("sequential")
-        .withGadgetOutputLimitPercent(30)
-        .withGadgets(...planGadgets);
+      const maxPlanAttempts = 3;
 
-      planBuilder = configureBuilder(planBuilder, out, flags.rpm, flags.tpm);
+      for (let attempt = 1; attempt <= maxPlanAttempts; attempt++) {
+        // Reset state for each attempt
+        documentPlan = null;
+        setDocPlanReceived(false);
 
-      // Inject SysML summary as synthetic call (only if available)
-      if (sysmlSummary) {
-        planBuilder.withSyntheticGadgetCall(
-          "SysMLListSummary",
-          { path: "." },
-          sysmlSummary,
-          "gc_init_1"
-        );
-      }
+        if (attempt > 1) {
+          out.warn(`Planning attempt ${attempt}/${maxPlanAttempts}...`);
+          out.info("Previous attempt failed to capture a valid documentation plan.");
+        }
 
-      const planAgent = planBuilder.ask(planInitialPrompt);
+        let planBuilder = new AgentBuilder(client)
+          .withModel(flags.model)
+          .withSystem(planSystemPrompt)
+          .withMaxIterations(flags["plan-iterations"])
+          .withGadgetExecutionMode("sequential")
+          .withGadgetOutputLimitPercent(30)
+          .withGadgets(...planGadgets)
+          .withTrailingMessage(() => {
+            return render("document/plan-trailing", {
+              planCaptured: documentPlan !== null,
+            });
+          });
 
-      // Track text block state for planning
-      const planTextState = createTextBlockState();
+        planBuilder = configureBuilder(planBuilder, out, flags.rpm, flags.tpm);
 
-      // Subscribe to planning agent for iteration tracking
-      const planTree = planAgent.getTree();
-      setupIterationTracking(planTree, {
-        out,
-        showCumulativeCostEvery: 5,
-        onIterationChange: () => endTextBlock(planTextState, out),
-      });
+        // Inject SysML summary as synthetic call (only if available)
+        if (sysmlSummary) {
+          planBuilder.withSyntheticGadgetCall(
+            "SysMLListSummary",
+            { path: "." },
+            sysmlSummary,
+            "gc_init_1"
+          );
+        }
 
-      // Run planning agent and capture DocPlan
-      try {
-        await runAgentWithEvents(planAgent, {
+        const planAgent = planBuilder.ask(planInitialPrompt);
+
+        // Track text block state for planning
+        const planTextState = createTextBlockState();
+
+        // Subscribe to planning agent for iteration tracking
+        const planTree = planAgent.getTree();
+        setupIterationTracking(planTree, {
           out,
-          textState: planTextState,
-          onGadgetResult: (gadgetName, result) => {
-            // Capture DocPlan result
-            if (gadgetName === "DocPlan" && result) {
-              // Extract JSON from the result (it's wrapped in <plan> tags)
-              const planMatch = result.match(/<plan>\s*([\s\S]*?)\s*<\/plan>/);
-              if (planMatch) {
-                try {
-                  documentPlan = JSON.parse(planMatch[1]);
-                } catch {
-                  out.warn("Failed to parse documentation plan");
+          showCumulativeCostEvery: 5,
+          onIterationChange: () => endTextBlock(planTextState, out),
+        });
+
+        // Run planning agent and capture DocPlan
+        try {
+          await runAgentWithEvents(planAgent, {
+            out,
+            textState: planTextState,
+            onGadgetResult: (gadgetName, result) => {
+              // Capture DocPlan result
+              if (gadgetName === "DocPlan" && result) {
+                // Extract JSON from the result (it's wrapped in <plan> tags)
+                const planMatch = result.match(/<plan>\s*([\s\S]*?)\s*<\/plan>/);
+                if (planMatch) {
+                  try {
+                    documentPlan = JSON.parse(planMatch[1]);
+                  } catch {
+                    out.warn("Failed to parse documentation plan");
+                  }
                 }
               }
-            }
-          },
-        });
-      } catch (error) {
-        out.error(`Planning failed: ${error instanceof Error ? error.message : error}`);
-        restore();
-        process.exit(1);
+            },
+          });
+        } catch (error) {
+          // TaskCompletionSignal from FinishPlanning is expected
+          if (error instanceof Error && error.message.includes("Planning complete")) {
+            // Normal completion — fall through to check documentPlan
+          } else {
+            out.error(`Planning failed: ${error instanceof Error ? error.message : error}`);
+            restore();
+            process.exit(1);
+          }
+        }
+
+        if (documentPlan) {
+          break;
+        }
+
+        if (attempt < maxPlanAttempts) {
+          out.warn("DocPlan was not captured, retrying with fresh agent...");
+        }
       }
 
       if (!documentPlan) {
-        out.error("No documentation plan was created. Check verbose output for details.");
+        out.error("No documentation plan was created after all attempts. Check verbose output for details.");
         restore();
         process.exit(1);
       }
@@ -520,7 +547,22 @@ export default class Document extends Command {
     // Set target directory for WriteFile gadget
     setTargetDir(targetDir);
 
-    const orchestratorSystemPrompt = render("document/orchestrator-system", {});
+    // Render sub-templates for D2 guidance and pass to orchestrator
+    const d2MappingGuide = render("document/d2-sysml-mapping", {});
+    const d2Examples = render("document/d2-examples", {});
+    const orchestratorSystemPrompt = render("document/orchestrator-system", {
+      d2MappingGuide,
+      d2Examples,
+    });
+
+    // Extract pre-generated D2 diagrams from SysML model
+    let preGeneratedDiagrams: D2Diagram[] = [];
+    if (sysmlSummary) {
+      preGeneratedDiagrams = extractDiagrams(sysmlSummary);
+      if (preGeneratedDiagrams.length > 0) {
+        out.success(`Extracted ${preGeneratedDiagrams.length} D2 diagrams from SysML model`);
+      }
+    }
 
     // Flatten documents for the orchestrator
     const allDocs = plan.structure.flatMap((dir) =>
@@ -572,7 +614,7 @@ export default class Document extends Command {
    Sections: ${d.sections?.length ? d.sections.join(", ") : "(use your judgment)"}`;
       // Show SysML paths to cover if specified
       if (d.mustCoverPaths?.length) {
-        info += `\n   📂 Must cover: ${d.mustCoverPaths.join(", ")}`;
+        info += `\n   Must cover: ${d.mustCoverPaths.join(", ")}`;
       }
       // All docs require validation - show which files to read
       const filesToRead = d.validationFiles?.length
@@ -580,12 +622,30 @@ export default class Document extends Command {
         : d.sourcePaths?.length
           ? d.sourcePaths.join(", ")
           : "package.json";
-      info += `\n   📖 Read source: ${filesToRead}`;
+      info += `\n   Read source: ${filesToRead}`;
       if (d.includeDiagram && d.includeDiagram !== "none") {
-        info += `\n   📊 Include ${d.includeDiagram} diagram`;
+        // Check if a pre-generated diagram of this type exists
+        const matching = preGeneratedDiagrams.filter(
+          (dg) => dg.type === d.includeDiagram
+        );
+        if (matching.length > 0) {
+          const titles = matching.map((dg) => dg.title).join(", ");
+          info += `\n   Include ${d.includeDiagram} diagram (pre-generated available: ${titles})`;
+        } else {
+          info += `\n   Include ${d.includeDiagram} diagram`;
+        }
       }
       return info;
     };
+
+    // Format pre-generated diagrams section for the prompt
+    let diagramsSection = "";
+    if (preGeneratedDiagrams.length > 0) {
+      const diagramBlocks = preGeneratedDiagrams.map((dg, i) =>
+        `### ${i + 1}. ${dg.title} (type: ${dg.type})\nSource files: ${dg.sourceFiles.join(", ")}\n\n\`\`\`d2\n${dg.d2}\n\`\`\``
+      );
+      diagramsSection = `\n## Pre-Generated Diagrams\n\nThe following D2 diagrams were extracted from the SysML model. Use them directly in documents that request the matching diagram type, or customize them as needed.\n\n${diagramBlocks.join("\n\n")}\n`;
+    }
 
     const orchestratorInitialPrompt = `Generate ${pendingDocs.length} documentation files based on this plan.
 
@@ -593,7 +653,7 @@ export default class Document extends Command {
 - You may only call WriteFile ONCE per turn
 - After WriteFile, STOP and wait for confirmation
 - Each document must be 80-150+ lines minimum
-
+${diagramsSection}
 ## Document Queue (${pendingDocs.length} documents):
 ${pendingDocs.map((d, i) => formatDocInfo(d, i)).join("\n\n")}
 
@@ -608,6 +668,7 @@ ${pendingDocs.map((d, i) => formatDocInfo(d, i)).join("\n\n")}
 - Include: overview, detailed sections, code examples, cross-references
 - Code examples must be complete with imports
 - Link to related documents in the set
+- When a document has \`includeDiagram\` set and a pre-generated diagram matches, embed it
 
 ## Start Now
 Begin with document #1: **${pendingDocs[0]?.path}**

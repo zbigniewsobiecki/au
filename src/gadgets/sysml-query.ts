@@ -270,8 +270,12 @@ Uses sysml2 CLI --select for semantic element selection:
     }
     const { definitions, relationships, files } = await scanSysmlFiles();
 
-    if (definitions.length === 0) {
+    if (files.length === 0) {
       return "No SysML model found. Run `au sysml:ingest` first to generate the model.";
+    }
+
+    if (definitions.length === 0) {
+      return `Found ${files.length} SysML files but could not extract definitions (model may have parse errors).\nUse the CLI select mode instead:\n  SysMLQuery(select="${query}")`;
     }
 
     const result: QueryResult = {};

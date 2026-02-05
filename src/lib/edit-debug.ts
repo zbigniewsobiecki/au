@@ -30,7 +30,6 @@ export interface EditDebugMetadata {
   scope?: string;
   createScope?: boolean;
   replaceScope?: boolean;
-  validateSemantics?: boolean;
   status: "success" | "error" | "rollback";
   bytesOriginal: number;
   bytesResult: number;

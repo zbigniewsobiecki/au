@@ -265,7 +265,7 @@ This cycle focuses ONLY on verification and test mapping. Analysis will be handl
 <% if (it.isIterative) { %>
 ### File Selection Priority for Verification Analysis
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. Test files (`*.test.ts`, `*.spec.ts`, `test_*.py`, `*_test.go`)
 2. E2E test files (`*.e2e-spec.ts`, `*.e2e.ts`, `e2e/*.ts`)
 3. Integration tests (`*.integration.ts`, `integration/*.ts`)

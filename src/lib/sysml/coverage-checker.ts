@@ -50,6 +50,8 @@ export interface CoverageContext {
   basePath: string;
   /** Minimum coverage percentage required (default: 80) */
   minCoveragePercent?: number;
+  /** When provided, only files in this set count toward unified coverage */
+  readFiles?: Set<string>;
 }
 
 /** Debug flag - set AU_DEBUG_COVERAGE=1 to enable verbose logging */
@@ -214,13 +216,25 @@ function findManifestCycle(
 /**
  * Check coverage for a specific cycle.
  *
+ * Coverage is based purely on @SourceFile annotations in .sysml files:
+ * coverage = |documented| / |expected|.  The presence of a @SourceFile marker
+ * is sufficient proof the LLM processed the file.
+ *
+ * The `readFiles` parameter is retained for informational / logging purposes
+ * but no longer gates the covered set — previously, an intersection with
+ * readFiles caused coverage to be stuck at ~3% because only files delivered
+ * via FileViewerNextFileSet batches were tracked, while files the LLM read
+ * via the ReadFiles gadget were not.
+ *
  * @param cycle - The cycle number (1-6)
  * @param basePath - Base path of the project (default: ".")
+ * @param readFiles - Optional set of files that have been read (informational only)
  * @returns Coverage result with expected, covered, and missing files
  */
 export async function checkCycleCoverage(
   cycle: number,
-  basePath: string = "."
+  basePath: string = ".",
+  readFiles?: Set<string>
 ): Promise<CoverageResult> {
   const result: CoverageResult = {
     expectedFiles: [],
@@ -249,14 +263,13 @@ export async function checkCycleCoverage(
   }
 
   // Find covered files from .sysml Source: comments
-  // IMPORTANT: Only scan the cycle's specific output directory, not the entire .sysml dir.
-  // This prevents files documented in earlier cycles (e.g., structure/) from being
-  // counted as "covered" for later cycles (e.g., behavior/).
-  const cycleOutputDir = CYCLE_OUTPUT_DIRS[cycle];
-  const sysmlDir = cycleOutputDir
-    ? join(basePath, SYSML_DIR, cycleOutputDir)
-    : join(basePath, SYSML_DIR); // Fallback for unknown cycles
+  // Scan the entire .sysml/ directory — the agent may write @SourceFile annotations
+  // to any subdirectory (structure/, data/, behavior/, etc.). This is safe because
+  // expectedFiles is already cycle-scoped from the manifest, so only the current
+  // cycle's target files are counted in the coverage percentage.
+  const sysmlDir = join(basePath, SYSML_DIR);
   const coveredSet = await findCoveredFiles(sysmlDir);
+
   result.coveredFiles = [...coveredSet].sort();
 
   // Calculate missing files (normalize extensions for comparison)

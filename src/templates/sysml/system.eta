@@ -129,6 +129,19 @@ package SystemContext {
 }
 ```
 
+### ERROR 5: `:>> doc` (doc is a keyword, not a feature)
+```sysml
+// WRONG — doc is NOT a redefinable feature!
+action def ProcessOrder {
+    :>> doc = "Process an order";  // ERROR E3002!
+}
+
+// CORRECT — use doc comment syntax
+action def ProcessOrder {
+    doc /* Process an order */
+}
+```
+
 ### Quick Reference Table
 
 | Error | Wrong | Correct |
@@ -138,6 +151,7 @@ package SystemContext {
 | Dangling metadata | `@external;` (alone) | `@external;` then element |
 | :>> without inheritance | `def X { :>> a = v; }` | `def X { attribute a : T = v; }` |
 | `part :>>` as direct child of package | `package P { part :>> x : T; }` | `package P { part x : T; }` |
+| `:>> doc` (doc is a keyword) | `:>> doc = "text";` | `doc /* text */` |
 
 **:>> Decision Tree:**
 ```
@@ -401,6 +415,70 @@ allocate handlePayment to paymentModule;
 allocation orderProcessingAlloc : FunctionToComponent
     allocate ProcessOrder to OrderModule;
 ```
+
+## End-to-End (E2E) Flow Modeling Philosophy
+
+Every user-facing feature should be modeled as a **3-step E2E flow**:
+
+| Step | Name | Purpose | SysML Construct |
+|------|------|---------|-----------------|
+| **Step 1** | **Action Flow** | Logic & sequencing | `action def` with `flow from`, `first..then` |
+| **Step 2** | **Item Flow** | Architecture & data paths | `interface def` / `connection def` with `flow from X to Y` |
+| **Step 3** | **Allocation** | Binding actions to modules | `allocate ActionDef.subAction to Module` |
+
+### Complete E2E Example: LoginFlow
+
+```sysml
+// ── E2E Step 1: Action Flow (behavior/operations.sysml) ──
+action def LoginE2E {
+    doc /*E2E login flow: validate → authenticate → issue tokens */
+    in credentials; out tokens; out error [0..1];
+
+    action validate  { in creds; out validCreds; }
+    action authenticate { in validCreds; out user; out authError [0..1]; }
+    action issueTokens { in user; out tokens; }
+
+    flow from credentials to validate.creds;
+    flow from validate.validCreds to authenticate.validCreds;
+    flow from authenticate.user to issueTokens.user;
+    flow from issueTokens.tokens to tokens;
+    flow from authenticate.authError to error;
+
+    first validate then authenticate;
+    first authenticate then issueTokens;
+}
+
+// ── E2E Step 2: Item Flow (structure/interfaces.sysml) ──
+interface def LoginInterface {
+    doc /*Data paths for login feature */
+    end client : ~AuthPort;
+    end server : AuthPort;
+    flow from client.credentials to server.credentials;
+    flow from server.tokens to client.tokens;
+}
+
+connection def LoginConnection {
+    end gateway;
+    end authModule;
+    // Item flow: typed data crossing the connection
+    flow loginData : Credentials from gateway to authModule;
+}
+
+// ── E2E Step 3: Allocation (analysis/allocations.sysml) ──
+// Granular: bind each sub-action to a specific module
+allocate LoginE2E.validate to ApiGateway;
+allocate LoginE2E.authenticate to AuthModule;
+allocate LoginE2E.issueTokens to AuthModule;
+```
+
+### When to Use Each Combination
+
+| Scenario | Steps | Example |
+|----------|-------|---------|
+| Multi-step user feature | **1 + 2 + 3** (full E2E) | Login, Checkout, Registration |
+| Simple CRUD operation | **1 + 3** (action + allocation) | CreateUser, DeleteItem |
+| Infrastructure wiring | **2 only** (item flow) | Database connection, Cache link |
+| Cross-cutting concern | **1 + 3** (action + allocation) | Auth middleware, Rate limiting |
 
 ## Constraint Expressions (Advanced)
 
@@ -788,11 +866,9 @@ SysMLWrite(
 SysMLWrite(path="data/entities.sysml", delete="DataModel::Entities::OldUser")
 ```
 
-### SysMLQuery - Element selection:
+### SysMLRead - Read file contents:
 ```
-SysMLQuery(select="DataModel::Entities::*")   // Direct children
-SysMLQuery(select="DataModel::Entities::**")  // All descendants
-SysMLQuery(select="UserService")              // Find by name
+SysMLRead(path="data/entities.sysml")  // Returns file content with line numbers
 ```
 
 ### SysMLDelete - Dedicated element removal:
@@ -802,8 +878,8 @@ SysMLDelete(path="data/entities.sysml", element="DomainEntities::Legacy", recurs
 ```
 
 ### SysMLRead(path)
-Read existing SysML content from .sysml/ directory.
-Returns file content with line numbers for easy reference.
+Read a SysML file from the .sysml/ directory. Returns content with line numbers.
+Use `SysMLList()` to discover file paths first.
 
 ### SysMLList()
 List all SysML files in the model.
@@ -813,7 +889,7 @@ List all SysML files in the model.
 Index files (`_index.sysml`) **accumulate imports across cycles**. They are NOT rewritten fresh each time.
 
 **Before editing any existing file:**
-1. Use `SysMLRead` to understand current content
+1. Use `SysMLRead(path="...")` to check what elements exist (use `SysMLList()` to find paths)
 2. Use CLI upsert mode (`element` + `at`) for semantic edits
 3. The CLI handles finding and replacing elements automatically
 
@@ -832,7 +908,7 @@ SysMLCreate(
 )
 
 // 2. Check what's in the file
-SysMLQuery(select="DomainEntities::*")
+SysMLRead(path="data/entities.sysml")
 
 // 3. Add or update an element at a specific scope
 SysMLWrite(
@@ -848,8 +924,6 @@ SysMLDelete(path="data/entities.sysml", element="DomainEntities::OldEntity")
 ### ProjectMetaRead()
 Get project metadata (language, framework, architecture, etc.)
 
-### FileDiscoverCustom(patterns, maxFiles?)
-Find files using custom glob patterns (e.g., "**/routes/**/*.ts").
 
 ### ReadFiles(paths)
 Read source file contents for analysis.
@@ -1057,7 +1131,7 @@ enum def OrderStatus {
 4. **Cross-reference properly**: Use imports to connect packages
 5. **Validate before writing**: The SysMLWrite gadget validates syntax by default
 6. **Use upserts for edits**: When editing existing files, use SysMLWrite with `element` + `at` for semantic upserts
-7. **Read before editing**: Always use SysMLRead to get current content before making edits
+7. **Query before editing**: Use `SysMLRead` to check what exists before upserting
 
 ## Package Linking (CRITICAL)
 
@@ -1084,7 +1158,7 @@ Every SysML file with a `package` declaration MUST be imported by its parent `_i
    }
    ```
 
-   **⚠️ WARNING**: This file accumulates state. Always `SysMLRead` before editing!
+   **⚠️ WARNING**: This file accumulates state. Always check with `SysMLRead` or `SysMLList` before editing!
 
 3. **Create file AND update index together** - never leave orphaned packages
 
@@ -1106,7 +1180,7 @@ Before creating a new file, check `SysMLList()` to see existing packages.
 
 Before creating any SysML element:
 
-1. **Check before creating**: Use `SysMLRead` to verify if an element already exists
+1. **Check before creating**: Use `SysMLList()` + `SysMLRead(path="...")` to verify if an element already exists
 2. **Update don't recreate**: If a duplicate is found, use SysMLWrite with `element` + `at` to upsert it instead of recreating
 3. **Single location per entity**: Never define the same entity in multiple files
 
@@ -1128,3 +1202,4 @@ Convert paths and names to valid SysML identifiers:
 - `src/auth/service.ts` → `auth_service`
 - `user-management` → `user_management`
 - `123-file` → `_123_file` (prefix numbers with underscore)
+- `from`, `to`, `about`, `first`, `of`, `locale`, `via`, `then` are reserved — use single-quoted identifiers: `attribute 'from' : String;`

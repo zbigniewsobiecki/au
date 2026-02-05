@@ -62,6 +62,12 @@ export {
   verifyCoverageHeuristically,
 } from "./coverage-utils.js";
 
+// Cycle state persistence
+export {
+  loadCycleReadFiles,
+  saveCycleReadFiles,
+} from "./cycle-state-store.js";
+
 // Cycle runner
 export type {
   TrailingMessageContext,

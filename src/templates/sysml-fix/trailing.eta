@@ -57,6 +57,17 @@ Process ~<%= batch %> files per turn. For each file:
 
 Make multiple `SysMLWrite` calls per turn to maximize progress.
 
+<% } else if (coverageMet && it.hasNonCoverageIssues) { %>
+
+✅ Coverage threshold met (<%= it.coveragePercent %>% >= <%= threshold %>%).
+
+⚠️ Non-coverage issues to address: **<%= it.nonCoverageTotal %>** (<%= it.nonCoverageErrorCount %> error(s), <%= it.nonCoverageWarningCount %> warning(s))
+
+Continue fixing the remaining agentic/structural issues listed above.
+DO NOT call `FinishSysmlFix` until those are also addressed.
+
+Make `SysMLWrite` calls to fix these issues. Focus on one issue at a time.
+
 <% } else if (coverageMet) { %>
 
 ✅ Coverage threshold met (<%= it.coveragePercent %>% >= <%= threshold %>%).

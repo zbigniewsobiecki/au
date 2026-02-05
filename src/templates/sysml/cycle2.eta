@@ -127,7 +127,7 @@ Include `@SourceFile { :>> path = "<filepath>"; }` metadata before each definiti
 
    **⚠️ INDEX FILE WARNING**: The `_index.sysml` files accumulate imports over time.
    If modifying an existing index:
-   1. First use `SysMLRead("structure/_index.sysml")` to see current content
+   1. First use `SysMLRead(path="structure/_index.sysml")` to see current imports
    2. Then use SysMLWrite with `element` + `at` to upsert imports
    3. Do NOT assume the file matches these examples - it may already have other imports
 
@@ -253,6 +253,36 @@ package SystemModules {
    }
    ```
 
+#### Item Flow Pattern (E2E Step 2)
+
+Interfaces and connections should include **explicit item flows** showing what data crosses each boundary. This is Step 2 of the 3-step E2E flow pattern (Step 1: action flows in Cycle 4, Step 3: allocations in Cycle 6).
+
+```sysml
+// Interface with item flows — shows typed data paths between ends
+interface def LoginInterface {
+    doc /*E2E Step 2: Data paths for login feature */
+    end client : ~AuthPort;
+    end server : AuthPort;
+    flow from client.credentials to server.credentials;
+    flow from server.tokens to client.tokens;
+}
+
+// Connection with item flow — typed data crossing a connection
+connection def APIDataFlow {
+    doc /*Item flow: typed data crossing a service connection */
+    end consumer;
+    end provider;
+    flow requestPayload : HTTPRequest from consumer to provider;
+    flow responsePayload : HTTPResponse from provider to consumer;
+}
+```
+
+**Key rules for item flows:**
+- Use `flow from X to Y` inside `interface def` to show data crossing the interface
+- Use `flow name : Type from X to Y` inside `connection def` for typed item flows
+- Every multi-step user feature should have item flows on its interface (E2E Step 2)
+- Cross-reference: Step 1 (action flows) in `behavior/operations.sysml` (Cycle 4), Step 3 (allocations) in `analysis/allocations.sysml` (Cycle 6)
+
    **structure/connections.sysml** - Inter-module wiring:
    ```sysml
    package SystemConnections {
@@ -354,6 +384,36 @@ part def {Name}Module :> ServiceModule {
 connection {name} connect {source}.{port} to {target}.{port};
 ```
 
+### Connection Validation Rules
+
+**CRITICAL: Port existence before connection wiring**
+
+When creating connections in `structure/connections.sysml`:
+
+1. **Verify both ports exist** - Before writing `connect A.portX to B.portY`, confirm:
+   - `portX` is declared on module A's `part def`
+   - `portY` is declared on module B's `part def`
+
+2. **Create missing ports first** - If a connection needs a port that doesn't exist:
+   - First, `SysMLWrite` the port definition to the module's `part def`
+   - Then, create the connection
+
+3. **NEVER reuse an unrelated port** - Each connection must use a dedicated, correctly-typed port:
+   ```sysml
+   // WRONG - reusing portX for a connection to a different module
+   connection aToBilling connect gateway.portX to billingService.api;
+
+   // CORRECT - add the correct port first, then connect
+   // Step 1: Add the port to the module definition
+   //   SysMLWrite(path="structure/modules.sysml",
+   //     element="port billingClient : ~BillingPort;",
+   //     at="SystemModules::Gateway")
+   // Step 2: Create the connection using the new port
+   connection aToBilling connect gateway.billingClient to billingService.api;
+   ```
+
+4. **Skip connections you can't validate** - If the source code doesn't show a direct dependency between two modules, don't create a connection just to fill a gap. Only create connections that reflect actual code-level dependencies (imports, injections, API calls).
+
 **IMPORTANT**: Do NOT write to context/, data/, behavior/, verification/, or analysis/ directories.
 This cycle focuses ONLY on architectural structure. Data models, behaviors, etc. will be handled in later cycles.
 
@@ -371,13 +431,14 @@ This cycle focuses ONLY on architectural structure. Data models, behaviors, etc.
 - [ ] **Interface definitions** for inter-module contracts
 - [ ] **Module specialization** hierarchies (`:>` from base types)
 - [ ] **Connections** linking modules via ports
+- [ ] **Item flows** on interfaces/connections (`flow from X to Y` within interface/connection defs)
 - [ ] Layer assignments are consistent
 - [ ] Output is limited to `structure/` directory only
 
 <% if (it.isIterative) { %>
 ### File Selection Priority for Structure Analysis
 
-When selecting next files with `FileViewerNextFileSet`, prioritize:
+When selecting next files with `FileViewerNextFileSet` (returns contents directly), prioritize:
 1. Module entry points (`index.ts`, `index.js`, `mod.rs`, `__init__.py`)
 2. Module files (`*.module.ts`, `*.module.js`)
 3. Main/App files (`main.ts`, `app.ts`, `server.ts`)
