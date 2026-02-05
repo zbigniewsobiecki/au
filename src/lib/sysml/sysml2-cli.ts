@@ -735,6 +735,52 @@ export async function validateModelFull(
 }
 
 /**
+ * Dump the entire SysML model as normalized SysML text.
+ *
+ * Runs `sysml2 -r .sysml -f sysml` to output the full model.
+ * Useful for pre-loading the entire model into context.
+ *
+ * @param sysmlDir - Directory containing SysML files (default: ".sysml")
+ * @returns Promise resolving to the full model text
+ */
+export async function dumpModel(sysmlDir: string = ".sysml"): Promise<string> {
+  const args = ["--color=never", "-r", ...getLibraryPathArgs(), "-f", "sysml", sysmlDir];
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(SYSML2_CMD, args, getSpawnOptions());
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data) => {
+      stdout += data;
+    });
+    proc.stderr.on("data", (data) => {
+      stderr += data;
+    });
+
+    proc.on("close", (code) => {
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        // Return whatever was captured even on error
+        resolve(stdout || `Error dumping model: ${stripAnsi(stderr)}`);
+      }
+    });
+
+    proc.on("error", (err) => {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        reject(new Error(`sysml2 not found in PATH. Install sysml2 globally.`));
+      } else {
+        reject(err);
+      }
+    });
+
+    proc.stdin.end();
+  });
+}
+
+/**
  * Format a SysML file using the CLI --fix option.
  *
  * @param targetFile - The file to format

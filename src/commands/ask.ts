@@ -1,9 +1,10 @@
 import { Command, Flags, Args } from "@oclif/core";
 import { AgentBuilder, LLMist } from "llmist";
-import { stat, readFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { sysmlList } from "../gadgets/index.js";
 import { ASK_SYSTEM_PROMPT, ASK_INITIAL_PROMPT, REFINE_SYSTEM_PROMPT, REFINE_INITIAL_PROMPT } from "../lib/ask-system-prompt.js";
+import { dumpModel } from "../lib/sysml/sysml2-cli.js";
 import { Output } from "../lib/output.js";
 import {
   commonFlags,
@@ -54,6 +55,11 @@ export default class Ask extends Command {
       description: "Skip the refinement pass (faster but may miss patterns)",
       default: false,
     }),
+    preload: Flags.boolean({
+      description: "Pre-load entire SysML model into context (enables prompt caching)",
+      default: false,
+      exclusive: ["code-only"],
+    }),
   };
 
   async run(): Promise<void> {
@@ -66,23 +72,35 @@ export default class Ask extends Command {
 
     const sysmlOnly = flags["sysml-only"];
     const codeOnly = flags["code-only"];
+    const preload = flags.preload;
 
     // Check for SysML model (unless code-only mode)
     let existingSysml: string | null = null;
+    let preloadedModel: string | null = null;
+
     if (!codeOnly) {
       const sysmlDir = join(".", ".sysml");
       try {
         const dirStat = await stat(sysmlDir);
         if (dirStat.isDirectory()) {
-          out.info("Loading SysML model...");
-          existingSysml = await sysmlList.execute({ reason: "List available SysML files" }) as string;
-          const fileCount = (existingSysml.match(/\.sysml/g) || []).length;
-          out.success(`Loaded ${fileCount} SysML model files`);
+          if (preload) {
+            // Pre-load entire model into context
+            out.info("Pre-loading SysML model...");
+            preloadedModel = await dumpModel(sysmlDir);
+            const lineCount = preloadedModel.split("\n").length;
+            out.success(`Pre-loaded model (${lineCount} lines)`);
+          } else {
+            // Normal mode: just list files
+            out.info("Loading SysML model...");
+            existingSysml = await sysmlList.execute({ reason: "List available SysML files" }) as string;
+            const fileCount = (existingSysml.match(/\.sysml/g) || []).length;
+            out.success(`Loaded ${fileCount} SysML model files`);
+          }
         }
       } catch {
         out.warn("No SysML model found. Run 'au sysml:ingest' first for best results.");
-        if (sysmlOnly) {
-          out.error("Cannot use --sysml-only without a SysML model. Run 'au sysml:ingest' first.");
+        if (sysmlOnly || preload) {
+          out.error("Cannot use --sysml-only or --preload without a SysML model. Run 'au sysml:ingest' first.");
           restore();
           process.exit(1);
         }
@@ -90,7 +108,7 @@ export default class Ask extends Command {
     }
 
     // Build the agent with appropriate gadgets
-    const gadgets = selectReadGadgets({ modelOnly: sysmlOnly, codeOnly });
+    const gadgets = selectReadGadgets({ modelOnly: sysmlOnly, codeOnly, preload });
 
     // Helper to run an agent and collect its output
     const runAgent = async (
@@ -98,16 +116,22 @@ export default class Ask extends Command {
       initialPrompt: string,
       label: string
     ): Promise<string> => {
+      // When preload is enabled, append model to system prompt for caching
+      let finalSystemPrompt = systemPrompt;
+      if (preloadedModel) {
+        finalSystemPrompt = `${systemPrompt}\n\n<sysml-model>\n${preloadedModel}\n</sysml-model>`;
+      }
+
       let agentBuilder = new AgentBuilder(client)
         .withModel(flags.model)
-        .withSystem(systemPrompt)
+        .withSystem(finalSystemPrompt)
         .withMaxIterations(flags["max-iterations"])
         .withGadgets(...gadgets);
 
       agentBuilder = configureBuilder(agentBuilder, out, flags.rpm, flags.tpm);
 
-      // Inject SysML context
-      if (existingSysml) {
+      // Inject SysML context (only when not in preload mode)
+      if (existingSysml && !preload) {
         agentBuilder.withSyntheticGadgetCall(
           "SysMLList",
           { reason: "List available SysML model files" },
@@ -139,8 +163,8 @@ export default class Ask extends Command {
     try {
       // Phase 1: Initial exploration and answer
       const initialAnswer = await runAgent(
-        ASK_SYSTEM_PROMPT({ sysmlOnly, codeOnly }),
-        ASK_INITIAL_PROMPT(args.question, { sysmlOnly, codeOnly }),
+        ASK_SYSTEM_PROMPT({ sysmlOnly, codeOnly, preload }),
+        ASK_INITIAL_PROMPT(args.question, { sysmlOnly, codeOnly, preload }),
         "Thinking"
       );
 
@@ -152,8 +176,8 @@ export default class Ask extends Command {
           out.info("\n--- Refinement Phase ---");
         }
         finalAnswer = await runAgent(
-          REFINE_SYSTEM_PROMPT(),
-          REFINE_INITIAL_PROMPT(args.question, initialAnswer),
+          REFINE_SYSTEM_PROMPT({ preload }),
+          REFINE_INITIAL_PROMPT(args.question, initialAnswer, { preload }),
           "Refining"
         );
       }

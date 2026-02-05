@@ -1,10 +1,24 @@
 ## Original Question
 <%= it.question %>
 
-## Proposed Implementation
+## Initial Answer
 <%= it.proposal %>
 
 ## Your Task
+<% if (it.preload) { %>
+
+Review this answer and refine it if needed. The SysML model is already in your context.
+
+### Verification Strategy
+1. **Assess the answer quality** - Does it accurately address the question based on the SysML model you have?
+2. **Spot-check 2-3 key claims** - Pick the most important technical details to verify in source code
+3. **Make at most 5-8 tool calls** - Focus on high-value verification, not exhaustive checking
+4. **Output the refined answer** - This is your primary goal
+
+If the initial answer is already accurate and complete, you may output it with minimal changes.
+
+**IMPORTANT:** Your primary job is to OUTPUT A REFINED ANSWER. Do not get stuck making endless verification calls. After brief spot-checking, produce your answer.
+<% } else { %>
 
 Review this implementation proposal against the actual codebase patterns.
 
@@ -28,3 +42,4 @@ After verifying, output ONLY the final implementation plan:
 - Format it cleanly, ready to be used directly as an implementation plan
 
 IMPORTANT: Make your verification searches IN PARALLEL to be efficient.
+<% } %>

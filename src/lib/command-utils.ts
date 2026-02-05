@@ -37,9 +37,14 @@ export function withWorkingDirectory(
  * Selects the appropriate read gadgets based on the mode.
  * - modelOnly: Only SysML reading gadgets
  * - codeOnly: Only source code reading gadgets
+ * - preload: Model is in context, no SysML gadgets needed
  * - default: Both SysML and source code gadgets
  */
-export function selectReadGadgets(mode: { modelOnly?: boolean; codeOnly?: boolean }): AbstractGadget[] {
+export function selectReadGadgets(mode: { modelOnly?: boolean; codeOnly?: boolean; preload?: boolean }): AbstractGadget[] {
+  if (mode.preload) {
+    // Model is in context - no SysML gadgets needed
+    return mode.modelOnly ? [] : [readFiles, readDirs, ripGrep];
+  }
   if (mode.modelOnly) return [sysmlList, sysmlRead, sysmlQuery];
   if (mode.codeOnly) return [readFiles, readDirs, ripGrep];
   return [sysmlList, sysmlRead, sysmlQuery, readFiles, readDirs, ripGrep];
@@ -137,7 +142,7 @@ export function createRateLimitConfig(rpm: number, tpm: number): RateLimitConfig
   };
 }
 
-const MAX_GADGET_CALLS_PER_RESPONSE = 15;
+const MAX_GADGET_CALLS_PER_RESPONSE = 25;
 
 export function createGadgetLimitHooks(): { hooks: AgentHooks; signal: AbortSignal } {
   const abortController = new AbortController();
@@ -254,7 +259,8 @@ export function setupIterationTracking(
           out.iterationStats(
             event.usage?.inputTokens || 0,
             event.usage?.outputTokens || 0,
-            event.cost || 0
+            event.cost || 0,
+            event.usage?.cachedInputTokens
           );
         }
       }
