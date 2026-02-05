@@ -3,6 +3,8 @@
 Use these patterns as reference when generating D2 diagrams in documentation.
 Prefer the SysML-derived patterns below when the model contains the corresponding constructs.
 
+<%~ include("../shared/d2-syntax", it) %>
+
 ---
 
 ## SysML Entity → D2 Entity Relationship Diagram
