@@ -1,10 +1,16 @@
 import { render } from "./templates.js";
 
-export const ASK_SYSTEM_PROMPT = (options: { sysmlOnly?: boolean; codeOnly?: boolean; preload?: boolean } = {}) => {
+export const ASK_SYSTEM_PROMPT = (options: {
+  sysmlOnly?: boolean;
+  codeOnly?: boolean;
+  preload?: boolean;
+  skipPersona?: boolean;
+} = {}) => {
   return render("ask/sysml-system", {
     sysmlOnly: options.sysmlOnly ?? false,
     codeOnly: options.codeOnly ?? false,
     preload: options.preload ?? false,
+    skipPersona: options.skipPersona ?? false,
   });
 };
 

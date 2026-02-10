@@ -1,6 +1,6 @@
 import { Command, Flags, Args } from "@oclif/core";
-import { AgentBuilder, LLMist } from "llmist";
-import { stat } from "node:fs/promises";
+import { AgentBuilder, LLMist, AbstractGadget } from "llmist";
+import { stat, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sysmlList } from "../gadgets/index.js";
 import { ASK_SYSTEM_PROMPT, ASK_INITIAL_PROMPT, REFINE_SYSTEM_PROMPT, REFINE_INITIAL_PROMPT } from "../lib/ask-system-prompt.js";
@@ -60,6 +60,20 @@ export default class Ask extends Command {
       default: false,
       exclusive: ["code-only"],
     }),
+    system: Flags.string({
+      char: "s",
+      description: "Custom system prompt for initial phase",
+      exclusive: ["system-file"],
+    }),
+    "system-file": Flags.string({
+      char: "S",
+      description: "Path to file containing custom system prompt for initial phase",
+      exclusive: ["system"],
+    }),
+    output: Flags.string({
+      char: "o",
+      description: "Write final answer to a file (markdown)",
+    }),
   };
 
   async run(): Promise<void> {
@@ -114,7 +128,8 @@ export default class Ask extends Command {
     const runAgent = async (
       systemPrompt: string,
       initialPrompt: string,
-      label: string
+      label: string,
+      gadgetsForPhase: AbstractGadget[] = gadgets
     ): Promise<string> => {
       // When preload is enabled, append model to system prompt for caching
       let finalSystemPrompt = systemPrompt;
@@ -126,7 +141,7 @@ export default class Ask extends Command {
         .withModel(flags.model)
         .withSystem(finalSystemPrompt)
         .withMaxIterations(flags["max-iterations"])
-        .withGadgets(...gadgets);
+        .withGadgets(...gadgetsForPhase);
 
       agentBuilder = configureBuilder(agentBuilder, out, flags.rpm, flags.tpm);
 
@@ -160,25 +175,51 @@ export default class Ask extends Command {
 
     const noRefine = flags["no-refine"];
 
+    // Get the default system prompt (contains gadget definitions, strategies, etc.)
+    // Skip persona line if user provided custom system prompt
+    const hasCustomSystem = Boolean(flags.system || flags["system-file"]);
+    const defaultSystemPrompt = ASK_SYSTEM_PROMPT({ sysmlOnly, codeOnly, preload, skipPersona: hasCustomSystem });
+
+    // Compose with custom user prompt if provided
+    let initialSystemPrompt: string;
+    if (flags.system) {
+      // User prompt first (task context), then default (tool information)
+      initialSystemPrompt = flags.system + "\n\n" + defaultSystemPrompt;
+    } else if (flags["system-file"]) {
+      const customPrompt = await readFile(flags["system-file"], "utf-8");
+      initialSystemPrompt = customPrompt + "\n\n" + defaultSystemPrompt;
+    } else {
+      initialSystemPrompt = defaultSystemPrompt;
+    }
+
     try {
       // Phase 1: Initial exploration and answer
+      // When preload is enabled, no tools needed - model is already in context
+      const phase1Gadgets = preload ? [] : gadgets;
       const initialAnswer = await runAgent(
-        ASK_SYSTEM_PROMPT({ sysmlOnly, codeOnly, preload }),
+        initialSystemPrompt,
         ASK_INITIAL_PROMPT(args.question, { sysmlOnly, codeOnly, preload }),
-        "Thinking"
+        "Thinking",
+        phase1Gadgets
       );
 
       let finalAnswer = initialAnswer;
 
-      // Phase 2: Refinement pass (unless --no-refine or sysml-only/code-only modes)
-      if (!noRefine && !sysmlOnly && !codeOnly) {
+      // Phase 2: Refinement pass
+      // - Skip if --no-refine
+      // - Skip if --sysml-only WITHOUT preload (no source code to verify against)
+      // - Skip if --code-only (no model to compare with)
+      // - ALLOW if --preload + --sysml-only (verify model-based answer against source)
+      const canRefine = !noRefine && !codeOnly && (!sysmlOnly || preload);
+      if (canRefine) {
         if (flags.verbose) {
           out.info("\n--- Refinement Phase ---");
         }
         finalAnswer = await runAgent(
           REFINE_SYSTEM_PROMPT({ preload }),
           REFINE_INITIAL_PROMPT(args.question, initialAnswer, { preload }),
-          "Refining"
+          "Refining",
+          gadgets  // Full gadgets for refinement phase
         );
       }
 
@@ -186,6 +227,12 @@ export default class Ask extends Command {
       if (!flags.verbose) {
         console.log();
         console.log(finalAnswer.trim());
+      }
+
+      // Write to file if requested
+      if (flags.output) {
+        await writeFile(flags.output, finalAnswer.trim() + "\n", "utf-8");
+        out.success(`Answer written to ${flags.output}`);
       }
     } catch (error) {
       out.error(`Agent error: ${error instanceof Error ? error.message : error}`);

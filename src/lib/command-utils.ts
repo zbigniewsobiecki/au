@@ -43,7 +43,8 @@ export function withWorkingDirectory(
 export function selectReadGadgets(mode: { modelOnly?: boolean; codeOnly?: boolean; preload?: boolean }): AbstractGadget[] {
   if (mode.preload) {
     // Model is in context - no SysML gadgets needed
-    return mode.modelOnly ? [] : [readFiles, readDirs, ripGrep];
+    // But always include source code tools for refinement spot-checks
+    return [readFiles, readDirs, ripGrep];
   }
   if (mode.modelOnly) return [sysmlList, sysmlRead, sysmlQuery];
   if (mode.codeOnly) return [readFiles, readDirs, ripGrep];
