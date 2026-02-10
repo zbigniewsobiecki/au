@@ -1,6 +1,6 @@
 import { Flags } from "@oclif/core";
 import { AgentBuilder, LLMist, resolveModel } from "llmist";
-import type { ExecutionEvent, AbstractGadget, AgentHooks } from "llmist";
+import type { ExecutionEvent, AbstractGadget } from "llmist";
 import { stat, readFile } from "node:fs/promises";
 import { Output } from "./output.js";
 import {
@@ -43,7 +43,8 @@ export function withWorkingDirectory(
 export function selectReadGadgets(mode: { modelOnly?: boolean; codeOnly?: boolean; preload?: boolean }): AbstractGadget[] {
   if (mode.preload) {
     // Model is in context - no SysML gadgets needed
-    return mode.modelOnly ? [] : [readFiles, readDirs, ripGrep];
+    // But always include source code tools for refinement spot-checks
+    return [readFiles, readDirs, ripGrep];
   }
   if (mode.modelOnly) return [sysmlList, sysmlRead, sysmlQuery];
   if (mode.codeOnly) return [readFiles, readDirs, ripGrep];
@@ -142,41 +143,8 @@ export function createRateLimitConfig(rpm: number, tpm: number): RateLimitConfig
   };
 }
 
-const MAX_GADGET_CALLS_PER_RESPONSE = 25;
-
-export function createGadgetLimitHooks(): { hooks: AgentHooks; signal: AbortSignal } {
-  const abortController = new AbortController();
-  let lastIteration = -1;
-  let callCount = 0;
-
-  return {
-    signal: abortController.signal,
-    hooks: {
-      controllers: {
-        beforeGadgetExecution: async (ctx) => {
-          if (ctx.iteration !== lastIteration) {
-            lastIteration = ctx.iteration;
-            callCount = 0;
-          }
-          callCount++;
-          if (callCount > MAX_GADGET_CALLS_PER_RESPONSE) {
-            abortController.abort(
-              `Gadget call limit exceeded (max ${MAX_GADGET_CALLS_PER_RESPONSE} per response). The LLM issued too many tool calls.`
-            );
-            return {
-              action: "skip",
-              syntheticResult: `Aborted: too many gadget calls.`,
-            };
-          }
-          return { action: "proceed" };
-        },
-      },
-    },
-  };
-}
-
 /**
- * Configures an agent builder with standard retry and rate limit settings.
+ * Configures an agent builder with standard retry, rate limit, and gadget limit settings.
  */
 export function configureBuilder(
   builder: AgentBuilder,
@@ -184,12 +152,10 @@ export function configureBuilder(
   rpm: number,
   tpm: number
 ): AgentBuilder {
-  const { hooks, signal } = createGadgetLimitHooks();
   return builder
     .withRetry(createRetryConfig(out))
     .withRateLimits(createRateLimitConfig(rpm, tpm))
-    .withHooks(hooks)
-    .withSignal(signal);
+    .withMaxGadgetsPerResponse(25);
 }
 
 /**

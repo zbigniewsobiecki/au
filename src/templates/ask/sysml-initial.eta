@@ -2,27 +2,23 @@
 The complete SysML model is available in the `<sysml-model>` section above. Answer the question by searching through the pre-loaded model content.
 
 <% } else if (it.preload) { %>
-The complete SysML model is available in the `<sysml-model>` section above. Use it for architecture understanding, and verify with source code when needed.
+The complete SysML model is available in the `<sysml-model>` section above.
 
-**IMPORTANT: After gathering information, you MUST output your complete answer with:**
-- Detailed explanation referencing specific files
-- Code snippets from the codebase
-- D2 diagram for flow/architecture questions
+Answer the question using the pre-loaded model content:
+1. Search through the `<sysml-model>` section for relevant definitions
+2. Trace relationships (specializations, connections, type references)
+3. Synthesize a complete answer with:
+   - Detailed explanation referencing specific components
+   - D2 diagram for architecture/flow questions
+
+The refinement phase will verify your answer against source code.
 
 <% } else if (!it.sysmlOnly && !it.codeOnly) { %>
 Before answering, you must explore the codebase using ReadFiles or RipGrep. The SysML model provided gives you semantic understanding, but you need to read actual source code to give a thorough, grounded answer.
 
 <% } %>
 Question: <%= it.question %>
-<% if (it.preload && !it.sysmlOnly) { %>
-
-For implementation questions:
-1. Reference the pre-loaded SysML model for architecture and relationships
-2. Use ReadFiles to verify implementation details
-3. Use RipGrep to find patterns and usages in source code
-
-The model is already loaded - focus on using source code tools to verify and add detail.
-<% } else if (!it.sysmlOnly && !it.codeOnly) { %>
+<% if (!it.preload && !it.sysmlOnly && !it.codeOnly) { %>
 
 For implementation questions, you must first discover existing patterns:
 1. Use SysMLQuery to find relevant definitions and their relationships
