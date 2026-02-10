@@ -1,3 +1,10 @@
+## [2.3.0](https://github.com/zbigniewsobiecki/au/compare/v2.2.0...v2.3.0) (2026-02-10)
+
+### Features
+
+* **ask:** improve preload mode with tool-free initial phase ([463e946](https://github.com/zbigniewsobiecki/au/commit/463e946bd9058eeaf14ec9dd8e97d3c16495d757))
+* use llmist maxGadgetsPerResponse for gadget limiting ([#43](https://github.com/zbigniewsobiecki/au/issues/43)) ([7aa509d](https://github.com/zbigniewsobiecki/au/commit/7aa509d101ffe058633b0d9cbdcb52fc6b141017))
+
 ## [2.2.0](https://github.com/zbigniewsobiecki/au/compare/v2.1.1...v2.2.0) (2026-01-26)
 
 ### Features
